@@ -1,2 +1,6 @@
-# you_should_split_up_your_lab_in_hackathons
-Some awesome s*&amp;^ about tandem repeats and disease
+# Novel Tandem Repeats
+Identifying novel human loci absent from the reference genome
+
+Group 2 and Group 10
+
+
