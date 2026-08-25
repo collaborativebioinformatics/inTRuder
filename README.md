@@ -14,3 +14,12 @@
 [![Click to view interactive Miro Board](./docs/flowchart_05_08_2026.png)](https://miro.com/app/board/uXjVHuDLcpE=/?share_link_id=710821883698)
 Identifying novel human loci absent from the reference genome.
 
+Team roles and subgroups
+https://docs.google.com/document/d/17ginimXqbUi-xEAUXwJttZUjnYb8Fi3xF4hUsY9ry7k/edit?tab=t.0 
+
+Workflow diagram (project overview)
+https://miro.com/welcomeonboard/cDd0TGhlY0FURHBmcUljNFpLRDJ2eFAvb0dSTjlzU2w3UWhKR0xGT2JmZ2JZNDhwWFZiNTd5NGxBWnViWDBJdytQNmcwNVZQeXZVcVo1RWgvbXVFaGtHNkJlR3JxNzE0NGhTcVI1Y3NWYXlLYlVBbDFoVDhQVXI1cWlEbFVMalh3VHhHVHd5UWtSM1BidUtUYmxycDRnPT0hdjE=?share_link_id=192946228763
+
+Detailed project proposal including background
+https://docs.google.com/document/d/18JEbKyxauTkjYTZojyhRf58wiZ7YvwZixZ-JOBXl74c/edit?usp=sharing
+
