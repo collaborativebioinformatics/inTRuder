@@ -9,4 +9,4 @@ Identifying novel human loci absent from the reference genome
 
 ## Flowchart
 
-![Flowchart](./docs/flowchart_05_08_2026.png)
+<iframe width="768" height="432" src="https://miro.com" frameBorder="0" scrolling="no" allowFullScreen></iframe>
