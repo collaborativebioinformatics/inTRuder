@@ -16,3 +16,7 @@ Project overview
 
 [![Click to view interactive Miro Board](./docs/flowchart_05_08_2026.png)](https://miro.com/app/board/uXjVHuDLcpE=/?share_link_id=710821883698)
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the quick workflow on submitting changes via a pull request.
+
