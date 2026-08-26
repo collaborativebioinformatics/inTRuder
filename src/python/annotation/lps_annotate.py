@@ -35,7 +35,10 @@ from typing import Optional, Tuple
 
 import pandas as pd
 from joblib import Parallel, delayed
-from tqdm import tqdm
+
+import argparse
+import pandas
+import sys
 
 
 # --------------------------------------------------------------------------- #
@@ -169,7 +172,7 @@ def calculate_lps_for_vcf(vcf_df: pd.DataFrame, n_jobs: int = -1) -> pd.DataFram
 
     results = Parallel(n_jobs=n_jobs)(
         delayed(process_dual_allele_row)(row)
-        for row in tqdm(vcf_df.to_dict("records"), desc="Calculating LPS for dual alleles")
+        for row in vcf_df.to_dict("records")
     )
 
     repeat_info = pd.DataFrame(results)
@@ -182,16 +185,119 @@ def calculate_lps_for_vcf(vcf_df: pd.DataFrame, n_jobs: int = -1) -> pd.DataFram
     return vcf_lps
 
 
+# --------------------------------------------------------------------------- #
+# SURVIVOR-merged sniffles vcf handling
+# --------------------------------------------------------------------------- #
+def load_vcf(path):
+    with open(path) as f:
+        for line in f:
+            if line.startswith('#CHROM'):
+                header = line.lstrip('#').strip().split('\t')
+                break
+    return pd.read_csv(path, sep='\t', comment='#', header=None, names=header)
+
+
+def to_long_vcf(df, fixed_cols):
+    """
+    turns loaded pandas df of survivor-merged data into long form df
+    """
+    # grab all sample col names from loaded df
+    sample_cols = [c for c in df.columns if c not in fixed_cols]
+
+    long_df = df.melt(
+        id_vars=fixed_cols,
+        value_vars=sample_cols,
+        var_name='sampleID',
+        value_name='sample_data'
+    )
+
+    fmt_fields = df['FORMAT'].iloc[0].split(':')  # constant across vcf
+    sample_values = long_df['sample_data'].str.split(':')
+
+    field_df = pd.DataFrame(sample_values.tolist(), columns=fmt_fields)
+    field_df = field_df.rename(columns={'ID': 'sample_variant_ID'})  # avoid clash w/ site ID
+
+    long_df = pd.concat(
+        [long_df.drop(columns='sample_data').reset_index(drop=True), field_df],
+        axis=1
+    )
+    return long_df
+
+
+def gt_to_alt(gt, alt_seq):
+    """
+    Convert a genotype string (e.g. '0/1', '1/1', './.') plus the site's
+    ALT sequence into ALT1/ALT2 allele-sequence columns, biallelic-style.
+    """
+    if pd.isna(gt) or gt in ('./.', '.|.', '.'):
+        return ".", "."
+
+    alleles = gt.replace('|', '/').split('/')
+    alt_count = alleles.count('1')  # how many copies of the ALT allele
+
+    if alt_count == 0:
+        return ".", "."
+    elif alt_count == 1:
+        return alt_seq, "."
+    else:  # homozygous alt (1/1)
+        return alt_seq, alt_seq
+
+
+def prep_for_lps(long_df):
+    # create alt1&2 values
+    alt1, alt2 = zip(*long_df.apply(
+        lambda r: gt_to_alt(r['GT'], r['ALT']), axis=1
+    ))
+
+    # add alts to long_df
+    long_df = long_df.copy()
+    long_df['ALT1'] = alt1
+    long_df['ALT2'] = alt2
+
+    return long_df
+
+
+def main():
+    parser = argparse.ArgumentParser(
+            prog='calculateLPS.py',
+            usage='calculateLPS.py --sample=<SampleID>'
+        )
+    parser.add_argument(
+        '--sample',
+        dest='sample_path',
+        required=True,
+        help='Sample ID'
+    )
+    parser.add_argument(
+        '--output',
+        dest='sample_path',
+        required=True,
+        help='Sample ID'
+    )
+    args = parser.parse_args()
+    sample_path = args.sample_path
+
+    fixed_cols = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT']
+
+    # load merged vcf file into dataframe
+    vcf_df = load_vcf(sample_path)
+
+    # convert merged dataframe into long form data by sample id
+    long_df = to_long_vcf(vcf_df, fixed_cols)
+
+    # make alt1 & alt2 for lps calculations
+    long_df = prep_for_lps(long_df)
+
+    # rnu lps calculations
+    lps_results = calculate_lps_for_vcf(long_df, n_jobs=-1)
+
+    # Move sample id to the front 
+    lps_results = lps_results[['sampleID'] + [col for col in lps_results.columns if col != 'sampleID']]
+
+    # output results tsv
+    lps_results.to_csv("output.tsv", sep="\t", index=False)
+    
+
+
 if __name__ == "__main__":
-    # Minimal self-check / usage example
-    example = pd.DataFrame({
-        "TRID": ["locus_1", "locus_2"],
-        "ALT1": ["CAGCAGCAGCAGCAGCAGCAG", "ACGTACGTNNNNACGTACGT"],
-        "ALT2": ["CAGCAGCAGCAGCAG", "."],
-    })
-    result = calculate_lps_for_vcf(example, n_jobs=1)
-    print(result[[
-        "TRID", "ALT1_LPS_motif", "ALT1_LPS_repeat", "ALT1_LPS_length",
-        "ALT2_LPS_motif", "ALT2_LPS_repeat", "ALT2_LPS_length",
-        "ALT_LPS_allele", "lps_length_diff",
-    ]].to_string(index=False))
+    main()
