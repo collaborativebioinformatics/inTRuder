@@ -14,7 +14,7 @@ Identifying novel human loci absent from the reference genome.
 
 ## Documentation
 
-- [Data description](DATA_DESCRIPTION.md) — samples, data sources, methods
+- [Data description](./docs/DATA_DESCRIPTION.md) — samples, data sources, methods
 
 ## Flowchart
 Project overview
