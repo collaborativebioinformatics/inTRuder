@@ -5,7 +5,9 @@ description = "Identifying novel human tandem-repeat loci absent from the refere
 readme = "README.md"
 requires-python = ">=3.11"
 # Add runtime dependencies here, e.g. with `uv add pandas`
-dependencies = []
+dependencies = [
+    "pandas>=3.0.5",
+]
 
 [dependency-groups]
 # Dev-only tooling; install with `uv sync` (included by default)
