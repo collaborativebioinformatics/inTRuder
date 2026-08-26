@@ -13,6 +13,10 @@ Identifying novel human loci absent from the reference genome.
 - [Data description](DATA_DESCRIPTION.md) — samples, data sources, methods
 - [Hackathon Paper draft](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
 
+## Documentation
+
+- [Data description](DATA_DESCRIPTION.md) — samples, data sources, methods
+
 ## Flowchart
 Project overview
 
