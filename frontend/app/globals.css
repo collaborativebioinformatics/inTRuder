@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Chart colors come from a validated palette — see the notes in lib/palette.ts.
+   Light values are defined on bare :root; dark values are redefined under both
+   the OS media query and an explicit [data-theme="dark"] stamp so a manual
+   toggle wins in either direction.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+
+  --hairline: #e1e0d9;
+  --baseline: #c3c2b7;
+
+  /* Novelty is the headline encoding: warm = absent from every catalog,
+     recessive neutral = already catalogued. Deliberately figure/ground. */
+  --novel: #eb6834;
+  --novel-soft: #f7d7c8;
+  --known: #a9a79f;
+  --known-soft: #e7e6e0;
+
+  /* Motif identity — categorical slots 1-3, validated all-pairs. */
+  --motif-1: #2a78d6;
+  --motif-2: #eb6834;
+  --motif-3: #1baf7a;
+  --motif-other: #898781;
+  --flank: #e1e0d9;
+
+  /* Funnel — single-hue ordinal ramp, monotone lightness. */
+  --step-1: #86b6ef;
+  --step-2: #5598e7;
+  --step-3: #2a78d6;
+  --step-4: #1c5cab;
+  --step-5: #104281;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #242423;
+
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+
+    --novel: #d95926;
+    --novel-soft: #4a2515;
+    --known: #6b6a64;
+    --known-soft: #2c2c2a;
+
+    --motif-1: #3987e5;
+    --motif-2: #d95926;
+    --motif-3: #199e70;
+    --motif-other: #898781;
+    --flank: #2c2c2a;
+
+    --step-1: #b7d3f6;
+    --step-2: #86b6ef;
+    --step-3: #3987e5;
+    --step-4: #256abf;
+    --step-5: #184f95;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #242423;
+
+  --ink: #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted: #898781;
+
+  --hairline: #2c2c2a;
+  --baseline: #383835;
+
+  --novel: #d95926;
+  --novel-soft: #4a2515;
+  --known: #6b6a64;
+  --known-soft: #2c2c2a;
+
+  --motif-1: #3987e5;
+  --motif-2: #d95926;
+  --motif-3: #199e70;
+  --motif-other: #898781;
+  --flank: #2c2c2a;
+
+  --step-1: #b7d3f6;
+  --step-2: #86b6ef;
+  --step-3: #3987e5;
+  --step-4: #256abf;
+  --step-5: #184f95;
+}
+
+@theme inline {
+  --color-plane: var(--plane);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-hairline: var(--hairline);
+  --color-baseline: var(--baseline);
+  --color-novel: var(--novel);
+  --color-novel-soft: var(--novel-soft);
+  --color-known: var(--known);
+  --color-known-soft: var(--known-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Coordinates, motifs and sample IDs are identifiers — always monospace. */
+.tabular {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
