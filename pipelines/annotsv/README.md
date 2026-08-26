@@ -1,41 +1,37 @@
-# AnnotSV Structural Variant Annotation Pipeline
+# novelTRs — Tandem Repeat SV Annotation Pipeline
 
-Nextflow DSL2 pipeline for automated, parallel annotation of structural variants (SVs) and copy number variants (CNVs) using AnnotSV v3.5. Supports single files, batches, directories of VCFs/BEDs, and automated summary reporting.
+Nextflow DSL2 workflow for functional and clinical annotation of novel/non-reference Tandem Repeat (TR) loci recovered from long-read SV insertion calls using **AnnotSV v3.5**.
 
 ---
 
-## 📚 Complete Installation Guide & Bug Fixes
+## 🎯 Purpose
 
-For complete instructions on installing AnnotSV from source or conda, downloading human annotation databases, and troubleshooting common issues, see:
-👉 **[`ANNOTSV_INSTALLATION_GUIDE.md`](ANNOTSV_INSTALLATION_GUIDE.md)**
-
-To install AnnotSV locally in one command:
-```bash
-bash pipelines/annotsv/install_annotsv.sh
-```
+Annotates reference-absent TR insertion variants (HPRC & GIAB cohorts) to determine:
+- **Gene context**: Exonic, intronic, promoter, 5'/3' UTR, or intergenic TR expansions
+- **Coding impact**: CDS overlap percentage, in-frame vs frameshifting repeat expansions
+- **Clinical relevance**: ACMG pathogenicity classes (1–5), ClinGen HI/TS scores, OMIM disease associations, and gnomAD population frequencies
 
 ---
 
 ## 💻 Local Execution
 
-### 1. Prerequisites
+### Prerequisites
 - Nextflow (`>=23.04.0`)
-- `bedtools`, `bcftools`, `tclsh` (available via conda/mamba)
-- AnnotSV v3.5+ installed (e.g. at `/home/$USER/tools/AnnotSV`)
+- AnnotSV v3.5+ installed (run `bash pipelines/annotsv/install_annotsv.sh` for one-step local setup)
 
-### 2. Run on a single file:
+### 1. Annotate TR Insertion VCFs (Single / Multi-sample)
 ```bash
 nextflow run pipelines/annotsv/main.nf \
   --input "data/sv_output/survivor_multi_sample_vcf/first_500_INS.vcf" \
-  --outdir "results/annotsv" \
+  --outdir "results/tr_annotations" \
   --genome_build "GRCh38"
 ```
 
-### 3. Run on an entire directory of VCFs:
+### 2. Batch Annotate Cohort Sniffles SV Directories
 ```bash
 nextflow run pipelines/annotsv/main.nf \
   --input "data/sv_output/sniffles/filtered/" \
-  --outdir "results/annotsv" \
+  --outdir "results/tr_annotations" \
   --genome_build "GRCh38"
 ```
 
@@ -43,38 +39,46 @@ nextflow run pipelines/annotsv/main.nf \
 
 ## ☁️ DNAnexus Cloud Execution
 
-### Run on DNAnexus Cloud Compute:
+Pre-deployed on DNAnexus project **`Group2_2026`** (`project-JB6zg5Q0pzX96qVJjz7gKg58`):
+- **Databases**: `Group2_2026:/resources/AnnotSV/`
+- **Pipeline**: `Group2_2026:/Pipelines/annotsv-nf/`
+
+### Run on HPRC Cohort on Cloud Compute:
 ```bash
 dx run nextflow \
   -inextflow_pipeline="Group2_2026:/Pipelines/annotsv-nf" \
-  -inextflow_run_opts="-profile conda --genome_build GRCh38 --input 'dx://Group2_2026:/survivor/' --dx_annotations_path 'Group2_2026:/resources/AnnotSV'" \
+  -inextflow_run_opts="-profile conda --genome_build GRCh38 --input 'dx://Group2_2026:/survivor/HPRC_SV.survivor.vcf' --dx_annotations_path 'Group2_2026:/resources/AnnotSV'" \
   --destination="Group2_2026:/Results/AnnotSV" \
   --instance-type="mem2_ssd1_v2_x4" \
-  --name="annotsv_batch_annotation" \
+  --name="annotsv_hprc_tr_annotation" \
   --yes
 ```
 
 ---
 
-## 📊 Outputs Generated
+## 📊 Outputs
 
-1. **Annotated TSVs**:
-   - `${outdir}/<sample_id>/annotsv/<sample_id>.annotated.tsv` (107 annotation columns: ACMG classification, ClinVar, gnomAD AFs, OMIM, HI/TS scores)
-2. **Summary Statistics Table**:
-   - `${outdir}/summary/annotsv_summary_report.txt` (Human-readable overview table)
-   - `${outdir}/summary/annotsv_summary_report.tsv` (Machine-readable table)
-3. **Logs**:
-   - `${outdir}/<sample_id>/annotsv/logs/<sample_id>.annotsv.log`
+1. **Annotated TR Table** (`${outdir}/<sample>/annotsv/<sample>.annotated.tsv`):
+   - `Gene_name`, `Location` (exon/intron/promoter), `Overlapped_CDS_percent`, `Frameshift`
+   - `ACMG_class` (1=Benign to 5=Pathogenic), `OMIM_phenotype`, `GenCC_disease`
+   - Preserves all multi-sample cohort genotypes across all 67 HPRC genomes
+2. **Summary Statistics** (`${outdir}/summary/annotsv_summary_report.txt` & `.tsv`):
+   - Total TR variants annotated, repeat insertion counts, affected genes, and ACMG class distribution
 
 ---
 
-## ⚙️ Key Pipeline Options
+## ⚙️ Options
 
-| Option | Description | Default |
+| Parameter | Description | Default |
 |---|---|---|
-| `--input` | Path, glob, or directory containing VCF/BED files | *Required* |
+| `--input` | Path, glob, or directory of TR VCF/BED files | *Required* |
 | `--outdir` | Output destination directory | `results` |
-| `--genome_build` | `GRCh38` or `GRCh37` | `GRCh38` |
-| `--candidate_genes` | Optional candidate genes file to filter on | `none` |
-| `--annotsv_dir` | Local AnnotSV installation path | `/home/taimoor/tools/AnnotSV` |
-| `--dx_annotations_path` | DNAnexus path to annotation databases | `none` (local) |
+| `--genome_build` | Reference genome (`GRCh38` or `GRCh37`) | `GRCh38` |
+| `--candidate_genes` | Optional gene list file to filter relevant TR loci | `none` |
+| `--dx_annotations_path` | DNAnexus project path to AnnotSV databases | `none` (local) |
+
+---
+
+## 📖 Additional Documentation
+
+- **[`ANNOTSV_INSTALLATION_GUIDE.md`](ANNOTSV_INSTALLATION_GUIDE.md)** — Detailed local installation guide & troubleshooting

@@ -134,6 +134,7 @@ code they cover — they mirror it under `tests/`.
 | [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dnanexus/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
+| [TR Annotation Pipeline](pipelines/annotsv/README.md) | Nextflow DSL2 workflow for functional and clinical annotation of TR insertions using AnnotSV |
 
 ## Web interface (proof of concept)
 
