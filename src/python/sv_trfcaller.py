@@ -2,7 +2,7 @@
 
 # Usage: python sv_trfcaller.py <input.vcf> <output.tsv>
 # Usage with merged SV: python sv_trfcaller.py HPRC_SV.survivor.ins.vcf HPRC_SV.survivor.ins.trf.tsv
-# Usage with example merged SV: python sv_trfcaller.py ./data/sv_output/survivor_multisample_vcf/first_500_INS.vcf ./data/sv_output/survivor_multisample_vcf/first_500_INS.trf.tsv
+# Usage with example merged SV: python sv_trfcaller.py ../../data/sv_output/survivor_multisample_vcf/first_500_INS.vcf ../../data/sv_output/survivor_multisample_vcf/first_500_INS.trf.tsv
 
 import sys
 import os
@@ -22,7 +22,7 @@ matrix = parasail.matrix_create("ACGT", 2, -1)
 
 vcf     = VCF(sys.argv[1])
 out     = open(sys.argv[2], 'w')
-print('sample', 'SVID', 'rep_start', 'rep_end', 'motif', 'purity', 'motif_length', 'rep_length', 'rep_units', sep='\t', file=out)
+print('chrom', 'ins_coord', 'SVID', 'depth', 'insert_size', 'sample', 'rep_start', 'rep_end', 'motif', 'purity', 'motif_length', 'rep_length', 'rep_units', sep='\t', file=out)
 samples = vcf.samples
 
 sv_repeats = {}
@@ -69,13 +69,17 @@ def suppress_pysam_output():
 
 for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
     if variant.is_sv and variant.INFO.get("SVTYPE") == "INS":
-        ID  = variant.format('ID')
-        RAL = variant.format('RAL')
-        AAL = variant.format('AAL')
+        ID    = variant.format('ID')
+        RAL   = variant.format('RAL')
+        AAL   = variant.format('AAL')
+        DR    = variant.format('DR')
+        LEN   = variant.format('LN')
 
         for s, sample in enumerate(samples):
             if ID[s] == 'NaN': continue
             ALT = AAL[s][len(RAL):]
+            depth = DR[s]
+            insert_size = LEN[s]
 
             n_trf = 0
             trf_repeats    = []
@@ -99,7 +103,7 @@ for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
                     cigar_simple = cigar_str.replace('=', 'M')
                     purity       = float(repeat[15])/100
 
-                    trf_repeats.append([sample, ID[s], rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
+                    trf_repeats.append([variant.CHROM, variant.POS, ID[s], depth, insert_size, sample, rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
                     n_trf += 1
 
             for rep in trf_repeats:
