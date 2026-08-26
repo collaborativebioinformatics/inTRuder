@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 # Add runtime dependencies here, e.g. with `uv add pandas`
 dependencies = [
-    #"cyvcf2>=0.34.0",
+    "cyvcf2>=0.34.0",
     "parasail>=1.3.4",
     "pytrf>=1.5.0",
     "tqdm>=4.70.0",
