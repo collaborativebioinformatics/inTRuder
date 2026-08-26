@@ -189,6 +189,9 @@ def calculate_lps_for_vcf(vcf_df: pd.DataFrame, n_jobs: int = -1) -> pd.DataFram
 # SURVIVOR-merged sniffles vcf handling
 # --------------------------------------------------------------------------- #
 def load_vcf(path):
+    """
+    skips vcf header, then loads to dataframe after stripping header col
+    """
     with open(path) as f:
         for line in f:
             if line.startswith('#CHROM'):
@@ -224,36 +227,69 @@ def to_long_vcf(df, fixed_cols):
     return long_df
 
 
-def gt_to_alt(gt, alt_seq):
+def resolve_allele(hap_index, sample_alt, site_alts):
     """
-    Convert a genotype string (e.g. '0/1', '1/1', './.') plus the site's
-    ALT sequence into ALT1/ALT2 allele-sequence columns, biallelic-style.
+    resolve single haplotype's allele sequence given its GT index
+
+    hap_index: '0', '1', '2', ... or '.' (from splitting a GT string)
+    sample_alt: this sample's own called alt sequence (AAL), or None
+    site_alts: list of site-level ALT alleles (split on comma)
     """
+    if hap_index in ('0', '.'):
+        return "."
+
+    idx = int(hap_index) - 1  # 1-based ALT index -> 0-based list
+
+    # prefer the sample's own called sequence for the common
+    # single-ALT case; fall back to site-level ALT list otherwise
+    if idx == 0 and sample_alt:
+        return sample_alt
+    if idx < len(site_alts):
+        return site_alts[idx]
+    return "."
+
+
+def get_alleles(row):
+    """
+    reconstruct the two diploid allele sequences (ALT1, ALT2) for one
+    row, from GT + that sample's own AAL, with fallback to the
+    site-level ALT 
+    """
+    gt = row['GT']
+
     if pd.isna(gt) or gt in ('./.', '.|.', '.'):
         return ".", "."
 
-    alleles = gt.replace('|', '/').split('/')
-    alt_count = alleles.count('1')  # how many copies of the ALT allele
+    # split genotype by "/"
+    hap1, hap2 = gt.replace('|', '/').split('/')
 
-    if alt_count == 0:
-        return ".", "."
-    elif alt_count == 1:
-        return alt_seq, "."
-    else:  # homozygous alt (1/1)
-        return alt_seq, alt_seq
+    # get ALL value from row, return . if not found
+    sample_alt = row.get('AAL', '.')
+
+    # replace different missing val types with None
+    if pd.isna(sample_alt) or sample_alt in ('NAN', 'NaN', '.', ''):
+        sample_alt = None
+
+    site_alts = row['ALT'].split(',') if pd.notna(row['ALT']) else []
+
+    alt1 = resolve_allele(hap1, sample_alt, site_alts)
+    alt2 = resolve_allele(hap2, sample_alt, site_alts)
+    return alt1, alt2
 
 
 def prep_for_lps(long_df):
+    """
+    add ALT1/ALT2 columns to long_df by resolving each row's diploid
+    genotype into its two allele sequences
+    """
+    long_df = long_df.copy()
+
     # create alt1&2 values
-    alt1, alt2 = zip(*long_df.apply(
-        lambda r: gt_to_alt(r['GT'], r['ALT']), axis=1
-    ))
+    alt1, alt2 = zip(*long_df.apply(get_alleles, axis=1))
 
     # add alts to long_df
-    long_df = long_df.copy()
     long_df['ALT1'] = alt1
     long_df['ALT2'] = alt2
-
     return long_df
 
 
@@ -270,12 +306,13 @@ def main():
     )
     parser.add_argument(
         '--output',
-        dest='sample_path',
+        dest='output_path',
         required=True,
-        help='Sample ID'
+        help='output path'
     )
     args = parser.parse_args()
     sample_path = args.sample_path
+    output = args.output_path
 
     fixed_cols = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT']
 
@@ -295,7 +332,7 @@ def main():
     lps_results = lps_results[['sampleID'] + [col for col in lps_results.columns if col != 'sampleID']]
 
     # output results tsv
-    lps_results.to_csv("output.tsv", sep="\t", index=False)
+    lps_results.to_csv(output, sep="\t", index=False)
     
 
 
