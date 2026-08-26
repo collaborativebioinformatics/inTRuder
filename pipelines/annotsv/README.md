@@ -65,7 +65,7 @@ dx run app-swiss-army-knife \
            -outputDir /home/dnanexus/annotsv_run/ \
            -outputFile HPRC_SV.survivor.annotated.tsv && \
          echo '--- 5. Uploading Output to DNAnexus Storage ---' && \
-         dx upload /home/dnanexus/annotsv_run/HPRC_SV.survivor.annotated.tsv --path /Results/AnnotSV/ && \
+         dx upload /home/dnanexus/annotsv_run/HPRC_SV.survivor.annotated.tsv --path \"\${DX_PROJECT_CONTEXT_ID}:/Results/AnnotSV/\" && \
          echo '=== Annotation Completed Successfully ==='" \
   --destination="/Results/AnnotSV/" \
   --instance-type="mem2_ssd1_v2_x4" \
