@@ -43,11 +43,8 @@ The 30 GB reference databases are pre-deployed in the DNAnexus project **`Group2
 
 ### 1. Run TR Annotation on DNAnexus Cloud Compute
 
-Run directly from your terminal using `dx-toolkit` (runs on a 4-CPU, 32 GB cloud worker instance):
-
 ```bash
-conda activate vardigs
-
+# Ensure you are logged into DNAnexus (dx login) on your local machine
 dx run app-swiss-army-knife \
   -icmd="echo '=== Starting Cloud AnnotSV TR Annotation ===' && \
          mkdir -p /home/dnanexus/annotsv_run/annotations /home/dnanexus/annotsv_run/inputs && \
