@@ -267,8 +267,9 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
-# pkgdown site
-docs/
+# pkgdown site (generated output only; disabled because docs/ holds this
+# project's documentation and images)
+# docs/
 
 # translation temp files
 po/*~

@@ -115,7 +115,9 @@ The filtered per-sample VCF files were merged into a multi-sample VCF using [`SU
 ```bash
 SURVIVOR merge sample.list 500 1 1 0 0 0 "${proj}.survivor.vcf"
 ```
-
+ 
 ### Data availability
 
 The structural variant files were uploaded to the **DNAnexus `Group2_2026` project**. A subset of the per-sample Sniffles VCF files and the filtered multi-sample VCF are also available in the GitHub [`data/`](data/) directory.
+
+
