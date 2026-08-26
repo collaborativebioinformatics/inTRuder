@@ -43,14 +43,19 @@ This is the primary contribution of the project — detecting TRs that fall with
 
 **Datasets:**
 
-- CHM13-T2T
-- HG38
+- HG38 reference genome
 - Human Pangenome Reference Consortium (HPRC)
-- CHM13 cell line reads
+
+Optional:
 - Family / trio-based data
+- CHM13 cell line reads + CHM13-T2T assembly
 
 **Validation approaches:** checkpoint after novel TR detection, before results are used further.
 
+Primary approach:
+- Use high-quality annotated HPRC assemblies from [this paper](https://www.nature.com/articles/s41467-025-66153-5) as truth.
+
+Alternate approaches if needed:
 - Use CHM13 reads as a sample, with the CHM13-T2T reference genome TRF annotation as "truth"
 - Trio validation — if we find a novel TR in a kid, do we also find it in one of the parents? Samples: HG001-7
 
