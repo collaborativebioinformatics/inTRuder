@@ -276,3 +276,10 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+# Nextflow runtime directories
+.nextflow/
+.nextflow.log*
+work/
+results/
+test_nf_results*/
+test_dir_results*/
