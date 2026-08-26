@@ -1,0 +1,27 @@
+[project]
+name = "noveltrs"
+version = "0.1.0"
+description = "Identifying novel human tandem-repeat loci absent from the reference genome"
+readme = "README.md"
+requires-python = ">=3.11"
+# Add runtime dependencies here, e.g. with `uv add pandas`
+dependencies = []
+
+[dependency-groups]
+# Dev-only tooling; install with `uv sync` (included by default)
+dev = [
+    "ruff>=0.6",
+    "pytest>=8",
+]
+
+[tool.uv]
+# Research repo of scripts under src/python rather than an installable package,
+# so uv manages the environment without building/installing this project itself.
+package = false
+
+[tool.ruff]
+line-length = 100
+src = ["src/python"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/python"]
