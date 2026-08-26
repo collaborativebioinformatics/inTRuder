@@ -24,6 +24,10 @@ The processed alignment files were subsequently uploaded to the **1000 Genomes P
 
 The AWS locations of the processed HPRC CRAM files are provided in [`data/aws_hprc_cram.list`](data/aws_hprc_cram.list).
 
+### GIAB CRAM file list
+
+The AWS locations of the processed HPRC CRAM files are provided in [`data/aws_giab_cram.list`](data/aws_giab_cram.list).
+
 These genomes were used in the following study:
 
 > Aliyev E, Avvaru A, De Coster W, et al.  
