@@ -1,8 +1,6 @@
 # Novel Tandem Repeats
 
-Identifying novel human loci absent from the reference genome.
-
-## Important Links
+## Important Links (Hackathon purposes - to delete on Friday!)
 
 - [Slack](https://baylorncbisvc-1jk9469.slack.com/archives/C0BRNLZDTL3) `#2026_group2_group10_tandem_repeats`
 - [Hackathon Document](https://nam04.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2F1XlZMGJdudr1C0jS9j1bWgZh4_OWm9lE0Qm8pbTQVRd8%2Fedit%3Fusp%3Dsharing&data=05%7C02%7Cyzb2%40txstate.edu%7C6cd5a1653219475caf8708df02a62c2f%7Cb19c134a14c94d4caf65c420f94c8cbb%7C0%7C0%7C639232584875699222%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=iEWgDTcm1XTYKKFT%2FwmVRQZA38vrz86x0gUgEVGzGIE%3D&reserved=0)
@@ -12,6 +10,11 @@ Identifying novel human loci absent from the reference genome.
 - [Shared Google Drive Directory](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
 - [Data description](DATA_DESCRIPTION.md) — samples, data sources, methods
 - [Hackathon Paper draft](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
+
+## Motivation 
+Tandem repeat catalogs are built from the reference genome, so TR loci the reference lacks are invisible to every genotyper that depends on them. novelTRs recovers these loci from long-read SV insertion calls — where, by construction, any reference-absent repeat expansion already sits — without whole-genome assembly.
+
+## Quickstart guide
 
 ## Documentation
 
@@ -25,4 +28,9 @@ Project overview
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the quick workflow on submitting changes via a pull request.
+
+## Team
+Harriet Dashnow, Akshay Kumar Avvaru, Bharati Jadhav, Amit R Indap, Garth Kong, Achisha Saikia
+Sriram Sudarsanam, Andrew Scouten, Jordi Valls, Ammara Saleem, Elbay Aliyev, Garrison Arner, Gavin Monahan, Anukrati Sharma, Liedewei Van de Vondel, Ramakrishnan Rajagopalan, Divya Kalra, Chantera Lazard, Taimoor Khan and Medhat Mahmoud.
+
 
