@@ -26,7 +26,7 @@ The AWS locations of the processed HPRC CRAM files are provided in [`aws_hprc_cr
 
 ### GIAB CRAM file list
 
-The AWS locations of the processed HPRC CRAM files are provided in [`aws_giab_cram.list`](aws_giab_cram.list).
+The AWS locations of the processed GIAB CRAM files are provided in [`aws_giab_cram.list`](aws_giab_cram.list).
 
 These genomes were used in the following study:
 
