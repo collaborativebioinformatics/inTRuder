@@ -11,6 +11,34 @@ Identifying novel human loci absent from the reference genome.
 - [Detailed project proposal, including background](https://docs.google.com/document/d/18JEbKyxauTkjYTZojyhRf58wiZ7YvwZixZ-JOBXl74c/edit?usp=sharing)
 - [Shared Google Drive Directory](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
 
+## Web interface (proof of concept)
+
+An interactive browser for candidate loci, with an agent that queries the same
+data the charts read and can move the view for you.
+
+```bash
+just setup     # installs everything, generates the synthetic demo dataset
+just dev       # backend on :8000, frontend on :3000
+```
+
+Add a model credential to `backend/.env` to enable chat — the data views work
+without one. Anthropic, Google, Ollama and OpenAI are all selectable via
+`LLM_PROVIDER`.
+
+| Directory | What it is |
+|---|---|
+| [`frontend/`](./frontend) | Next.js + Tailwind + assistant-ui |
+| [`backend/`](./backend) | FastAPI + LangGraph + DuckDB (its own uv project) |
+| [`data/web/`](./data/web) | Dataset manifests — add your own data here |
+
+**Adding a dataset is one YAML file, no code changes.** Manifests point at paths
+on your own machine; nothing is uploaded and nothing but the small synthetic demo
+set is committed. See [`data/web/README.md`](./data/web/README.md).
+
+> The bundled demo data is **synthetic**. Sample names and the motif-length mix
+> mirror the real HPRC callset so the shapes look right, but every locus,
+> coordinate and catalog membership is generated. It is not a result.
+
 ## Flowchart
 Project overview
 
