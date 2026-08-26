@@ -14,7 +14,7 @@ Identifying novel human loci absent from the reference genome.
 ## Flowchart
 Project overview
 
-[![Click to view interactive Miro Board](./docs/flowchart_05_08_2026.png)](https://miro.com/app/board/uXjVHuDLcpE=/?share_link_id=710821883698)
+[![Click to view interactive Miro Board](./docs/images/flowchart_05_08_2026.png)](https://miro.com/app/board/uXjVHuDLcpE=/?share_link_id=710821883698)
 
 ## Contributing
 
