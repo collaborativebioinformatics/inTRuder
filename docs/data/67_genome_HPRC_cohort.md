@@ -22,11 +22,11 @@ The processed alignment files were subsequently uploaded to the **1000 Genomes P
 
 ### HPRC CRAM file list
 
-The AWS locations of the processed HPRC CRAM files are provided in [`data/aws_hprc_cram.list`](data/aws_hprc_cram.list).
+The AWS locations of the processed HPRC CRAM files are provided in [`aws_hprc_cram.list`](aws_hprc_cram.list).
 
 ### GIAB CRAM file list
 
-The AWS locations of the processed HPRC CRAM files are provided in [`data/aws_giab_cram.list`](data/aws_giab_cram.list).
+The AWS locations of the processed HPRC CRAM files are provided in [`aws_giab_cram.list`](aws_giab_cram.list).
 
 These genomes were used in the following study:
 
@@ -115,7 +115,9 @@ The filtered per-sample VCF files were merged into a multi-sample VCF using [`SU
 ```bash
 SURVIVOR merge sample.list 500 1 1 0 0 0 "${proj}.survivor.vcf"
 ```
-
+ 
 ### Data availability
 
 The structural variant files were uploaded to the **DNAnexus `Group2_2026` project**. A subset of the per-sample Sniffles VCF files and the filtered multi-sample VCF are also available in the GitHub [`data/`](data/) directory.
+
+
