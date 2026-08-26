@@ -295,8 +295,8 @@ def prep_for_lps(long_df):
 
 def main():
     parser = argparse.ArgumentParser(
-            prog='calculateLPS.py',
-            usage='calculateLPS.py --sample=<SampleID>'
+            prog='lps_annotate.py',
+            usage='lps_annotate.py --sample <SampleID> --output <OutputPath>'
         )
     parser.add_argument(
         '--sample',
