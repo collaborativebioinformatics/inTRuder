@@ -39,35 +39,69 @@ nextflow run pipelines/annotsv/main.nf \
 
 ## ☁️ DNAnexus Cloud Execution
 
-Pre-deployed on DNAnexus project **`Group2_2026`** (`project-JB6zg5Q0pzX96qVJjz7gKg58`):
-- **Databases**: `Group2_2026:/resources/AnnotSV/`
-- **Pipeline**: `Group2_2026:/Pipelines/annotsv-nf/`
+The 30 GB reference databases are pre-deployed in the DNAnexus project **`Group2_2026`** at `Group2_2026:/resources/AnnotSV/`.
 
-### Run on HPRC Cohort on Cloud Compute:
+### 1. Run TR Annotation on DNAnexus Cloud Compute
+
+Run directly from your terminal using `dx-toolkit` (runs on a 4-CPU, 32 GB cloud worker instance):
+
 ```bash
-dx run nextflow \
-  -inextflow_pipeline="Group2_2026:/Pipelines/annotsv-nf" \
-  -inextflow_run_opts="-profile conda --genome_build GRCh38 --input 'dx://Group2_2026:/survivor/HPRC_SV.survivor.vcf' --dx_annotations_path 'Group2_2026:/resources/AnnotSV'" \
-  --destination="Group2_2026:/Results/AnnotSV" \
+conda activate vardigs
+
+dx run app-swiss-army-knife \
+  -icmd="echo '=== Starting Cloud AnnotSV TR Annotation ===' && \
+         mkdir -p /home/dnanexus/annotsv_run/annotations /home/dnanexus/annotsv_run/inputs && \
+         cd /home/dnanexus/annotsv_run && \
+         echo '--- 1. Fetching AnnotSV software ---' && \
+         git clone --depth 1 https://github.com/lgmgeo/AnnotSV.git /home/dnanexus/annotsv_app && \
+         make -C /home/dnanexus/annotsv_app PREFIX=/home/dnanexus/annotsv_app install && \
+         echo '--- 2. Downloading Annotations from project storage ---' && \
+         dx download -r \"\${DX_PROJECT_CONTEXT_ID}:/resources/AnnotSV/Annotations_Human\" -o /home/dnanexus/annotsv_run/annotations/ && \
+         dx download -r \"\${DX_PROJECT_CONTEXT_ID}:/resources/AnnotSV/Annotations_Exomiser\" -o /home/dnanexus/annotsv_run/annotations/ && \
+         echo '--- 3. Downloading Input TR VCF ---' && \
+         dx download \"\${DX_PROJECT_CONTEXT_ID}:/survivor/HPRC_SV.survivor.vcf\" -o /home/dnanexus/annotsv_run/inputs/ && \
+         echo '--- 4. Running AnnotSV (GRCh38) ---' && \
+         /home/dnanexus/annotsv_app/bin/AnnotSV \
+           -SVinputFile /home/dnanexus/annotsv_run/inputs/HPRC_SV.survivor.vcf \
+           -genomeBuild GRCh38 \
+           -annotationsDir /home/dnanexus/annotsv_run/annotations \
+           -outputDir /home/dnanexus/annotsv_run/ \
+           -outputFile HPRC_SV.survivor.annotated.tsv && \
+         echo '--- 5. Uploading Output to DNAnexus Storage ---' && \
+         dx upload /home/dnanexus/annotsv_run/HPRC_SV.survivor.annotated.tsv --path /Results/AnnotSV/ && \
+         echo '=== Annotation Completed Successfully ==='" \
+  --destination="/Results/AnnotSV/" \
   --instance-type="mem2_ssd1_v2_x4" \
   --name="annotsv_hprc_tr_annotation" \
   --yes
+```
+
+*(For testing on the 500 INS subset, replace `/survivor/HPRC_SV.survivor.vcf` with `/Test_Inputs/first_500_INS.vcf`).*
+
+### 2. Monitor Job Live
+```bash
+dx watch <job-id>
+```
+
+### 3. Download Results
+```bash
+dx download /Results/AnnotSV/HPRC_SV.survivor.annotated.tsv
 ```
 
 ---
 
 ## 📊 Outputs
 
-1. **Annotated TR Table** (`${outdir}/<sample>/annotsv/<sample>.annotated.tsv`):
+1. **Annotated TR Table** (`*.annotated.tsv`):
    - `Gene_name`, `Location` (exon/intron/promoter), `Overlapped_CDS_percent`, `Frameshift`
    - `ACMG_class` (1=Benign to 5=Pathogenic), `OMIM_phenotype`, `GenCC_disease`
    - Preserves all multi-sample cohort genotypes across all 67 HPRC genomes
-2. **Summary Statistics** (`${outdir}/summary/annotsv_summary_report.txt` & `.tsv`):
+2. **Summary Statistics** (`annotsv_summary_report.txt` & `.tsv`):
    - Total TR variants annotated, repeat insertion counts, affected genes, and ACMG class distribution
 
 ---
 
-## ⚙️ Options
+## ⚙️ Key Parameters
 
 | Parameter | Description | Default |
 |---|---|---|
