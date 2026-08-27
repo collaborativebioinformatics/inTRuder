@@ -1,4 +1,13 @@
-import type { AgentEvent, LociResponse, LocusDetail, Summary, ViewFilters } from "./types";
+import type {
+  AgentEvent,
+  LociResponse,
+  LocusDetail,
+  StrchiveLociResponse,
+  StrchiveMatchesResponse,
+  StrchiveSummary,
+  Summary,
+  ViewFilters,
+} from "./types";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://localhost:8000";
@@ -52,6 +61,37 @@ export interface Health {
 }
 
 export const fetchHealth = (signal?: AbortSignal) => getJSON<Health>("/api/health", signal);
+
+/* -------------------------------------------------------------------------- */
+/* STRchive                                                                    */
+/* -------------------------------------------------------------------------- */
+
+export const fetchStrchiveSummary = (signal?: AbortSignal) =>
+  getJSON<StrchiveSummary>("/api/strchive/summary", signal);
+
+export const fetchStrchiveLoci = (
+  options: { novel_in_reference?: boolean; evidence?: string; inheritance?: string; q?: string } = {},
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams();
+  if (options.novel_in_reference) params.set("novel_in_reference", "true");
+  if (options.evidence) params.set("evidence", options.evidence);
+  if (options.inheritance) params.set("inheritance", options.inheritance);
+  if (options.q) params.set("q", options.q);
+  const query = params.toString();
+  return getJSON<StrchiveLociResponse>(
+    `/api/strchive/loci${query ? `?${query}` : ""}`,
+    signal,
+  );
+};
+
+/**
+ * Our own candidates that landed on a disease locus. Resolves with
+ * `available: false` rather than throwing when the screened callset is not
+ * registered yet — not-yet-run is a state the page renders, not an error.
+ */
+export const fetchStrchiveMatches = (signal?: AbortSignal) =>
+  getJSON<StrchiveMatchesResponse>("/api/strchive/matches", signal);
 
 /**
  * Stream one agent turn. Parses the SSE frames emitted by app/agent.py and

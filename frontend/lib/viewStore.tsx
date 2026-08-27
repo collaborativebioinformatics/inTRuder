@@ -29,6 +29,7 @@ interface ViewContextValue {
   patch: (next: ViewFilters, source?: "user" | "agent") => void;
   reset: () => void;
   focusLocus: (locusId: string | null) => void;
+  focusStrchive: (strchiveId: string | null) => void;
 }
 
 const ViewContext = createContext<ViewContextValue | null>(null);
@@ -42,11 +43,22 @@ function normalize(filters: ViewFilters): ViewFilters {
     if (typeof value === "boolean" && !value) continue;
     (out as Record<string, unknown>)[key] = value;
   }
+  // Opening a disease locus implies its surface. Without this the agent could
+  // focus one while the user stares at a different page, which reads as the tool
+  // having done nothing.
+  if (out.focus_strchive_id) out.page = "strchive";
   return out;
 }
 
-export function ViewProvider({ children }: { children: ReactNode }) {
-  const [filters, setFilters] = useState<ViewFilters>(EMPTY);
+export function ViewProvider({
+  children,
+  initial = EMPTY,
+}: {
+  children: ReactNode;
+  /** Seed state, so a route can open straight onto a surface. */
+  initial?: ViewFilters;
+}) {
+  const [filters, setFilters] = useState<ViewFilters>(() => normalize(initial));
   const [agentTouched, setAgentTouched] = useState<Set<keyof ViewFilters>>(new Set());
 
   const patch = useCallback((next: ViewFilters, source: "user" | "agent" = "user") => {
@@ -57,7 +69,9 @@ export function ViewProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reset = useCallback(() => {
-    setFilters(EMPTY);
+    // Which surface you are on is navigation, not a filter — clearing the
+    // filters must not also throw you back to a different page.
+    setFilters((current) => (current.page ? { page: current.page } : EMPTY));
     setAgentTouched(new Set());
   }, []);
 
@@ -65,9 +79,13 @@ export function ViewProvider({ children }: { children: ReactNode }) {
     setFilters((current) => normalize({ ...current, focus_locus_id: locusId }));
   }, []);
 
+  const focusStrchive = useCallback((strchiveId: string | null) => {
+    setFilters((current) => normalize({ ...current, focus_strchive_id: strchiveId }));
+  }, []);
+
   const value = useMemo(
-    () => ({ filters, agentTouched, patch, reset, focusLocus }),
-    [filters, agentTouched, patch, reset, focusLocus],
+    () => ({ filters, agentTouched, patch, reset, focusLocus, focusStrchive }),
+    [filters, agentTouched, patch, reset, focusLocus, focusStrchive],
   );
 
   return <ViewContext.Provider value={value}>{children}</ViewContext.Provider>;
