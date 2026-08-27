@@ -96,8 +96,9 @@ def set_view(
         "chrom for a whole chromosome — this needs a range.",
     ] = None,
     motif_class: Annotated[
-        Literal["homopolymer", "STR", "mid", "VNTR"] | None,
-        "Restrict to one motif class. STR is 2-6bp, mid is 7-20bp, VNTR is >20bp.",
+        Literal["homopolymer", "STR", "VNTR"] | None,
+        "Restrict to one motif class. Homopolymer is a 1bp motif, STR is 2-6bp, "
+        "VNTR is 7bp or longer.",
     ] = None,
     min_motif_len: Annotated[int | None, "Minimum motif length in bp."] = None,
     min_samples: Annotated[int | None, "Minimum number of carrier samples, out of 68."] = None,

@@ -1,4 +1,4 @@
-export type MotifClass = "homopolymer" | "STR" | "mid" | "VNTR";
+export type MotifClass = "homopolymer" | "STR" | "VNTR";
 
 /**
  * The novelty screen's verdict. Three-valued, not boolean: "the reference has
