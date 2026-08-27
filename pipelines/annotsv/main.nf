@@ -5,8 +5,7 @@
 ================================================================================
   Author  : Taimoor
   Project : novelTRs / bcm-hackathon26
-  Date    : 2026-08-26
-  Updated : 2026-08-27 — Directory/File multi-input support & Summary Reporting
+  Date    : 2026-08-27
 ================================================================================
 */
 
@@ -30,39 +29,24 @@ def helpMessage() {
     Usage:
       nextflow run main.nf [options]
 
-    Required:
-      --input               <path/glob>  Directory containing VCF/BED files,
-                                         single file, or glob pattern
+    Required / Configurable Inputs:
+      --input               <path/glob>  Path to VCF/BED file or folder
                                          Examples:
-                                           --input 'path/to/vcfs/'
-                                           --input 'path/to/*.vcf.gz'
-                                           --input 'sample.vcf'
+                                           --input '/survivor/HPRC_SV.survivor.vcf'
+                                           --input '/sniffles/filtered/'
+                                           --input 'data/first_500_INS.vcf'
 
-    Optional:
+    Optional Parameters:
       --outdir              <dir>        Output directory                [default: results]
-      --genome_build        <str>        GRCh37 or GRCh38                [default: GRCh38]
-      --candidate_genes     <file>       Candidate genes file            [default: none]
-      --annotsv_dir         <dir>        AnnotSV install directory
-      --annotations_dir     <dir>        AnnotSV annotations directory
-      --bedtools_path       <path>       Path to bedtools executable
-      --bcftools_path       <path>       Path to bcftools executable
-      --dx_annotations_path <str>        DNAnexus dx path to databases   [default: none]
-                                         (e.g. 'project-XXX:/resources/AnnotSV')
+      --genome_build        <str>        GRCh38 or GRCh37                [default: GRCh38]
+      --candidate_genes     <file>       Candidate genes list file       [default: none]
       --publish_dir_mode    <str>        Output file mode                [default: copy]
       --help                             Show this help message
 
-    Profiles:
-      local                 Use host-installed tools (default)
-      conda                 Use conda environments
-      singularity           Use Singularity containers
-      dnanexus              Run on DNAnexus cloud workers (Docker + dx storage)
-      slurm                 Submit jobs to SLURM cluster
-      test                  Stub run for CI testing
-
-    Examples:
-      nextflow run main.nf --input 'path/to/vcfs/' --outdir results
-      nextflow run main.nf --input 'svs/*.vcf' --genome_build GRCh37 -profile conda
-      nextflow run main.nf --input 'dx://project-xxx:/survivor/' -profile dnanexus
+    Automatic Platform Settings (Configured in nextflow.config):
+      - Project ID:         ${params.dx_project ?: 'local'}
+      - Reference DBs:      ${params.dx_annotations_path ?: params.annotations_dir}
+      - Memory:             64 GB (Cloud) / 8 GB (Local)
     """.stripIndent()
 }
 
@@ -91,7 +75,7 @@ workflow {
     }
 
     if (!params.input) {
-        log.error "ERROR: --input is required. Provide a directory, file, or glob pattern for VCF/BED files."
+        log.error "ERROR: --input is required. Provide a file path or folder (e.g. --input '/survivor/HPRC_SV.survivor.vcf')"
         helpMessage()
         exit 1
     }
@@ -102,10 +86,20 @@ workflow {
         exit 1
     }
 
-    // Resolve input pattern: handle directory vs glob vs single file
-    def input_pattern = params.input
-    if (params.input.endsWith('/') || (file(params.input).exists() && file(params.input).isDirectory())) {
-        def clean_path = params.input.replaceAll('/+$', '')
+    // 1. Resolve DNAnexus dx:// prefix automatically if running with dx_project
+    def resolved_input = params.input
+    if (params.dx_project && resolved_input && !resolved_input.startsWith('dx://') && (resolved_input.startsWith('/') || resolved_input.startsWith('project-'))) {
+        if (resolved_input.startsWith('/')) {
+            resolved_input = "dx://${params.dx_project}:${resolved_input}"
+        } else {
+            resolved_input = "dx://${resolved_input}"
+        }
+    }
+
+    // 2. Resolve input pattern: handle directory vs glob vs single file
+    def input_pattern = resolved_input
+    if (resolved_input.endsWith('/') || (file(resolved_input).exists() && file(resolved_input).isDirectory())) {
+        def clean_path = resolved_input.replaceAll('/+$', '')
         input_pattern = "${clean_path}/*.{vcf,vcf.gz,bed,bed.gz,bcf}"
     }
 
@@ -114,19 +108,16 @@ workflow {
     ║        AnnotSV Annotation Pipeline                       ║
     ╚══════════════════════════════════════════════════════════╝
       input               : ${params.input}
-      pattern resolved    : ${input_pattern}
+      resolved pattern    : ${input_pattern}
       outdir              : ${params.outdir}
       genome_build        : ${params.genome_build ?: 'GRCh38'}
       candidate_genes     : ${params.candidate_genes ?: 'none'}
-      annotsv_dir         : ${params.annotsv_dir}
-      annotations_dir     : ${params.annotations_dir}
-      bedtools            : ${params.bedtools_path}
-      bcftools            : ${params.bcftools_path}
-      dx_annotations_path : ${params.dx_annotations_path ?: 'none (local annotations)'}
+      dx_project          : ${params.dx_project ?: 'local'}
+      dx_annotations_path : ${params.dx_annotations_path ?: 'local (not using dx storage)'}
       publish_dir_mode    : ${params.publish_dir_mode}
     """.stripIndent()
 
-    // 1. Create input channel
+    // 3. Create input channel
     Channel
         .fromPath(input_pattern, checkIfExists: true)
         .map { vcf_file ->
@@ -135,29 +126,29 @@ workflow {
         }
         .set { ch_sv_input }
 
-    // 2. Optional candidate-genes file channel
+    // 4. Optional candidate-genes file channel
     ch_candidate_genes = params.candidate_genes
         ? Channel.fromPath(params.candidate_genes, checkIfExists: true)
         : Channel.value(file('NO_FILE'))
 
-    // 3. DNAnexus annotations path channel
+    // 5. DNAnexus annotations path channel
     ch_dx_annotations = Channel.value(params.dx_annotations_path ?: '')
 
-    // 4. Run ANNOTSV on all sample files
+    // 6. Run ANNOTSV on all sample files
     ANNOTSV(
         ch_sv_input,
         ch_candidate_genes,
         ch_dx_annotations
     )
 
-    // 5. Collect all annotated TSVs and generate summary report table
+    // 7. Collect all annotated TSVs and generate summary report table
     all_tsvs = ANNOTSV.out.tsv
         .map { meta, tsv -> tsv }
         .collect()
 
     GENERATE_SUMMARY(all_tsvs)
 
-    // 6. Log outputs
+    // 8. Log outputs
     all_tsvs.subscribe { files ->
         def count = files instanceof List ? files.size() : 1
         log.info "✅ All ${count} samples annotated successfully!"
