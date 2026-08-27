@@ -37,10 +37,22 @@ from __future__ import annotations
 import time
 from collections.abc import Sequence
 
-#: Sequence lengths swept by default. Spans the launch-bound end and the real
-#: working size, doubling so that a quadratic term is unmistakable: each step
-#: should cost 2x, and a 4x step means attention is materialising.
-DEFAULT_LENGTHS: tuple[int, ...] = (512, 1024, 2048, 4096, 8192)
+#: Sequence lengths swept by default.
+#:
+#: They start at 2048, not 512, because vortex's packed flash-attn raises
+#: ``ValueError: vector::reserve`` on short sequences -- measured 2026-08-27,
+#: which killed a sweep on its very first length. Nothing in this project ever
+#: embeds a short window (the smallest real one is 7,168 tokens), so the short
+#: end was only ever there to show launch overhead and is not worth a crash.
+#:
+#: The point of the remaining spread is the *shape*: cost should be linear in
+#: tokens, so 8192 should cost 4x what 2048 does. Materially more means a term
+#: that is not linear -- attention building an N x N matrix. Materially less
+#: means the short end is launch-bound and only the plateau should be read.
+#: This is also the flank measurement: flanks are 7,168 of every window's
+#: 7,168-8,192 tokens, so what a shorter window would save is read straight off
+#: this table.
+DEFAULT_LENGTHS: tuple[int, ...] = (2048, 3072, 4096, 6144, 8192)
 
 #: Peak dense bf16 throughput, TFLOPS, for the cards this project can meet.
 #: Used only to turn achieved FLOP/s into a percentage; an unknown device just
@@ -145,11 +157,19 @@ def sweep(
     for length in lengths:
         try:
             row = time_forward(embedder, torch, length, layers, device, repeats)
-        except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
-            if "out of memory" not in str(exc).lower():
-                raise
+        except Exception as exc:  # noqa: BLE001 - a sweep must survive one bad point
+            # Deliberately broad. A sweep exists to find where the cost curve
+            # bends, and one length that the stack refuses is a data point, not
+            # a reason to discard the other four and the GPU boot that paid for
+            # them -- which is exactly what happened on 2026-08-27, when
+            # `ValueError: vector::reserve` from packed flash-attn at 512 tokens
+            # took down the whole run before it measured anything.
             torch.cuda.empty_cache()
-            rows.append({"length": length, "seconds": None})
+            rows.append({
+                "length": length,
+                "seconds": None,
+                "error": f"{type(exc).__name__}: {str(exc).splitlines()[0][:80]}",
+            })
             continue
         flops = 2 * parameters * length
         row["tokens_per_s"] = length / row["seconds"]
