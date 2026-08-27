@@ -1,0 +1,6 @@
+# Local scratch data. Nothing here is tracked.
+#
+# data/evo/ holds Evo 2 embedding runs pulled off DNAnexus workers: .npz vectors
+# (tens of MB up to several GB) plus the logs that produced them. They are
+# reproducible from data/evo/README.md, so they are outputs, not sources.
+evo/

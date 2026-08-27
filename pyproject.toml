@@ -27,12 +27,18 @@ dependencies = [
 # `uv run novelty ...` from anywhere in the repo.
 novelty = "novelty.cli:main"
 evo-embed = "evo.embeddings.cli:main"
+# The analysis half. Both need `--extra analysis`; they import sklearn/umap
+# lazily, so `--help` still works without it and says what is missing.
+analysis-reduce = "analysis.dim_reduc.cli:main"
+analysis-cluster = "analysis.clustering.cli:main"
 
 [project.optional-dependencies]
 # Analysis half of the Evo 2 work: reduction, clustering, outlier scoring, plots.
 # Pure CPU -- no torch, no GPU -- so it installs anywhere and is the half you
 # iterate on locally against vectors the cluster produced.
 analysis = [
+    # >=1.3 for sklearn.cluster.HDBSCAN, which is why `hdbscan` is not a
+    # separate dependency; >=1.7 to match what the lock already resolves.
     "scikit-learn>=1.7",
     "umap-learn>=0.5.9",
     "matplotlib>=3.10",
@@ -145,11 +151,11 @@ requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# `novelty` and `evo` are installed (editable, so edits take effect at once) to
-# put their commands on PATH. Everything else under src/python stays a loose
-# script and is not part of the distribution.
+# `novelty`, `evo` and `analysis` are installed (editable, so edits take effect
+# at once) to put their commands on PATH. Everything else under src/python stays
+# a loose script and is not part of the distribution.
 module-root = "src/python"
-module-name = ["novelty", "evo"]
+module-name = ["novelty", "evo", "analysis"]
 
 [tool.ruff]
 line-length = 100
