@@ -272,6 +272,84 @@ The command is joined with spaces and handed to a login `bash` on the worker,
 exactly as `ssh` does, so pipes and redirection work and anything containing
 spaces needs quoting twice.
 
+## Running Evo 2 on a worker
+
+`scripts/setup-gpu-worker.sh` builds the environment. It is idempotent, and
+`dx-gpu-instance.sh` runs it for you — but it is **not** `uv sync`, and each
+difference cost a debugging round trip:
+
+1. **Python 3.12, not the repo's pinned 3.13.** `evo2` caps itself below 3.13,
+   so `uv.lock` gates it on `python_full_version < '3.13'`. A 3.13 sync succeeds
+   and silently installs neither `evo2` nor `vortex`.
+2. **flash-attn is required, not an optional fast path.** `vortex` imports
+   `flash_attn_2_cuda` at module import time, so `import evo2` raises without it.
+3. **It installs *after* the sync, from a prebuilt wheel.** The wheel is specific
+   to (python tag, torch major.minor, CUDA, C++11 ABI), so torch must exist first
+   to choose it — and these workers ship **no `nvcc`**, so the
+   `--no-build-isolation` source build cannot run there at all.
+4. **Afterwards, never `uv run`.** flash-attn is not in `uv.lock`, so `uv run`
+   resyncs and *uninstalls* it. With no extras it removes torch and evo2 too.
+   Call `.venv/bin/python` directly.
+
+### `dx ssh` exit codes are meaningless
+
+**`dx ssh` always exits non-zero, however well the remote command ran.** On the
+way out it asks `Job job-... is still running. Terminate now? [y/N]`, reads EOF
+as N, and reports that as failure:
+
+```bash
+uv run dx ssh "$JOB" -T "echo REMOTE_OK"
+# REMOTE_OK          <- the command ran perfectly
+# Job job-... is still running. Terminate now? [y/N]:
+# $? == 1
+```
+
+Verified against a live worker: a session that printed `REMOTE_OK`, its hostname
+and `NVIDIA L4` exited 1, and so did one running nothing but `true`.
+
+So **never gate anything on `$?`**. Have the far side print a sentinel and grep
+for it — which is what `dx-gpu-instance.sh` now does in all three places that
+used to check the status (the ssh-readiness probe, the environment build, and
+the command/upload step). All three were unreachable by construction, so that
+script had never completed a run end to end.
+
+It also writes progress and most complaints to **stdout, not stderr**, so a wait
+loop capturing only stderr sees an empty string on every failed attempt.
+
+### What a run costs
+
+Measured on one L4 with `python -m evo.profiler` (see
+[`src/python/evo/profiler/`](../src/python/evo/profiler/)), which times real
+windows and prints a stage breakdown, peak VRAM, and whether each variant's
+vectors still match the baseline's:
+
+| | s/window | forward | transfer | peak allocated |
+|---|---:|---:|---:|---:|
+| host pooling, 9 layers | 8.40 | 83% | 14% | 16,847 MiB |
+| host pooling, 7 layers | 7.89 | 86% | 12% | 16,847 MiB |
+| **device pooling, 7 layers** | **6.87** | 100% | 0% | 16,847 MiB |
+| + batched fwd/revcomp | 6.45 | 100% | 0% | 19,066 MiB |
+
+The full `first_500_INS.vcf` callset is 8,177 windows — 2,094 reference-allele
+plus 6,083 alt — so ~15.6 L4-hours, or ~4 h across four parallel shards.
+
+> **Batch size and `num_workers` are the wrong levers here, and this is
+> measured rather than assumed.** One 8192-token pass through a 7B model is
+> ~115 TFLOPs against an L4's ~121 TFLOPS peak, so a *single* sequence already
+> saturates the card — the forward pass is 86–100% of every variant, and
+> batching the two strands together recovers only launch overhead (6%, for
+> +2.2 GB of peak). There is no dataloader to give workers to: window building
+> is the entire host-side cost at 11.1 ms/window, done once before the model
+> loads. And there is no larger GPU — both instance types in the table above are
+> the same 1× L4 24 GB.
+>
+> What *did* pay was the transfer nobody was looking at: `extract_window` moved
+> the whole `(8192, 4096)` token grid to the host as fp32, 134 MB per layer per
+> pass, for `pool` to reduce it to five vectors. Pooling on the device sends
+> ~80 KB instead.
+
+Always profile before a long run: at ~7 s/window, 10% is two GPU-hours.
+
 ## Connecting to the job
 
 Interactive work goes through `app-cloud_workstation`: it boots the instance and
