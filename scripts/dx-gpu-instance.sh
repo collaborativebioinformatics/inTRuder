@@ -46,6 +46,15 @@ RUN="evo-$(date +%Y%m%d-%H%M%S)"
 # rather than as "wait a bit more".
 SSH_TRIES="${SSH_TRIES:-90}"
 SSH_WAIT="${SSH_WAIT:-10}"
+# `dx ssh` ALWAYS exits non-zero, however well the remote command ran: on the
+# way out it asks "Job job-... is still running. Terminate now? [y/N]" and reads
+# EOF as N, which it reports as failure. Verified 2026-08-27 -- a session that
+# printed its output correctly and ran `true` still exited 1.
+#
+# So nothing here may gate on its exit status. The remote side prints this
+# sentinel as its last act and we look for that instead. It carries the PID so
+# a line echoed by the remote command itself cannot be mistaken for it.
+OK="__dx_remote_ok_$$__"
 OUTPUT_DIR=""
 DESTINATION=""
 JOB=""
@@ -190,10 +199,15 @@ log "destination  $DESTINATION"
 log "local output $OUTPUT_DIR"
 [ ${#COMMAND[@]} -gt 0 ] && log "command      ${COMMAND[*]}"
 
+# Scratch file for remote output, so it can be both shown live and grepped for
+# the sentinel afterwards. Removed by the same trap that terminates the box.
+remote_log="$(mktemp)"
+
 # --- terminate on the way out, whatever the way out is ------------------------
 cleanup() {
     local rc=$?
     trap - EXIT INT TERM
+    rm -f "$remote_log"
     if [ -n "$JOB" ] && [ "$KEEP" = 0 ] && [ "$DRY" = 0 ]; then
         log "terminating $JOB"
         "${DX[@]}" terminate "$JOB" >/dev/null 2>&1
@@ -274,30 +288,29 @@ if [ "$DRY" = 0 ]; then
     # instance boot to learn nothing again -- an unpublished host key, a
     # firewall that did not open, and a missing key pair all look identical
     # from out here, and they have different fixes.
+    # Ask the box to say the sentinel back. Both streams are kept: dx ssh writes
+    # its progress and most of its complaints to STDOUT, so a check that watched
+    # only stderr saw an empty string on every failure and said nothing useful.
     log "waiting for ssh (up to $((SSH_TRIES * SSH_WAIT / 60)) min) ..."
     ready=0
-    ssh_err="$(mktemp)"
+    ssh_log="$(mktemp)"
     for attempt in $(seq 1 "$SSH_TRIES"); do
-        if "${DX[@]}" ssh "$JOB" -T "true" >/dev/null 2>"$ssh_err"; then
-            ready=1
-            break
-        fi
-        # Every ~2 min, not every attempt: enough to show it is still trying
-        # and what it is failing on, without a screenful of the same line.
+        "${DX[@]}" ssh "$JOB" -T "echo $OK" >"$ssh_log" 2>&1
+        if grep -q "$OK" "$ssh_log"; then ready=1; break; fi
         if [ $((attempt % 12)) = 0 ]; then
-            log "  still waiting (${attempt}/${SSH_TRIES}): $(tail -1 "$ssh_err" | cut -c1-100)"
+            log "  still waiting (${attempt}/${SSH_TRIES}): $(grep -v '^$' "$ssh_log" | tail -1 | cut -c1-100)"
         fi
         sleep "$SSH_WAIT"
     done
     if [ "$ready" != 1 ]; then
-        warn "last ssh error was:"
-        sed 's/^/  | /' "$ssh_err" >&2
-        rm -f "$ssh_err"
+        warn "last ssh attempt said:"
+        sed 's/^/  | /' "$ssh_log" >&2
+        rm -f "$ssh_log"
         die "ssh never came up after $((SSH_TRIES * SSH_WAIT / 60)) min. The job is
        running and billing; try 'uv run dx ssh $JOB' by hand, or terminate it.
        Raise SSH_TRIES if the box is simply slow today."
     fi
-    rm -f "$ssh_err"
+    rm -f "$ssh_log"
     log "connected."
 fi
 
@@ -310,7 +323,21 @@ remote() {
         echo "+ REMOTE" >&2
         return 0
     fi
-    "${DX[@]}" ssh "$JOB" -T "bash -l -s"
+    # The caller's script, plus a trailing sentinel that is only reached if the
+    # script's own exit status was 0. `remote` then returns based on whether the
+    # sentinel came back, because dx ssh's own status is meaningless (see $OK).
+    local script rc
+    script="$(cat)"
+    "${DX[@]}" ssh "$JOB" -T "bash -l -s" <<REMOTE_WRAPPER 2>&1 | tee "$remote_log" >&2
+$script
+__rc=\$?
+[ \$__rc = 0 ] && echo "$OK"
+exit \$__rc
+REMOTE_WRAPPER
+    grep -q "$OK" "$remote_log"
+    rc=$?
+    : > "$remote_log"
+    return $rc
 }
 
 # --- build the environment ----------------------------------------------------
@@ -318,11 +345,16 @@ log "building the Evo 2 environment (~2 min; flash-attn, no nvcc -- see the scri
 if [ "$DRY" = 1 ]; then
     echo "+ dx ssh $JOB -T 'BRANCH=$BRANCH REPO_DIR=$REPO_DIR bash -s' < scripts/setup-gpu-worker.sh" >&2
 else
+    # setup-gpu-worker.sh ends with a "=== READY ===" banner, which is the
+    # signal used here -- the script is fed on stdin, so there is no room to
+    # append a sentinel to it the way remote() does.
     "${DX[@]}" ssh "$JOB" -T \
         "BRANCH='$BRANCH' REPO_URL='$REPO_URL' REPO_DIR='$REPO_DIR' bash -s" \
-        < "$REPO/scripts/setup-gpu-worker.sh" \
+        < "$REPO/scripts/setup-gpu-worker.sh" 2>&1 | tee "$remote_log" >&2
+    grep -q "=== READY ===" "$remote_log" \
         || die "environment build failed; the box is still up, attach with:
        uv run dx ssh $JOB"
+    : > "$remote_log"
 fi
 
 # --- run the command ----------------------------------------------------------
