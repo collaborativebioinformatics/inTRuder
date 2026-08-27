@@ -109,6 +109,16 @@ workflow {
         }
     }
 
+    // 4. Resolve an optional candidate-genes file in DNAnexus storage
+    def resolved_candidate_genes = params.candidate_genes
+    if (params.dx_project && resolved_candidate_genes && !resolved_candidate_genes.startsWith('dx://') && (resolved_candidate_genes.startsWith('/') || resolved_candidate_genes.startsWith('project-'))) {
+        if (resolved_candidate_genes.startsWith('/')) {
+            resolved_candidate_genes = "dx://${params.dx_project}:${resolved_candidate_genes}"
+        } else {
+            resolved_candidate_genes = "dx://${resolved_candidate_genes}"
+        }
+    }
+
     log.info """
     ╔══════════════════════════════════════════════════════════╗
     ║        AnnotSV Annotation Pipeline                       ║
@@ -117,12 +127,12 @@ workflow {
       resolved pattern    : ${input_pattern}
       outdir              : ${params.outdir}
       genome_build        : ${params.genome_build ?: 'GRCh38'}
-      candidate_genes     : ${params.candidate_genes ?: 'none'}
+      candidate_genes     : ${resolved_candidate_genes ?: 'none'}
       annotations_dir     : ${resolved_annot}
       publish_dir_mode    : ${params.publish_dir_mode}
     """.stripIndent()
 
-    // 4. Create input channel
+    // 5. Create input channel
     Channel
         .fromPath(input_pattern, checkIfExists: true)
         .map { vcf_file ->
@@ -131,31 +141,30 @@ workflow {
         }
         .set { ch_sv_input }
 
-    // 5. Optional candidate-genes file channel
-    ch_candidate_genes = params.candidate_genes
-        ? Channel.fromPath(params.candidate_genes, checkIfExists: true)
+    // 6. Optional candidate-genes file channel
+    ch_candidate_genes = resolved_candidate_genes
+        ? Channel.fromPath(resolved_candidate_genes, checkIfExists: true)
         : Channel.value([])
 
-    // 6. Annotations directory channel
-    ch_annotations = resolved_annot
-        ? Channel.fromPath(resolved_annot, checkIfExists: true)
-        : Channel.value(file('NO_DIR'))
+    // 7. Pass the annotation location as a value. In DNAnexus mode the task
+    // downloads the tree with dx-toolkit so nested paths remain unambiguous.
+    ch_annotations = Channel.value(resolved_annot ?: '')
 
-    // 7. Run ANNOTSV on all sample files
+    // 8. Run ANNOTSV on all sample files
     ANNOTSV(
         ch_sv_input,
         ch_candidate_genes,
         ch_annotations
     )
 
-    // 8. Collect all annotated TSVs and generate summary report table
+    // 9. Collect all annotated TSVs and generate summary report table
     all_tsvs = ANNOTSV.out.tsv
         .map { meta, tsv -> tsv }
         .collect()
 
     GENERATE_SUMMARY(all_tsvs)
 
-    // 9. Log outputs
+    // 10. Log outputs
     all_tsvs.subscribe { files ->
         def count = files instanceof List ? files.size() : 1
         log.info "✅ All ${count} samples annotated successfully!"

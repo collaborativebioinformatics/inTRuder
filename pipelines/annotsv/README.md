@@ -39,50 +39,90 @@ nextflow run pipelines/annotsv/main.nf \
 
 ## ☁️ DNAnexus Cloud Execution
 
-The 30 GB reference databases are pre-deployed in the DNAnexus project **`Group2_2026`** at `Group2_2026:/resources/AnnotSV/`.
+The approximately 34 GB reference databases are pre-deployed in the DNAnexus
+project **`Group2_2026`** at `Group2_2026:/resources/AnnotSV/`. Each AnnotSV
+child job downloads both database directories into its scratch disk before
+starting the pinned AnnotSV 3.5.10 container.
 
-### 1. Run TR Annotation on DNAnexus Cloud Compute
+### 1. Build the Nextflow applet
 
 ```bash
-# Ensure you are logged into DNAnexus (dx login) on your local machine
-dx run app-swiss-army-knife \
-  -icmd="echo '=== Starting Cloud AnnotSV TR Annotation ===' && \
-         mkdir -p /home/dnanexus/annotsv_run/annotations /home/dnanexus/annotsv_run/inputs && \
-         cd /home/dnanexus/annotsv_run && \
-         echo '--- 1. Fetching AnnotSV software ---' && \
-         git clone --depth 1 https://github.com/lgmgeo/AnnotSV.git /home/dnanexus/annotsv_app && \
-         make -C /home/dnanexus/annotsv_app PREFIX=/home/dnanexus/annotsv_app install && \
-         echo '--- 2. Downloading Annotations from project storage ---' && \
-         dx download -r \"\${DX_PROJECT_CONTEXT_ID}:/resources/AnnotSV/Annotations_Human\" -o /home/dnanexus/annotsv_run/annotations/ && \
-         dx download -r \"\${DX_PROJECT_CONTEXT_ID}:/resources/AnnotSV/Annotations_Exomiser\" -o /home/dnanexus/annotsv_run/annotations/ && \
-         echo '--- 3. Downloading Input TR VCF ---' && \
-         dx download \"\${DX_PROJECT_CONTEXT_ID}:/survivor/HPRC_SV.survivor.vcf\" -o /home/dnanexus/annotsv_run/inputs/ && \
-         echo '--- 4. Running AnnotSV (GRCh38) ---' && \
-         /home/dnanexus/annotsv_app/bin/AnnotSV \
-           -SVinputFile /home/dnanexus/annotsv_run/inputs/HPRC_SV.survivor.vcf \
-           -genomeBuild GRCh38 \
-           -annotationsDir /home/dnanexus/annotsv_run/annotations \
-           -outputDir /home/dnanexus/annotsv_run/ \
-           -outputFile HPRC_SV.survivor.annotated.tsv && \
-         echo '--- 5. Uploading Output to DNAnexus Storage ---' && \
-         dx upload /home/dnanexus/annotsv_run/HPRC_SV.survivor.annotated.tsv --path \"\${DX_PROJECT_CONTEXT_ID}:/Results/AnnotSV/\" && \
-         echo '=== Annotation Completed Successfully ==='" \
-  --destination="/Results/AnnotSV/" \
-  --instance-type="mem2_ssd1_v2_x4" \
-  --name="annotsv_hprc_tr_annotation" \
+dx build --nextflow pipelines/annotsv \
+  --destination 'project-JB6zg5Q0pzX96qVJjz7gKg58:/Apps/annotsv-pipeline' \
+  --archive \
   --yes
 ```
 
-*(For testing on the 500 INS subset, replace `/survivor/HPRC_SV.survivor.vcf` with `/Test_Inputs/first_500_INS.vcf`).*
+Archiving preserves the previous applet version while making the new build the
+active `/Apps/annotsv-pipeline` object.
 
-### 2. Monitor Job Live
+### 2. Run TR annotation
+
+```bash
+dx run 'project-JB6zg5Q0pzX96qVJjz7gKg58:/Apps/annotsv-pipeline' \
+  -inextflow_run_opts='-profile dnanexus' \
+  -inextflow_pipeline_params="--input '/Test_Inputs/first_500_INS.vcf'" \
+  --destination 'project-JB6zg5Q0pzX96qVJjz7gKg58:/Results/AnnotSV_Test/' \
+  --name 'annotsv_500_test' \
+  --yes
+```
+
+For the full cohort, replace the input path with
+`/survivor/HPRC_SV.survivor.vcf` and choose the desired output destination.
+The applet head job supervises the workflow; Nextaur selects separate child
+instances from each process's CPU and memory requirements.
+
+### 3. Run from the DNAnexus Web UI
+
+1. Sign in to the DNAnexus Platform and open the **`Group2_2026`** project.
+2. In the project data browser, open **`/Apps`**, select
+   **`annotsv-pipeline`**, and choose **Run**.
+3. Complete the applet form as follows:
+
+   | Web UI field | Value |
+   |---|---|
+   | **Nextflow Run Options** | `-profile dnanexus` |
+   | **Nextflow Pipeline Parameters** | `--input '/Test_Inputs/first_500_INS.vcf'` |
+   | **Nextflow Top-level Options** | Leave empty |
+   | **Docker Credentials** | Leave empty; the pipeline image is public |
+   | **Debug Mode** | Off, unless detailed troubleshooting logs are needed |
+   | **Preserve Cache** | Off for a normal run |
+
+   `Nextflow Pipeline Parameters` is a free-text field, so enter the DNAnexus
+   project path manually. For a full-cohort run, use:
+
+   ```text
+   --input '/survivor/HPRC_SV.survivor.vcf'
+   ```
+
+   Additional pipeline options can be included in the same field, for example:
+
+   ```text
+   --input '/Test_Inputs/first_500_INS.vcf' --genome_build GRCh38 --outdir results
+   ```
+
+4. In the execution/output settings, use **`Group2_2026`** as the output
+   project and **`/Results/AnnotSV_Test/`** as the output folder. Give the run a
+   descriptive name such as **`annotsv_500_test`**.
+5. Select **Run** or **Start Analysis** to launch the applet. The initial
+   Nextflow head job will submit separate AnnotSV and summary child jobs.
+
+### 4. Monitor the run
+
+In the Web UI, open the project **Monitor** view and select the named head job
+to see its status and child jobs. From the command line, run:
+
 ```bash
 dx watch <job-id>
 ```
 
-### 3. Download Results
+Successful outputs appear below the selected destination in
+`results/annotsv/` and `results/summary/`.
+
+### 5. Download results
+
 ```bash
-dx download /Results/AnnotSV/HPRC_SV.survivor.annotated.tsv
+dx download -r /Results/AnnotSV_Test/results/
 ```
 
 ---
@@ -106,7 +146,7 @@ dx download /Results/AnnotSV/HPRC_SV.survivor.annotated.tsv
 | `--outdir` | Output destination directory | `results` |
 | `--genome_build` | Reference genome (`GRCh38` or `GRCh37`) | `GRCh38` |
 | `--candidate_genes` | Optional gene list file to filter relevant TR loci | `none` |
-| `--dx_annotations_path` | DNAnexus project path to AnnotSV databases | `none` (local) |
+| `--annotations_dir` | Local directory or DNAnexus URI containing AnnotSV databases | local AnnotSV installation |
 
 ---
 
