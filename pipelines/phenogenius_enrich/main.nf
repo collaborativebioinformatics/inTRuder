@@ -51,6 +51,10 @@ workflow {
         log.error "ERROR: --hpo must contain valid HPO identifiers. Got: ${params.hpo}"
         exit 1
     }
-    Channel.fromPath(params.input_tsv, checkIfExists: true).set { ch_tsv }
+    def resolved_tsv = params.input_tsv
+    if (params.dx_project && resolved_tsv.startsWith('/')) {
+        resolved_tsv = "dx://${params.dx_project}:${resolved_tsv}"
+    }
+    Channel.fromPath(resolved_tsv, checkIfExists: true).set { ch_tsv }
     PHENOGENIUS_ENRICH(ch_tsv)
 }
