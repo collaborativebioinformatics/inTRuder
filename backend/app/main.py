@@ -517,6 +517,11 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
 def summary() -> dict[str, Any]:
     """Cohort funnel plus the breakdowns the landing page renders."""
     loci_table = _loci_table()
+    synthetic_tables = [
+        table
+        for table in (loci_table, _segments_table())
+        if table is not None and registry.datasets[table].synthetic
+    ]
     con = registry.cursor()
 
     total, non_homopolymer, confident, novel, novel_disease = con.execute(
@@ -561,7 +566,19 @@ def summary() -> dict[str, Any]:
                 FROM {loci_table} GROUP BY 1
                 ORDER BY {_CHROM_ORDER}"""
         ),
-        "synthetic": any(d.synthetic for d in registry.available_datasets()),
+        # The tables this page is actually drawn from, not "is anything
+        # registered synthetic". Once the loci table is resolved by role, a real
+        # uploaded callset sits alongside the committed demo fixtures — and a
+        # badge reading "synthetic demo data" over somebody's real results is a
+        # worse failure than no badge at all.
+        #
+        # Both tables count, because both feed what is on screen, and they are
+        # named rather than collapsed into the flag: registering a real locus
+        # table without a matching segments table leaves real rows drawn with
+        # fixture barcodes, and "one of these two" is the only honest way to say
+        # so.
+        "synthetic": bool(synthetic_tables),
+        "synthetic_tables": synthetic_tables,
     }
 
 

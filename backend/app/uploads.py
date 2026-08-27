@@ -471,11 +471,22 @@ def link_path(raw_path: str) -> Upload:
     if not settings.uploads_enabled:
         raise UploadError("Uploads are disabled on this server (UPLOADS_ENABLED).", status=403)
 
+    # A relative path is read against the data directory, not the process's
+    # working directory. `data/sv_output/merged.vcf.gz` is what someone types,
+    # and resolving that against wherever uvicorn happened to be started —
+    # `backend/` under `just dev`, `/app` in the container — would mean the same
+    # string finding a different file in each, or more often none at all.
     candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = settings.data_dir / candidate
     try:
         resolved = candidate.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
-        raise UploadError(f"No such file: {raw_path}", status=404) from exc
+        raise UploadError(
+            f"No such file: {candidate}. Relative paths are read from "
+            f"{settings.data_dir}.",
+            status=404,
+        ) from exc
 
     if not resolved.is_file():
         raise UploadError(f"{resolved} is not a file.", status=400)
