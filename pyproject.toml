@@ -5,7 +5,21 @@ description = "Identifying novel human tandem-repeat loci absent from the refere
 readme = "README.md"
 requires-python = ">=3.11"
 # Add runtime dependencies here, e.g. with `uv add pandas`
-dependencies = []
+dependencies = [
+    "cyvcf2>=0.34.0",
+    "numpy>=2.0",
+    "optuna>=4.9.0",
+    "pandas>=3.0.5",
+    "parasail>=1.3.4",
+    "pytrf>=1.5.0",
+    "tqdm>=4.70.0",
+    "pandas>=3.0.5",
+    "joblib>=1.3",
+]
+
+[project.scripts]
+# `uv run novelty ...` from anywhere in the repo.
+novelty = "novelty.cli:main"
 
 [dependency-groups]
 # Dev-only tooling; install with `uv sync` (included by default)
@@ -14,14 +28,23 @@ dev = [
     "pytest>=8",
 ]
 
-[tool.uv]
-# Research repo of scripts under src/python rather than an installable package,
-# so uv manages the environment without building/installing this project itself.
-package = false
+[build-system]
+requires = ["uv_build>=0.9,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The `novelty` package is installed (editable, so edits take effect at once) to
+# put the `novelty` command on PATH. Everything else under src/python stays a
+# loose script and is not part of the distribution.
+module-root = "src/python"
+module-name = "novelty"
 
 [tool.ruff]
 line-length = 100
 src = ["src/python"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/python"]
+testpaths = ["tests/python"]
+# `novelty` is installed editable, but keeping src/python on sys.path means the
+# tests also run against a bare checkout that has not been synced.
+pythonpath = ["src/python"]
