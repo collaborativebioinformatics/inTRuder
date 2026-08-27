@@ -28,8 +28,8 @@ process ANNOTSV {
     maxRetries 2
 
     // Software environment
-    container 'quay.io/biocontainers/annotsv:3.4.4--py310hdfd78af_0'
-    conda 'bioconda::annotsv=3.4.4 bioconda::bedtools bioconda::bcftools'
+    container 'quay.io/biocontainers/annotsv:3.5.10--hdfd78af_0'
+    conda 'bioconda::annotsv=3.5.10 bioconda::bedtools bioconda::bcftools'
 
     // Inputs
     input:
@@ -64,14 +64,14 @@ process ANNOTSV {
     # =========================================================================
     DX_ANNOT_PATH="${dx_annot_path}"
     if [[ -n "\${DX_ANNOT_PATH}" ]]; then
-        echo "[annotsv] DNAnexus mode: downloading annotations from \${DX_ANNOT_PATH}" >&2
-        mkdir -p /home/dnanexus/annotations
-        dx download --no-progress -r "\${DX_ANNOT_PATH}/Annotations_Human" \
-            -o /home/dnanexus/annotations/ 2>&1 | tail -5
-        dx download --no-progress -r "\${DX_ANNOT_PATH}/Annotations_Exomiser" \
-            -o /home/dnanexus/annotations/ 2>&1 | tail -5
         EFFECTIVE_ANNOTATIONS_DIR="/home/dnanexus/annotations"
-        echo "[annotsv] Annotations ready at \${EFFECTIVE_ANNOTATIONS_DIR}" >&2
+        if [[ ! -d "\${EFFECTIVE_ANNOTATIONS_DIR}/Annotations_Human" ]] && command -v dx &>/dev/null; then
+            echo "[annotsv] Downloading annotations from \${DX_ANNOT_PATH}" >&2
+            mkdir -p "\${EFFECTIVE_ANNOTATIONS_DIR}"
+            dx download --no-progress -r "\${DX_ANNOT_PATH}/Annotations_Human" -o "\${EFFECTIVE_ANNOTATIONS_DIR}/" 2>&1 | tail -5
+            dx download --no-progress -r "\${DX_ANNOT_PATH}/Annotations_Exomiser" -o "\${EFFECTIVE_ANNOTATIONS_DIR}/" 2>&1 | tail -5
+        fi
+        echo "[annotsv] Annotations directory: \${EFFECTIVE_ANNOTATIONS_DIR}" >&2
     else
         EFFECTIVE_ANNOTATIONS_DIR="${annotations_dir}"
     fi
