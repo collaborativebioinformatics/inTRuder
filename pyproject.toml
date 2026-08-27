@@ -146,3 +146,10 @@ testpaths = ["tests/python"]
 # `novelty` is installed editable, but keeping src/python on sys.path means the
 # tests also run against a bare checkout that has not been synced.
 pythonpath = ["src/python"]
+# Required, not cosmetic. Each step keeps its own test package, so basenames
+# repeat -- `test_cli.py` exists under both tests/python/novelty/ and
+# tests/python/evo/. pytest's default prepend mode keys modules by basename and
+# refuses the second one. Do not "fix" that with __init__.py files:
+# tests/python/novelty/ would then import as `novelty` and shadow the real
+# package.
+addopts = ["--import-mode=importlib"]
