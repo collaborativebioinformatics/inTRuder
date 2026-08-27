@@ -27,6 +27,7 @@ from evo.embeddings.cli import build_windows, select
 from evo.embeddings.extract import LAYER_SETS, Evo2Embedder
 from evo.embeddings.loci import read_insertions
 from evo.embeddings.windows import WindowSpec
+from evo.profiler.scaling import DEFAULT_LENGTHS, describe_model, peak_tflops, sweep
 from evo.profiler.throughput import FINITE_LAYERS, VARIANTS, profile_variant
 from evo.utils.reference import FastaReference
 
@@ -42,6 +43,15 @@ LAYER_SETS_HERE = {"finite": list(FINITE_LAYERS), "default": list(LAYER_SETS["de
 
 def _mib(n: float) -> float:
     return n / 1024**2
+
+
+def _bytes(dtype: str) -> int:
+    """Bytes per element, for turning a parameter count into a footprint."""
+    for tag, size in (("float32", 4), ("bfloat16", 2), ("float16", 2),
+                      ("int8", 1), ("float64", 8)):
+        if tag in dtype:
+            return size
+    return 4
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,9 +73,74 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"comma-separated: {', '.join(VARIANTS)}")
     p.add_argument("--layer-sets", default="finite,default",
                    help="'finite' drops blocks.30/31; 'default' is all nine")
-    p.add_argument("--model", default="evo2_7b_base")
+    p.add_argument("--model", default="evo2_7b_base",
+                   help="Evo 2 checkpoint; evo2_1b_base is ~7x cheaper per window")
     p.add_argument("--device", default="cuda:0")
+
+    g = p.add_argument_group("scaling")
+    g.add_argument("--scaling", action="store_true",
+                   help="instead of comparing variants, ask why one forward "
+                        "pass costs what it does: sweep sequence length, report "
+                        "achieved TFLOP/s and whether cost is linear in tokens")
+    g.add_argument("--lengths", default=",".join(str(n) for n in DEFAULT_LENGTHS),
+                   help="comma-separated sequence lengths for --scaling")
+    g.add_argument("--repeats", type=int, default=3,
+                   help="timed passes per length; the best is reported")
     return p
+
+
+def report_scaling(args, embedder, torch, total, windows) -> int:
+    """Print the model's shape, then what it costs at each sequence length."""
+    info = describe_model(embedder, torch)
+    params = info["parameters"]
+    print(f"\nmodel  {args.model}")
+    if params:
+        print(f"  parameters {params / 1e9:.2f} B")
+    for dtype, n in sorted(info["dtypes"].items(), key=lambda kv: -kv[1]):
+        print(f"  {dtype:<22} {n / 1e9:6.2f} B params ({n * _bytes(dtype) / 1024**3:.1f} GiB)")
+    print(f"  flash_attn {info['flash_attn'] or 'MISSING -- attention is falling back!'}")
+
+    name = torch.cuda.get_device_name(0)
+    peak = peak_tflops(name)
+    print(f"  device     {name}" + (f", ~{peak:.0f} TFLOPS bf16 peak" if peak else ""))
+
+    lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
+    layers = LAYER_SETS_HERE["finite"]
+    print(f"\nforward pass, {len(layers)} layers, batch 1, best of {args.repeats}:")
+    print(f"  {'tokens':>7} {'seconds':>8} {'tok/s':>8} {'TFLOP/s':>8} {'of peak':>8} {'vs prev':>8}")
+    rows = sweep(embedder, torch, layers, args.device, lengths,
+                 parameters=params or 7_000_000_000, repeats=args.repeats)
+    for row in rows:
+        if row["seconds"] is None:
+            print(f"  {row['length']:>7} {'OOM':>8}")
+            continue
+        mfu = f"{100 * row['mfu']:.0f}%" if row["mfu"] else "-"
+        ratio = f"{row['ratio']:.2f}x" if row["ratio"] else "-"
+        print(f"  {row['length']:>7} {row['seconds']:>8.3f} {row['tokens_per_s']:>8.0f} "
+              f"{row['tflops']:>8.1f} {mfu:>8} {ratio:>8}")
+
+    # Doubling the tokens should double the time. Anything much above 2 is a
+    # term that is not linear in sequence length -- in practice, attention that
+    # is materialising an N x N matrix instead of using flash-attn.
+    ratios = [r["ratio"] for r in rows if r.get("ratio")]
+    if ratios:
+        worst = max(ratios)
+        print(f"\n  doubling cost: max {worst:.2f}x per doubling", end="")
+        print("  -- linear in tokens, as it should be." if worst < 2.4
+              else "  -- SUPERLINEAR: attention is not using flash-attn.")
+
+    good = [r for r in rows if r["seconds"] is not None and r["length"] >= 4096]
+    if good and windows:
+        best = max(r["tflops"] for r in good)
+        print(f"  sustained {best:.1f} TFLOP/s at working sizes"
+              + (f" = {100 * best / peak:.0f}% of the card." if peak else "."))
+        real = len(windows[0].sequence)
+        per_window = 2 * min(
+            r["seconds"] * real / r["length"] for r in good
+        )
+        print(f"\n  implied {per_window:.2f} s/window at {real} tokens "
+              f"(two passes) -> {per_window * total / 3600:.1f} L4-hours for {total} windows")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,6 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.perf_counter()
     embedder = Evo2Embedder(args.model, args.device)
     print(f"load   {time.perf_counter() - t0:.1f} s")
+
+    if args.scaling:
+        return report_scaling(args, embedder, torch, FULL_CALLSET, windows)
 
     results = []
     baselines: dict[str, object] = {}
