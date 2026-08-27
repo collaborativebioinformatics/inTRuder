@@ -12,8 +12,6 @@
 process GENERATE_SUMMARY {
 
     label 'process_low'
-    container 'quay.io/biocontainers/annotsv:3.5.10--hdfd78af_0'
-
     publishDir path: "${params.outdir}/summary",
                mode: params.publish_dir_mode ?: 'copy',
                pattern: 'annotsv_summary_report.*'
