@@ -207,3 +207,70 @@ designed so a bad result is loud:
 `--grid`
 : all 45 views scored at once, so `--layer` and `--segment` are chosen on
   evidence rather than on the block-type argument in `extract.py`.
+
+## Running the extraction on a GPU worker
+
+`scripts/dx-worker-setup-evo2.sh` builds the environment. Pass it to any of the
+`dx-*` scripts with `--setup`, in place of the generic
+`scripts/dx-worker-setup.sh`, which does a plain `uv sync` and cannot install
+Evo 2:
+
+```bash
+scripts/dx-batch-gpu.sh -t 6h -o data/dx/evo2 \
+    --setup scripts/dx-worker-setup-evo2.sh \
+    -f /Test_Inputs/first_500_INS.vcf \
+    -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta \
+    -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta.fai -- \
+    python -m evo.embeddings /home/dnanexus/first_500_INS.vcf \
+        /home/dnanexus/human_GRCh38_no_alt_analysis_set.fasta '$OUT'
+```
+
+It is idempotent, but it is **not** `uv sync`, and each difference cost a
+debugging round trip:
+
+1. **Python 3.12, not the repo's pinned 3.13.** `evo2` caps itself below 3.13,
+   so `uv.lock` gates it on `python_full_version < '3.13'`. A 3.13 sync succeeds
+   and silently installs neither `evo2` nor `vortex`.
+2. **flash-attn is required, not an optional fast path.** `vortex` imports
+   `flash_attn_2_cuda` at module import time, so `import evo2` raises without it.
+3. **It installs *after* the sync, from a prebuilt wheel.** The wheel is specific
+   to (python tag, torch major.minor, CUDA, C++11 ABI), so torch must exist first
+   to choose it — and these workers ship **no `nvcc`**, so the
+   `--no-build-isolation` source build cannot run there at all.
+4. **Afterwards, never `uv run`.** flash-attn is not in `uv.lock`, so `uv run`
+   resyncs and *uninstalls* it. With no extras it removes torch and evo2 too.
+   Call `.venv/bin/python` directly.
+
+### What a run costs
+
+Measured on one L4 with `python -m evo.profiler` (see
+[`src/python/evo/profiler/`](../src/python/evo/profiler/)), which times real
+windows and prints a stage breakdown, peak VRAM, and whether each variant's
+vectors still match the baseline's:
+
+| | s/window | forward | transfer | peak allocated |
+|---|---:|---:|---:|---:|
+| host pooling, 9 layers | 8.40 | 83% | 14% | 16,847 MiB |
+| host pooling, 7 layers | 7.89 | 86% | 12% | 16,847 MiB |
+| **device pooling, 7 layers** | **6.87** | 100% | 0% | 16,847 MiB |
+| + batched fwd/revcomp | 6.45 | 100% | 0% | 19,066 MiB |
+
+The full `first_500_INS.vcf` callset is 8,177 windows — 2,094 reference-allele
+plus 6,083 alt — so ~15.6 L4-hours, or ~4 h across four parallel shards.
+
+> **Batch size and `num_workers` are the wrong levers here, and this is
+> measured rather than assumed.** One 8192-token pass through a 7B model is
+> ~115 TFLOPs against an L4's ~121 TFLOPS peak, so a *single* sequence already
+> saturates the card — the forward pass is 86–100% of every variant, and
+> batching the two strands together recovers only launch overhead (6%, for
+> +2.2 GB of peak). There is no dataloader to give workers to: window building
+> is the entire host-side cost at 11.1 ms/window, done once before the model
+> loads. And there is no larger GPU — both GPU instance types this project can
+> launch are the same 1× L4 24 GB.
+>
+> What *did* pay was the transfer nobody was looking at: `extract_window` moved
+> the whole `(8192, 4096)` token grid to the host as fp32, 134 MB per layer per
+> pass, for `pool` to reduce it to five vectors. Pooling on the device sends
+> ~80 KB instead.
+
+Always profile before a long run: at ~7 s/window, 10% is two GPU-hours.

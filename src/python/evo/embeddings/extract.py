@@ -305,7 +305,7 @@ class Evo2Embedder:
             raise ImportError(
                 "Evo2Embedder needs the `evo2` package: it requires Linux, CUDA "
                 "12.1+, flash-attn, and Python <3.13. Run "
-                "`scripts/setup-gpu-worker.sh`, which syncs a 3.12 venv and then "
+                "`scripts/dx-worker-setup-evo2.sh`, which syncs a 3.12 venv and then "
                 "adds the matching prebuilt flash-attn wheel -- flash-attn is not "
                 "in uv.lock, and vortex imports it eagerly, so a plain `uv sync` "
                 "is not enough. Afterwards invoke `.venv/bin/evo-embed` directly; "

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Rent a DNAnexus GPU box, build the Evo 2 environment on it, run a command,
-# bring the results home, and terminate it.
+# Rent a DNAnexus box, set it up, drop you into a terminal on it, bring back
+# anything you leave in $OUT, and terminate it.
 #
-#     scripts/dx-gpu-instance.sh --time 2h -- \
-#         python -m evo.embeddings ~/first_500_INS.vcf ~/hg38.fasta "$OUT"
+#     scripts/dx-instance.sh --time 1h              # a shell on a CPU box
+#     scripts/dx-instance.sh --gpu --time 2h        # ... on an L4
+#     scripts/dx-instance.sh -t 30m -- pytest -q    # run something instead
+#     scripts/dx-instance.sh --list-instances       # what can we even ask for?
 #
 # The whole point is the last step. A cloud_workstation bills for wall-clock
 # time whether or not anyone is attached and whether or not it is doing any
@@ -13,14 +15,12 @@
 # still dies when max_session_length runs out, so set it to what you can afford
 # to lose, not to what the job might need.
 #
-# With no command it sets the box up and drops you into an interactive shell,
-# which is the way to measure something before committing to a long run. The
-# shell comes before the fetch either way, so whatever you leave in $OUT is
+# With no command it sets the box up and drops you into an interactive shell.
+# The shell comes before the fetch either way, so whatever you leave in $OUT is
 # downloaded when you exit.
 #
-# See docs/DNANexus.md for the platform details this automates: token auth, org
-# billing, which GPU types actually exist, and why the environment build is not
-# just `uv sync`.
+# See docs/scripts/DNANexus.md for the platform details this automates: token auth, org
+# billing, which instance types actually launch, and how to do each step by hand.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
@@ -30,16 +30,26 @@ warn() { echo "[$(date +%H:%M:%S)] WARNING: $*" >&2; }
 die()  { echo "[$(date +%H:%M:%S)] FATAL: $*" >&2; exit 1; }
 
 # --- defaults -----------------------------------------------------------------
-# mem2_ssd2_gpu1_v2_x8 (1x L4, 24 GB) and mem3_ssd1_gpu1_x16 are the only GPU
-# types this project can launch; everything else fails at launch, and the T4 box
-# launches and then dies at the first kernel. docs/DNANexus.md has the table.
-INSTANCE="${DX_INSTANCE:-mem2_ssd2_gpu1_v2_x8}"
+# A workstation is charged by the hour and the shell you asked for does not need
+# 64 cores; ask for a bigger one by name when the work needs it.
+INSTANCE="${DX_INSTANCE:-mem1_ssd1_v2_x4}"
+# --gpu is shorthand for this one. It is 1x L4, and it is one of only two GPU
+# types this project can actually launch -- see docs/scripts/DNANexus.md.
+GPU_INSTANCE="${DX_GPU_INSTANCE:-mem2_ssd2_gpu1_v2_x8}"
 TIME="2h"
-BRANCH="${BRANCH:-feature/evo-embeds}"
+# The worker clones from GitHub, so the default is whatever branch you are on --
+# which is almost always what you meant, and preflight checks it is pushed.
+BRANCH="${BRANCH:-$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)}"
+[ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || BRANCH=main
 REPO_URL="${REPO_URL:-https://github.com/collaborativebioinformatics/novelTRs.git}"
 REPO_DIR="${REPO_DIR:-/home/dnanexus/novelTRs}"
+# Extra flags for the worker's `uv sync`. The setup script has always taken
+# this; until now nothing passed it, so the documented knob did nothing on the
+# only path anyone uses.
+SYNC_ARGS="${SYNC_ARGS:-}"
 REMOTE_OUT="/home/dnanexus/out"
-RUN="evo-$(date +%Y%m%d-%H%M%S)"
+RUN="dx-$(date +%Y%m%d-%H%M%S)"
+SETUP="$REPO/scripts/dx-worker-setup.sh"
 # How long to wait for sshd after the job reaches 'running'. The host key is
 # published minutes after the state flips, and on a slow day the gap has been
 # longer than the 10 min this used to allow -- which reads as a hard failure
@@ -62,6 +72,17 @@ ATTACHED=0
 KEEP=0
 SHELL_AFTER=0
 DRY=0
+# Which of the two shapes this run is: "" is whichever you asked for, "batch"
+# runs a program and never opens a shell, "interactive" opens a shell and takes
+# no program. The scripts/dx-{instance,batch}-{cpu,gpu}.sh wrappers set one of
+# these instead of re-implementing the option table above to work out whether a
+# command was given -- which is the only place that answer is reliably known.
+MODE=""
+# --job implies --keep; an explicit --keep is a different thing, and --batch
+# needs to tell them apart to honour "terminates when it is done".
+KEEP_EXPLICIT=0
+LIST=0
+LIST_FILTER=""
 INPUTS=()
 COMMAND=()
 
@@ -74,18 +95,24 @@ usage() {
 
 Options:
   -t, --time DURATION     max_session_length, e.g. 30m, 2h, 8h   [2h]
-  -i, --instance TYPE     GPU instance type          [mem2_ssd2_gpu1_v2_x8]
+  -i, --instance TYPE     instance type                [mem1_ssd1_v2_x4]
+  -g, --gpu               shorthand for -i mem2_ssd2_gpu1_v2_x8
   -f, --input ID|PATH     stage a platform file into /home/dnanexus on the
                           worker; repeatable. Takes a file-xxxx id or a project
                           path, which is resolved to an id before launch.
   -o, --output-dir DIR    local directory results are downloaded into
-                                                     [data/evo/<run>]
+                                                       [data/dx/<run>]
   -r, --remote-out DIR    directory on the worker the command writes to; it is
                           created before the command runs and exported as $OUT
-                                                     [/home/dnanexus/out]
+                                                       [/home/dnanexus/out]
   -d, --destination PATH  project folder results are uploaded to
-                                                     [/Results/<you>/<run>/]
-  -b, --branch BRANCH     branch to clone on the worker  [feature/evo-embeds]
+                                                       [/Results/<you>/<run>/]
+  -b, --branch BRANCH     branch the worker clones     [your current branch]
+      --setup SCRIPT      environment build to run on the worker
+                                                       [scripts/dx-worker-setup.sh]
+      --sync-args ARGS    extra flags for the worker's `uv sync`, as one
+                          argument, e.g. --sync-args "--group dx"      [none]
+      --no-setup          leave the box as it boots: no clone, no uv, no venv
       --run NAME          name for this run, used in the default paths
       --job JOB-ID        attach to a job that is already running instead of
                           launching one. Implies --keep unless --terminate.
@@ -93,28 +120,33 @@ Options:
       --shell             open an interactive shell after the command and before
                           the fetch; anything left in $OUT still comes home
       --keep              do NOT terminate at the end (it keeps billing)
+      --batch             run a program and terminate: a command is required,
+                          no shell is opened, and --shell/--keep are refused
+      --interactive       open a shell and take no command
+  -l, --list-instances [PATTERN]
+                          print every instance type this project may launch,
+                          with what it is for, and exit. PATTERN filters by
+                          substring, e.g. `--list-instances gpu`.
   -n, --dry-run           print the platform commands instead of running them
   -h, --help              this
 
 Everything after `--` (or after the last option) is the command. It is joined
 with spaces and handed to a login bash on the worker, exactly as ssh does, so
 pipes and redirections work and arguments containing spaces need quoting twice.
-It runs in the repo checkout with the project venv first on PATH, so `evo-embed`
-and `python -m evo.embeddings` resolve to the venv -- never use `uv run` there,
-it resyncs to uv.lock and uninstalls flash-attn.
+It runs in the checkout with the project venv first on PATH, so `novelty` and
+`python -m ...` resolve there -- avoid `uv run` on the worker, which resyncs to
+uv.lock and would uninstall anything you installed on top of it.
 
 Examples:
-  # both alleles of a shard, results in data/evo/shard0/
-  scripts/dx-gpu-instance.sh -t 8h -o data/evo/shard0 \
-      -f file-JB7fJKj0pzX9jkpkbbG6jyVG \
-      -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta \
-      -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta.fai -- \
-      python -m evo.embeddings /home/dnanexus/first_500_INS.vcf \
-          /home/dnanexus/human_GRCh38_no_alt_analysis_set.fasta \
-          '$OUT' --offset 0 --limit 2000
+  # a shell on a CPU box for an hour, with a VCF staged onto it
+  scripts/dx-instance.sh -t 1h -f /survivor/HPRC_SV.survivor.vcf
 
-  # just give me a GPU for an hour
-  scripts/dx-gpu-instance.sh --time 1h
+  # run something and bring the results back into data/dx/run1/
+  scripts/dx-instance.sh -t 2h -o data/dx/run1 -- \
+      novelty screen /home/dnanexus/calls.vcf '$OUT/hits.tsv'
+
+  # a GPU box, no repo, no venv -- just the hardware
+  scripts/dx-instance.sh --gpu --no-setup -t 30m -- nvidia-smi
 EOF
 }
 
@@ -123,16 +155,28 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -t|--time)        TIME="${2:?}"; shift 2 ;;
         -i|--instance)    INSTANCE="${2:?}"; shift 2 ;;
+        -g|--gpu)         INSTANCE="$GPU_INSTANCE"; shift ;;
         -f|--input)       INPUTS+=("${2:?}"); shift 2 ;;
         -o|--output-dir)  OUTPUT_DIR="${2:?}"; shift 2 ;;
         -r|--remote-out)  REMOTE_OUT="${2:?}"; shift 2 ;;
         -d|--destination) DESTINATION="${2:?}"; shift 2 ;;
         -b|--branch)      BRANCH="${2:?}"; shift 2 ;;
+        --setup)          SETUP="${2:?}"; shift 2 ;;
+        --sync-args)      SYNC_ARGS="${2:?}"; shift 2 ;;
+        --no-setup)       SETUP=""; shift ;;
         --run)            RUN="${2:?}"; shift 2 ;;
         --job)            JOB="${2:?}"; ATTACHED=1; KEEP=1; shift 2 ;;
         --terminate)      KEEP=0; shift ;;
         --shell)          SHELL_AFTER=1; shift ;;
-        --keep)           KEEP=1; shift ;;
+        --keep)           KEEP=1; KEEP_EXPLICIT=1; shift ;;
+        --batch)          MODE="batch"; shift ;;
+        --interactive)    MODE="interactive"; shift ;;
+        -l|--list-instances)
+                          LIST=1
+                          # The pattern is optional, so only swallow the next
+                          # argument when it cannot be a flag of our own.
+                          if [ $# -gt 1 ] && [[ "$2" != -* ]]; then LIST_FILTER="$2"; shift; fi
+                          shift ;;
         -n|--dry-run)     DRY=1; shift ;;
         -h|--help)        usage; exit 0 ;;
         --)               shift; COMMAND=("$@"); break ;;
@@ -141,8 +185,65 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# The name to blame in an error. The wrappers export their own so the advice
+# names the command that was actually typed.
+SELF="${DX_WRAPPER_NAME:-scripts/$(basename "${BASH_SOURCE[0]:-$0}")}"
+
+case "$MODE" in
+    batch)
+        # Batch's whole promise is that it finishes and stops costing money, so
+        # the two flags that break that promise are refused rather than ignored.
+        [ ${#COMMAND[@]} -gt 0 ] || die "$SELF needs a program to run:
+       $SELF --time 1h -- novelty screen calls.vcf '\$OUT/hits.tsv'
+       For a terminal instead, use the matching dx-instance-*.sh."
+        [ "$SHELL_AFTER" = 0 ] || die "--shell contradicts $SELF, which never opens one.
+       Use the matching dx-instance-*.sh, or scripts/dx-instance.sh --shell."
+        [ "$KEEP_EXPLICIT" = 0 ] || die "--keep contradicts $SELF: it would leave the box
+       billing after the program finished. Use scripts/dx-instance.sh --keep."
+        # --job set KEEP=1 on our behalf. Batch terminates what it attaches
+        # to -- that is the mode -- but silently killing a box someone else is
+        # using is not a thing to discover afterwards, so say it up front.
+        if [ "$ATTACHED" = 1 ]; then
+            warn "--batch will TERMINATE $JOB when the program is done, even"
+            warn "  though you attached to it. Use scripts/dx-instance.sh --job"
+            warn "  --keep to run something on a box and leave it up."
+        fi
+        KEEP=0
+        ;;
+    interactive)
+        [ ${#COMMAND[@]} -eq 0 ] || die "$SELF opens a terminal and takes no command.
+       To run '${COMMAND[*]}' and come straight back, use the matching
+       dx-batch-*.sh, which terminates the box when the program is done."
+        ;;
+esac
+
 [[ "$TIME" =~ ^[0-9]+[smhd]$ ]] || die "--time $TIME: want a number and s/m/h/d, e.g. 2h"
-: "${OUTPUT_DIR:=$REPO/data/evo/$RUN}"
+[ -z "$SETUP" ] || [ -f "$SETUP" ] || die "--setup $SETUP: no such file"
+
+# The four settings below are the entire contract with the worker: they are
+# interpolated into a remote command string, and a bad one does not fail there,
+# it arrives as a plausible wrong value. The worker re-checks all of them, but
+# it can only do so after a boot -- so reject them here, where the cost of being
+# wrong is a retyped command instead of a provisioned instance.
+if [ -n "$SETUP" ]; then
+    [ -n "$BRANCH" ] || die "--branch is empty"
+    [ -n "$REPO_URL" ] || die "REPO_URL is empty"
+    case "$BRANCH" in
+        *[[:space:]]*) die "--branch '$BRANCH': a branch name cannot contain whitespace" ;;
+    esac
+    case "$REPO_DIR" in
+        *[[:space:]]*) die "REPO_DIR '$REPO_DIR': no whitespace, it is a path on the worker" ;;
+        /*) ;;
+        *) die "REPO_DIR '$REPO_DIR' must be absolute -- the worker cd's to it from \$HOME" ;;
+    esac
+    # `uv sync` flags, not a bare word: --sync-args "dx" is a plausible typo for
+    # --sync-args "--group dx" and uv would reject it an environment build later.
+    case "${SYNC_ARGS:--}" in
+        -*) ;;
+        *) die "--sync-args '$SYNC_ARGS': expected uv sync flags, e.g. '--group dx'" ;;
+    esac
+fi
+: "${OUTPUT_DIR:=$REPO/data/dx/$RUN}"
 
 # --- platform plumbing --------------------------------------------------------
 # Always `uv run dx`: .venv/bin is not on PATH, so a bare `dx` gives
@@ -155,8 +256,114 @@ dx_do() {
 }
 
 # shellcheck source=scripts/dx-env.sh
-source "$REPO/scripts/dx-env.sh" || die "could not authenticate; see docs/DNANexus.md"
+source "$REPO/scripts/dx-env.sh" || die "could not authenticate; see docs/scripts/DNANexus.md"
 PROJECT="${DX_PROJECT_CONTEXT_ID:?dx-env.sh did not pin a project}"
+
+# --- what can we even ask for? ------------------------------------------------
+# The project's availableInstanceTypes is the list the platform validates a
+# launch against: a name that is not in it is refused outright, before anything
+# is created, with "Requested instance type ... is unavailable from the cloud
+# provider". So this is the honest answer to "what can we run", and it is read
+# live rather than pasted into a table that goes stale.
+#
+# Every one of the 98 names in it was submitted for real on 2026-08-27 (job
+# created, then terminated while still idle, so nothing was provisioned and
+# nothing was billed): 97 were accepted and one was refused. The refusal is
+# annotated below -- the catalog is the entitlement, but not quite the last word.
+if [ "$LIST" = 1 ]; then
+    uv run --group dx --no-sync python - \
+        "$PROJECT" "$LIST_FILTER" "$INSTANCE" "$GPU_INSTANCE" <<'PYLIST'
+import re
+import sys
+
+import dxpy
+
+project, pattern, cpu_default, gpu_default = sys.argv[1:5]
+catalog = dxpy.api.project_describe(
+    project, {"fields": {"availableInstanceTypes": True}}
+)["availableInstanceTypes"]
+
+# From the submit test described above. Anything not named here was accepted.
+REFUSED = {
+    "mem3_ssd2_gpu8_x96": "refused: the workstation app wants nvidiaDriver R535",
+}
+# Boot-verified, not merely accepted: these two have run a command end to end.
+BOOTED = {"mem1_ssd1_v2_x4", "mem2_ssd2_gpu1_v2_x8"}
+
+FAMILY = {"mem1": "lean RAM", "mem2": "balanced RAM", "mem3": "big memory"}
+
+
+def describe(name):
+    """A one-line 'what is this for', built from the name."""
+    bits = []
+    gpu = re.search(r"gpu(\d*)", name)
+    if gpu:
+        count = int(gpu.group(1) or 1)
+        if "gpu1_v2" in name or "gpu1_x" in name:
+            model = "L4 24 GB"
+        elif "_gpu_" in name:
+            model = "T4, sm_75 -- too old for current CUDA wheels"
+        else:
+            model = "model unverified"
+        bits.append(f"{count}x GPU ({model})")
+    bits.append(FAMILY.get(name.split("_")[0], "unknown family"))
+    if "hdd" in name:
+        bits.append("spinning disk: cheap per GB, slow")
+    elif re.search(r"ssd[23]", name):
+        bits.append("extra SSD")
+    if "_v2" not in name and "_v3" not in name:
+        bits.append("older generation")
+    return ", ".join(bits)
+
+
+rows = []
+for name, spec in catalog.items():
+    if pattern and pattern not in name:
+        continue
+    marks = []
+    if name == cpu_default:
+        marks.append("<- default")
+    if name == gpu_default:
+        marks.append("<- --gpu")
+    if name in BOOTED:
+        marks.append("[boot-verified]")
+    if name in REFUSED:
+        marks.append("[%s]" % REFUSED[name])
+    rows.append((
+        "gpu" in name,
+        name.split("_")[0],
+        spec["numCores"],
+        name,
+        spec["totalMemoryMB"] // 1000,
+        spec["ephemeralStorageGB"],
+        describe(name),
+        " ".join(marks),
+    ))
+
+if not rows:
+    print(f"no instance type in {project} matches '{pattern}'", file=sys.stderr)
+    raise SystemExit(1)
+
+print(f"Instance types this project may launch ({len(rows)} of {len(catalog)} shown)\n")
+for is_gpu, group in ((True, "GPU"), (False, "CPU")):
+    here = sorted(r for r in rows if r[0] is is_gpu)
+    if not here:
+        continue
+    print(group)
+    for _, _, cores, name, ram, disk, what, marks in here:
+        print(f"  {name:<24} {cores:>3} core{'s' if cores != 1 else ' '}"
+              f" {ram:>5} GB RAM {disk:>5} GB disk"
+              f"  {what}{'  ' + marks if marks else ''}")
+    print()
+
+print("Every name above was submitted for real on 2026-08-27 and accepted, except")
+print("any marked refused. A name NOT in this list is rejected at submit with")
+print('"Requested instance type ... is unavailable from the cloud provider" --')
+print("nothing is created, so it costs a relaunch and not money.")
+print("Only terminating stops the billing; see docs/scripts/DNANexus.md.")
+PYLIST
+    exit $?
+fi
 
 # --- preflight ----------------------------------------------------------------
 # Everything cheap that can fail goes here, because past this point the meter is
@@ -166,13 +373,16 @@ if [ "$ATTACHED" = 0 ]; then
     [ -f "$HOME/.dnanexus_config/ssh_id" ] \
         || die "no SSH key pair. Run 'uv run dx ssh_config' once, then retry.
        Without it the worker boots, starts billing, and only then refuses you."
+fi
 
+if [ -n "$SETUP" ] && [ "$ATTACHED" = 0 ]; then
     # The worker clones from GitHub, so it runs what is *pushed*, not what is in
     # this checkout. A branch that does not exist there is a guaranteed failure
-    # ten minutes and one GPU-boot from now.
+    # ten minutes and one boot from now.
     remote_head="$(git -C "$REPO" ls-remote --heads "$REPO_URL" "$BRANCH" 2>/dev/null | cut -f1)"
     [ -n "$remote_head" ] || die "branch '$BRANCH' does not exist at $REPO_URL.
-       Push it first -- the worker clones from GitHub, not from this checkout."
+       Push it first -- the worker clones from GitHub, not from this checkout --
+       or pass '--branch main', or '--no-setup' to skip the clone entirely."
     local_head="$(git -C "$REPO" rev-parse HEAD 2>/dev/null)"
     if [ "$remote_head" != "$local_head" ]; then
         warn "the worker will run ${remote_head:0:8} ($BRANCH on GitHub), not your"
@@ -180,7 +390,7 @@ if [ "$ATTACHED" = 0 ]; then
     fi
     # Matching HEADs are not enough: uncommitted work is invisible to a clone,
     # and this is the cheap moment to notice that the code you have been editing
-    # is not the code about to spend an hour of GPU time.
+    # is not the code about to spend an hour of compute.
     if [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
         warn "this checkout has uncommitted changes. The worker clones $BRANCH,"
         warn "  so they will NOT be there. Commit and push first if they matter."
@@ -197,6 +407,8 @@ log "instance     $INSTANCE for $TIME"
 log "project      $PROJECT (bills to the org, not to you)"
 log "destination  $DESTINATION"
 log "local output $OUTPUT_DIR"
+[ -n "$SETUP" ] && log "setup        $(basename "$SETUP") on $BRANCH -> $REPO_DIR"
+[ -n "$SETUP" ] && [ -n "$SYNC_ARGS" ] && log "sync args    $SYNC_ARGS"
 [ ${#COMMAND[@]} -gt 0 ] && log "command      ${COMMAND[*]}"
 
 # Scratch file for remote output, so it can be both shown live and grepped for
@@ -272,7 +484,7 @@ fi
 # the instance exists, but the SSH host key is published a good few minutes
 # later, and connecting before then just fails.
 if [ "$DRY" = 0 ]; then
-    log "waiting for state=running (a GPU box takes a few minutes) ..."
+    log "waiting for state=running (a few minutes) ..."
     for _ in $(seq 1 120); do
         state="$("${DX[@]}" describe "$JOB" 2>/dev/null | awk '$1=="State"{print $2}')"
         case "$state" in
@@ -283,14 +495,13 @@ if [ "$DRY" = 0 ]; then
     done
     [ "${state:-}" = "running" ] || die "job never reached 'running' (last: ${state:-unknown})"
 
-    # Keep the last attempt's stderr. Discarding it turns every connection
+    # Keep the last attempt's output. Discarding it turns every connection
     # problem into the same opaque timeout, and the next attempt costs another
     # instance boot to learn nothing again -- an unpublished host key, a
     # firewall that did not open, and a missing key pair all look identical
-    # from out here, and they have different fixes.
-    # Ask the box to say the sentinel back. Both streams are kept: dx ssh writes
-    # its progress and most of its complaints to STDOUT, so a check that watched
-    # only stderr saw an empty string on every failure and said nothing useful.
+    # from out here, and they have different fixes. Both streams are kept:
+    # dx ssh writes its progress and most of its complaints to STDOUT, so a
+    # check that watched only stderr saw an empty string on every failure.
     log "waiting for ssh (up to $((SSH_TRIES * SSH_WAIT / 60)) min) ..."
     ready=0
     ssh_log="$(mktemp)"
@@ -341,20 +552,37 @@ REMOTE_WRAPPER
 }
 
 # --- build the environment ----------------------------------------------------
-log "building the Evo 2 environment (~2 min; flash-attn, no nvcc -- see the script) ..."
-if [ "$DRY" = 1 ]; then
-    echo "+ dx ssh $JOB -T 'BRANCH=$BRANCH REPO_DIR=$REPO_DIR bash -s' < scripts/setup-gpu-worker.sh" >&2
-else
-    # setup-gpu-worker.sh ends with a "=== READY ===" banner, which is the
-    # signal used here -- the script is fed on stdin, so there is no room to
-    # append a sentinel to it the way remote() does.
-    "${DX[@]}" ssh "$JOB" -T \
-        "BRANCH='$BRANCH' REPO_URL='$REPO_URL' REPO_DIR='$REPO_DIR' bash -s" \
-        < "$REPO/scripts/setup-gpu-worker.sh" 2>&1 | tee "$remote_log" >&2
-    grep -q "=== READY ===" "$remote_log" \
-        || die "environment build failed; the box is still up, attach with:
+# Nothing on a workstation survives the session, so the checkout and the venv are
+# built fresh every time. --no-setup skips it when you want the bare box.
+if [ -n "$SETUP" ]; then
+    log "setting up the worker ($(basename "$SETUP"); a few minutes) ..."
+    # Exactly one shell evaluation happens on the far side of `dx ssh`, so each
+    # value is quoted for it with printf %q rather than wrapped in single quotes
+    # and hoped for. The old form broke on any value containing a quote, and
+    # SYNC_ARGS -- which has spaces by design -- would have arrived as separate
+    # words, silently dropping every flag after the first.
+    remote_env="$(printf 'BRANCH=%q REPO_URL=%q REPO_DIR=%q SYNC_ARGS=%q' \
+        "$BRANCH" "$REPO_URL" "$REPO_DIR" "$SYNC_ARGS")"
+    if [ "$DRY" = 1 ]; then
+        echo "+ dx ssh $JOB -T '$remote_env bash -s' < $SETUP" >&2
+    else
+        # The setup script ends with a "=== READY ===" banner, which is the
+        # signal used here -- it is fed on stdin, so there is no room to append
+        # a sentinel to it the way remote() does.
+        "${DX[@]}" ssh "$JOB" -T "$remote_env bash -s" \
+            < "$SETUP" 2>&1 | tee "$remote_log" >&2
+        if ! grep -q "=== READY ===" "$remote_log"; then
+            # A failed build is fatal for a command that needs the venv, but not
+            # for a shell: you asked for a box, the box is up and billing, and
+            # fixing the environment by hand is exactly what a shell is for.
+            if [ ${#COMMAND[@]} -gt 0 ]; then
+                die "environment build failed; the box is still up, attach with:
        uv run dx ssh $JOB"
-    : > "$remote_log"
+            fi
+            warn "environment build failed -- opening the shell anyway."
+        fi
+        : > "$remote_log"
+    fi
 fi
 
 # --- run the command ----------------------------------------------------------
@@ -363,11 +591,12 @@ if [ ${#COMMAND[@]} -gt 0 ]; then
     remote <<EOF || die "the command failed. The box is still up until this script
        exits; attach with 'uv run dx ssh $JOB' to look at it."
 set -uo pipefail
-export PATH="$REPO_DIR/.venv/bin:\$PATH"
 export OUT="$REMOTE_OUT"
 mkdir -p "\$OUT" || exit 1
-cd "$REPO_DIR" || exit 1
-echo "[worker] \$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'no nvidia-smi')"
+# The checkout and its venv if setup built them; \$HOME if it did not.
+[ -d "$REPO_DIR/.venv/bin" ] && export PATH="$REPO_DIR/.venv/bin:\$PATH"
+cd "$REPO_DIR" 2>/dev/null || cd /home/dnanexus || exit 1
+echo "[worker] \$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'cpu only')"
 echo "[worker] cwd \$PWD, OUT=\$OUT"
 ${COMMAND[*]}
 EOF
@@ -378,14 +607,17 @@ fi
 # Before the fetch, not after: whatever you make in here is in $OUT too, and
 # comes home with everything else.
 if [ ${#COMMAND[@]} -eq 0 ] || [ "$SHELL_AFTER" = 1 ]; then
-    log "opening a shell. The repo is at $REPO_DIR, \$OUT is $REMOTE_OUT, and"
-    log "  anything you leave in \$OUT is fetched when you exit. Use"
-    log "  .venv/bin/... -- never 'uv run', it uninstalls flash-attn."
+    [ -n "$SETUP" ] && log "opening a shell. The repo is at $REPO_DIR; use .venv/bin/... rather"
+    [ -n "$SETUP" ] && log "  than 'uv run', which resyncs and undoes anything you pip-installed."
+    log "\$OUT is $REMOTE_OUT -- anything you leave there is fetched when you exit."
     log "Exiting TERMINATES the box. Answer 'n' to dx's own prompt on the way"
     log "  out -- this script does the terminating, and confirms it."
     if [ "$DRY" = 1 ]; then
         echo "+ dx ssh $JOB" >&2
     else
+        # mkdir here too: with --no-setup nothing else has created $OUT, and a
+        # shell that has to mkdir its own output directory loses what it wrote.
+        "${DX[@]}" ssh "$JOB" -T "mkdir -p '$REMOTE_OUT'" >/dev/null 2>&1
         "${DX[@]}" ssh "$JOB"
     fi
 fi

@@ -2,11 +2,19 @@
 # Set up Evo 2 extraction on a fresh GPU worker (DNAnexus cloud_workstation or
 # any bare CUDA box). Idempotent -- safe to re-run.
 #
-#     bash scripts/setup-gpu-worker.sh            # clone into $HOME and set up
-#     REPO_DIR=. bash scripts/setup-gpu-worker.sh # set up a checkout you have
+#     scripts/dx-batch-gpu.sh --setup scripts/dx-worker-setup-evo2.sh -- ...
+#     bash scripts/dx-worker-setup-evo2.sh            # clone into $HOME, set up
+#     REPO_DIR=. bash scripts/dx-worker-setup-evo2.sh # set up a checkout you have
+#
+# This is the `--setup` script for the dx-*.sh family, replacing the generic
+# scripts/dx-worker-setup.sh. That one does a plain `uv sync`, which installs
+# neither evo2 nor flash-attn and so cannot run Evo 2 at all -- for the reasons
+# below. It honours the same contract: BRANCH / REPO_URL / REPO_DIR come in as
+# environment variables, and the "=== READY ===" banner is what the caller greps
+# for, since `dx ssh`'s exit status is meaningless.
 #
 # Four things here are not obvious, and each one cost a debugging round trip on
-# 2026-08-27. See docs/DNANexus.md "Running Evo 2 on a worker".
+# 2026-08-27. See docs/evo_analysis.md "Running the extraction on a GPU worker".
 #
 #   1. Python 3.12, not the repo's pinned 3.13. `evo2` caps itself below 3.13,
 #      so uv.lock gates it on `python_full_version < '3.13'` -- a 3.13 sync
@@ -109,7 +117,8 @@ cat <<EOF
     .venv/bin/python -m evo.embeddings <calls.vcf> <hg38.fasta> out/  # both alleles
     .venv/bin/evo-embed <calls.vcf> <hg38.fasta> out.npz              # one allele
 
-  scripts/dx-gpu-instance.sh runs this script for you, then the command, then
+  scripts/dx-batch-gpu.sh --setup scripts/dx-worker-setup-evo2.sh runs this
+  script for you, then the command, then
   fetches the results and terminates the box.
 
   'uv run' resyncs to uv.lock and uninstalls flash-attn; with no extras it
