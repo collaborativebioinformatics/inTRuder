@@ -66,6 +66,14 @@ The Anthropic path is the tuned one: adaptive thinking with a summarized display
 | `GET /api/strchive/matches` | Our candidates that landed on a disease locus |
 | `POST /api/chat` | SSE stream of one agent turn |
 
+`/api/loci` takes a genomic range in `region`, written the way a person writes
+one — `chr3:1,000-50,000`, with the `chr` and the separators optional and `..`
+allowed for `-`. Both ends are inclusive, and a candidate is an insertion
+*point*, so overlapping the range means the insertion site falls inside it. A
+range that does not parse is a 400 rather than an empty list: an empty list would
+read as a finding. `gene_query` is the free-text counterpart of `gene`, matching
+any gene symbol containing the text.
+
 `/api/loci` accepts filters that need columns only the screened callset supplies
 (`novelty`, `platform_agreement`, `min_insertion_purity`, `sample`,
 `strchive_status`). Against a table lacking them the filter is **not** applied and

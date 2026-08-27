@@ -89,6 +89,12 @@ def set_view(
         "TRExplorer independently call it novel — the case worth trusting.",
     ] = None,
     chrom: Annotated[str | None, "Restrict to one chromosome, e.g. 'chr4'. Use null to clear."] = None,
+    region: Annotated[
+        str | None,
+        "Restrict to a genomic range, e.g. 'chr3:1000-50000' (GRCh38, both ends "
+        "inclusive). Keeps the loci whose insertion site falls inside it. Use "
+        "chrom for a whole chromosome — this needs a range.",
+    ] = None,
     motif_class: Annotated[
         Literal["homopolymer", "STR", "mid", "VNTR"] | None,
         "Restrict to one motif class. STR is 2-6bp, mid is 7-20bp, VNTR is >20bp.",
@@ -103,6 +109,13 @@ def set_view(
     ] = None,
     disease_gene_only: Annotated[bool | None, "Show only loci in known disease genes."] = None,
     gene: Annotated[str | None, "Restrict to one gene symbol, e.g. 'XYLT1'."] = None,
+    gene_query: Annotated[
+        str | None,
+        "Free-text gene search: keeps loci whose gene symbol contains this "
+        "text, case-insensitively. Use it when the user is searching rather "
+        "than naming a gene ('anything in the SYNE family'); prefer the exact "
+        "`gene` when you know the symbol.",
+    ] = None,
     sample: Annotated[str | None, "Restrict to one sample, e.g. 'HG00290'."] = None,
     strchive_status: Annotated[
         Literal[
@@ -160,6 +173,7 @@ def set_view(
             "novelty": novelty,
             "platform_agreement": platform_agreement,
             "chrom": chrom,
+            "region": region,
             "motif_class": motif_class,
             "min_motif_len": min_motif_len,
             "min_samples": min_samples,
@@ -167,6 +181,7 @@ def set_view(
             "min_insertion_purity": min_insertion_purity,
             "disease_gene_only": disease_gene_only,
             "gene": gene,
+            "gene_query": gene_query,
             "sample": sample,
             "strchive_status": strchive_status,
             "strchive_novel_only": strchive_novel_only,

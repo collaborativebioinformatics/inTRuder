@@ -1,5 +1,7 @@
 "use client";
 
+import { SearchBox } from "@/components/SearchBox";
+import { formatRegion } from "@/lib/region";
 import {
   NOVELTY_LABELS,
   SORT_LABELS,
@@ -27,8 +29,10 @@ const LABELS: Record<keyof ViewFilters, (value: unknown) => string> = {
     v === "both" ? "Both catalogs agree" : `${v}`.replace("_", " "),
   disease_gene_only: () => "Disease genes",
   chrom: (v) => `${v}`,
+  region: (v) => formatRegion(`${v}`),
   motif_class: (v) => `${v}`,
   gene: (v) => `${v}`,
+  gene_query: (v) => `gene contains “${v}”`,
   sample: (v) => `${v}`,
   strchive_status: (v) => STRCHIVE_STATUS_LABELS[v as StrchiveStatus] ?? `${v}`,
   strchive_novel_only: () => "Pathogenic motif not in hg38",
@@ -87,6 +91,8 @@ export function FilterBar({ ignored = [] }: { ignored?: (keyof ViewFilters)[] })
 
   return (
     <div className="space-y-2.5">
+      <SearchBox />
+
       <div className="flex flex-wrap gap-1.5">
         {QUICK.map((quick) => (
           <button

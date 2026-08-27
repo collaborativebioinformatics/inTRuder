@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, parse_region
 from app.registry import RegistryError, registry
 
 
@@ -145,6 +145,82 @@ def test_loci_filters_actually_filter(client):
     everything = client.get("/api/loci", params={"limit": 1}).json()["total"]
     novel = client.get("/api/loci", params={"limit": 1, "novel_only": True}).json()["total"]
     assert 0 < novel < everything
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("chr3:1000-50000", ("chr3", 1000, 50000)),
+        ("3:1,000-50,000", ("chr3", 1000, 50000)),
+        ("chrX:1..99", ("chrX", 1, 99)),
+        # A backwards range is read in the order it was meant, and MT is chrM.
+        ("chr3:50000-1000", ("chr3", 1000, 50000)),
+        ("  chrMT:1-2  ", ("chrM", 1, 2)),
+    ],
+)
+def test_a_range_is_read_the_way_a_person_writes_it(text, expected):
+    assert parse_region(text) == expected
+
+
+@pytest.mark.parametrize("text", ["chr3", "chr3:1000", "SYNE1", "chr3:abc-def"])
+def test_an_unreadable_range_is_a_400_not_an_empty_result(client, text):
+    """An empty list would read as "no loci here", which is a finding. A range
+    that did not parse was never applied at all, and must say so instead."""
+    response = client.get("/api/loci", params={"region": text})
+    assert response.status_code == 400
+    assert text in response.json()["detail"]
+
+
+def test_an_empty_range_is_no_filter_rather_than_an_error(client):
+    """A cleared search box sends an empty string; that is not a bad range."""
+    everything = client.get("/api/loci", params={"limit": 1}).json()["total"]
+    body = client.get("/api/loci", params={"limit": 1, "region": "", "gene_query": ""})
+    assert body.status_code == 200
+    assert body.json()["total"] == everything
+
+
+def test_region_keeps_the_loci_whose_insertion_site_falls_inside_it(client):
+    """A candidate is an insertion *point*, so overlap means containment, and
+    both ends are inclusive — the range reads the way a genome browser shows it."""
+    body = client.get(
+        "/api/loci", params={"limit": 500, "region": "chr3:5,000,000-50,000,000"}
+    ).json()
+    assert body["ignored_filters"] == []
+    assert 0 < body["total"] < client.get("/api/loci", params={"limit": 1}).json()["total"]
+    assert body["loci"]
+    for locus in body["loci"]:
+        assert locus["chrom"] == "chr3"
+        assert 5_000_000 <= locus["pos"] <= 50_000_000
+
+    # Inclusive, exactly: a one-base range around a real locus finds it.
+    edge = body["loci"][0]
+    point = client.get(
+        "/api/loci", params={"region": f"{edge['chrom']}:{edge['pos']}-{edge['pos']}"}
+    ).json()
+    assert [row["locus_id"] for row in point["loci"]] == [edge["locus_id"]]
+
+
+def test_gene_query_searches_symbols_while_gene_still_matches_one(client):
+    """The search box wants a substring, the assistant naming a gene wants that
+    gene, and they are separate filters so neither has to guess which was meant.
+
+    A family of paralogues is the case that separates them: someone typing
+    "atxn" is looking for all four ataxins, not for a gene called ATXN.
+    """
+    family = client.get("/api/loci", params={"limit": 500, "gene_query": "atxn"}).json()
+    assert family["ignored_filters"] == []
+    assert {"ATXN1", "ATXN2", "ATXN3", "ATXN7"} <= {
+        locus["gene"] for locus in family["loci"]
+    }
+
+    one = client.get("/api/loci", params={"limit": 500, "gene": "ATXN1"}).json()
+    assert {locus["gene"] for locus in one["loci"]} == {"ATXN1"}
+    assert family["total"] > one["total"]
+
+    # An intergenic locus has no symbol to match, and must not come back.
+    assert all(locus["gene"] for locus in family["loci"])
+    # % and _ are characters in a search box, not wildcards.
+    assert client.get("/api/loci", params={"gene_query": "%"}).json()["total"] == 0
 
 
 def test_every_returned_locus_has_a_strip(client):

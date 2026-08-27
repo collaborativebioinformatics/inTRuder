@@ -72,10 +72,12 @@ how the data behaves, since loci are dominated by one or two motifs.
 | `components/LocusView.tsx` | Levels 2–3 |
 | `components/Funnel.tsx` | Discovery funnel, clickable to filter |
 | `components/FilterBar.tsx` | Filter chips |
+| `components/SearchBox.tsx` | One box for a genomic range or a gene name |
 | `components/Chat.tsx` | assistant-ui thread + SSE adapter |
 | `lib/viewStore.tsx` | The shared view state |
 | `lib/api.ts` | Backend client, SSE parser |
 | `lib/palette.ts` | Motif→color assignment |
+| `lib/region.ts` | Reads `chr3:1,000-50,000`, and tells a range from a gene |
 
 ## Checks
 
