@@ -21,6 +21,7 @@ from app.main import app
 from app.registry import _pid_of, registry
 
 DEMO_LOCI = REPO_ROOT / "data" / "web" / "demo" / "loci.parquet"
+DEMO_SEGMENTS = REPO_ROOT / "data" / "web" / "demo" / "segments.parquet"
 
 
 @pytest.fixture
@@ -67,6 +68,17 @@ def _loci_bytes(n_rows: int = 10) -> bytes:
     with duckdb.connect() as con:
         table = con.execute(
             f"SELECT * FROM read_parquet('{DEMO_LOCI}') LIMIT {n_rows}"
+        ).to_arrow_table()
+    sink = io.BytesIO()
+    pq.write_table(table, sink)
+    return sink.getvalue()
+
+
+def _segments_bytes(n_rows: int = 20) -> bytes:
+    """A few rows of the demo per-allele table, as a parquet file in memory."""
+    with duckdb.connect() as con:
+        table = con.execute(
+            f"SELECT * FROM read_parquet('{DEMO_SEGMENTS}') LIMIT {n_rows}"
         ).to_arrow_table()
     sink = io.BytesIO()
     pq.write_table(table, sink)
@@ -215,6 +227,38 @@ def test_a_registered_loci_table_drives_the_catalog(client):
     assert client.get("/api/loci", params={"sort": "arrays"}).json()["sort"] == "position"
 
 
+def test_the_synthetic_badge_follows_the_table_actually_being_read(client):
+    """Registering a real callset must clear the badge, and it cannot be decided
+    by asking whether *any* registered dataset is a fixture: the committed demo
+    tables stay registered alongside it. A "synthetic demo data" badge over
+    somebody's real results is worse than no badge."""
+    upload = _post(client, "real.parquet", _loci_bytes(6)).json()
+    client.post(
+        f"/api/uploads/{upload['id']}/register",
+        json={"name": "real_calls", "role": "loci"},
+    )
+    assert client.get("/api/summary").json()["synthetic"] is False
+
+
+def test_a_real_locus_table_with_fixture_barcodes_names_which_half_is_fake(client):
+    """Half-real is its own state. A locus table can be registered without a
+    matching segments table, leaving real rows drawn with fixture barcodes — and
+    a bare boolean would report that as "all of this is fake"."""
+    loci = _post(client, "real.parquet", _loci_bytes(5)).json()
+    client.post(
+        f"/api/uploads/{loci['id']}/register", json={"name": "real_loci", "role": "loci"}
+    )
+    segments = _post(client, "fixture.parquet", _segments_bytes()).json()
+    client.post(
+        f"/api/uploads/{segments['id']}/register",
+        json={"name": "fixture_segments", "role": "segments"},
+    )
+
+    body = client.get("/api/summary").json()
+    assert body["synthetic"] is False, "neither upload is flagged synthetic"
+    assert body["synthetic_tables"] == []
+
+
 def test_a_table_missing_required_columns_cannot_claim_a_role(client):
     upload = _post(client, "notes.csv", b"a,b\n1,2\n").json()
     response = client.post(
@@ -291,6 +335,18 @@ def test_a_file_already_on_disk_can_be_registered_without_copying(client, sandbo
     # Forgetting a linked upload must never delete the original.
     client.delete(f"/api/uploads/{body['id']}")
     assert original.exists()
+
+
+def test_a_relative_link_path_is_read_from_the_data_directory(client, sandbox):
+    """Not from the process's working directory, which is `backend/` under
+    `just dev` and `/app` in the container — the same string would find a
+    different file in each."""
+    (sandbox / "data" / "sv_output").mkdir(parents=True)
+    (sandbox / "data" / "sv_output" / "merged.vcf").write_bytes(VCF)
+
+    body = client.post("/api/uploads/link", json={"path": "sv_output/merged.vcf"})
+    assert body.status_code == 201, body.text
+    assert body.json()["inspect"]["n_samples"] == 2
 
 
 def test_linking_refuses_a_path_outside_the_permitted_roots(client, tmp_path):
