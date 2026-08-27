@@ -1,35 +1,50 @@
 #! /usr/bin/env python3
 
 # Usage: python sv_trfcaller.py <input.vcf> <output.tsv>
-# Usage with merged SV: python sv_trfcaller.py HPRC_SV.survivor.ins.vcf HPRC_SV.survivor.ins.trf.tsv
+# Usage with merged SV: python sv_trfcaller.py -i HPRC_SV.survivor.ins.vcf -o HPRC_SV.survivor.ins.trf.tsv
 # Usage with example merged SV: python sv_trfcaller.py ../../data/sv_output/survivor_multisample_vcf/first_500_INS.vcf ../../data/sv_output/survivor_multisample_vcf/first_500_INS.trf.tsv
 
 import sys
 import os
 
 import pytrf
-import parasail
 import numpy as np
 
 from cyvcf2 import VCF
 from tqdm   import tqdm
 from contextlib import contextmanager
 
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
+import argparse
 
-matrix = parasail.matrix_create("ACGT", 2, -1)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run TRF on insertions from a VCF file and output results to a TSV file.")
+    parser.add_argument("-i", "--input", help="Input VCF file containing structural variants.", required=True)
+    parser.add_argument("-o", "--output", help="Output TSV file to write TRF results.", required=True)
 
-vcf     = VCF(sys.argv[1])
-out     = open(sys.argv[2], 'w')
-print('chrom', 'ins_coord', 'SVID', 'depth', 'insert_size', 'sample', 'rep_start', 'rep_end', 'motif', 'purity', 'motif_length', 'rep_length', 'rep_units', sep='\t', file=out)
-samples = vcf.samples
+    sv_options = parser.add_argument_group("SV Options")
+    sv_options.add_argument("--min_sv_length", type=int, default=50, help="Minimum length of structural variants to consider (default: 50).")
+    sv_options.add_argument("--max_sv_length", type=int, default=10000, help="Maximum length of structural variants to consider (default: 10000).")
 
-sv_repeats = {}
+    pytrf_options = parser.add_argument_group("pyTRF Options")
+    pytrf_options.add_argument("--min_motif", type=int, default=1, help="Minimum motif length for TRF (default: 1).")
+    pytrf_options.add_argument("--max_motif", type=int, default=500, help="Maximum motif length for TRF (default: 100).")
+    pytrf_options.add_argument("--min_identity", type=float, default=0.8, help="Minimum identity for TRF (default: 0.8).")
+    pytrf_options.add_argument("--min_rep_units", type=int, default=3, help="Minimum repeat number for seed (default: 3).")
+    pytrf_options.add_argument("--min_rep_length", type=int, default=10, help="Minimum length for seed (default: 10).")
+    pytrf_options.add_argument("--max_rep_length", type=int, default=10000, help="Maximum length for seed (default: 10000).")
+    
+    return parser.parse_args()
+
 
 @contextmanager
 def suppress_pysam_output():
+    """
+    Suppress output from pysam (stdout and stderr) within the context.
+    This is useful when calling functions that may produce unwanted output to the console.
+    Usage:
+        with suppress_pysam_output():
+            # code that calls pysam functions
+    """
     # Save original file descriptors
     original_stdout_fd = sys.stdout.fileno()
     original_stderr_fd = sys.stderr.fileno()
@@ -67,47 +82,71 @@ def suppress_pysam_output():
         os.close(save_stdout_fd)
         os.close(save_stderr_fd)
 
+def run_trf_on_insertions(args):
+    """
+    
+    """
+    vcf = VCF(args.input)
+    out = open(args.output, 'w')
+    print('chrom', 'ins_coord', 'SVID', 'depth', 'insert_size', 'sample', 'rep_start', 'rep_end', 'motif', 'purity',
+          'motif_length', 'rep_length', 'rep_units', sep='\t', file=out)
+    samples = vcf.samples
+    for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
+        if variant.is_sv and variant.INFO.get("SVTYPE") == "INS":
+            ID    = variant.ID
+            REF   = variant.REF
+            if variant.ALT is None or len(variant.ALT) == 0:
+                continue
+            ALT   = variant.ALT[0][len(variant.REF):]  # Get the inserted sequence
+            DR    = variant.format('DR')    # depth of reads supporting the reference allele
+            DV    = variant.format('DV')    # depth of reads supporting the variant allele
+            if variant.INFO.get("SVLEN") is None:
+                continue
+            LEN   = variant.INFO.get("SVLEN")  # length of the insertion
+            if LEN < args.min_sv_length or LEN > args.max_sv_length:
+                continue
 
-for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
-    if variant.is_sv and variant.INFO.get("SVTYPE") == "INS":
-        ID    = variant.format('ID')
-        RAL   = variant.format('RAL')
-        AAL   = variant.format('AAL')
-        DR    = variant.format('DR')
-        LEN   = variant.format('LN')
+            for s, sample in enumerate(samples):
+                if ID[s] == 'NaN': continue
+                var_depth = DV[s][0]
+                ref_depth = DR[s][0]
 
-        for s, sample in enumerate(samples):
-            if ID[s] == 'NaN': continue
-            ALT = AAL[s][len(RAL):]
-            depth = DR[s][0]
-            insert_size = LEN[s][0] if (type(LEN[s]) == list or type(LEN[s]) == np.ndarray) else LEN[s]
+                n_trf = 0
+                trf_repeats    = []
 
-            n_trf = 0
-            trf_repeats    = []
+                with suppress_pysam_output():
+                    for repeat in pytrf.ATRFinder(sample, ALT, min_motif=args.min_motif,
+                                                               max_motif=args.max_motif,
+                                                               min_identity=args.min_identity,
+                                                               min_seedrep=args.min_rep_units,
+                                                               min_seedlen=args.min_rep_length,
+                                                               max_extend=args.max_rep_length):
 
-            with suppress_pysam_output():
-                for repeat in pytrf.ATRFinder(sample, ALT, min_motif=1, max_motif=100, min_identity=0.8):
-                    repeat    = repeat.as_string().split('\t')
-                    rep_start = int(repeat[1]) - 1
-                    rep_end   = int(repeat[2])
-                    motif     = repeat[3]
-                    motif_length = len(motif)
+                        rep_start = repeat.start - 1
+                        rep_end   = repeat.end
+                        motif     = repeat.motif
+                        motif_length = len(motif)
 
-                    rep_length = rep_end - rep_start
-                    rep_units  = rep_length // motif_length + 2
-                    query      = motif*(rep_units)
+                        rep_length = rep_end - rep_start
+                        rep_units  = rep_length // motif_length
+                        purity       = float(repeat.identity)/100
 
-                    result = parasail.sg_trace_scan_16(ALT[rep_start:rep_end], query, 5, 1, matrix)
+                        trf_repeats.append([variant.CHROM, variant.POS, ID, f'{var_depth},{ref_depth}', LEN, sample, rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
+                        n_trf += 1
 
-                    cigar_bytes  = result.cigar.decode
-                    cigar_str    = cigar_bytes.decode()
-                    cigar_simple = cigar_str.replace('=', 'M')
-                    purity       = float(repeat[15])/100
+                for rep in trf_repeats:
+                    print(*rep, sep='\t', file=out)
 
-                    trf_repeats.append([variant.CHROM, variant.POS, ID[s], depth, insert_size, sample, rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
-                    n_trf += 1
+    out.close()
 
-            for rep in trf_repeats:
-                print(*rep, sep='\t', file=out)
 
-out.close()
+if __name__ == "__main__":
+    args = parse_args()
+    input_vcf = args.input
+    output_tsv = args.output
+
+    if not input_vcf or not output_tsv:
+        print("Error: Both input VCF and output TSV file paths are required.")
+        sys.exit(1)
+
+    run_trf_on_insertions(args)
