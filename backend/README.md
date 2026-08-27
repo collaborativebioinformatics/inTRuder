@@ -66,6 +66,12 @@ The Anthropic path is the tuned one: adaptive thinking with a summarized display
 | `GET /api/strchive/matches` | Our candidates that landed on a disease locus |
 | `POST /api/chat` | SSE stream of one agent turn |
 
+`/api/loci` accepts filters that need columns only the screened callset supplies
+(`novelty`, `platform_agreement`, `min_insertion_purity`, `sample`,
+`strchive_status`). Against a table lacking them the filter is **not** applied and
+comes back in `ignored_filters`; the frontend draws it struck-through. A control
+that silently matches everything reads as a result, which is worse than an error.
+
 ## The agent
 
 A prebuilt LangGraph ReAct graph over four tools:

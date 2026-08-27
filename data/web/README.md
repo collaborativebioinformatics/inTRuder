@@ -75,3 +75,7 @@ Doing it this way buys three things: the column documentation is reviewed
 alongside the pipeline step that will fill it, the interface can render its own
 "not run yet" state instead of an empty table that reads as a negative finding,
 and the day the file appears the whole surface lights up with no code change.
+
+The interface holds up its end of the bargain: a filter whose column does not
+exist yet comes back in `ignored_filters` and is drawn struck-through, so a
+control never silently matches everything.

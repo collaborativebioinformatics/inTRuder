@@ -97,6 +97,39 @@ def _require_loci() -> None:
         )
 
 
+#: Filters that need a column the demo fixtures do not have. Each maps to the
+#: column the screened callset supplies; until it exists the filter is reported
+#: back as ignored rather than silently matching everything.
+_SCREENED_ONLY = {
+    "novelty": "novelty",
+    "platform_agreement": "ucsc_novelty",
+    "min_insertion_purity": "insertion_purity",
+    "sample": "sample",
+    "strchive_status": "strchive_status",
+}
+
+
+def _columns(table: str) -> set[str]:
+    dataset = registry.datasets.get(table)
+    return set(dataset.columns) if dataset and dataset.available else set()
+
+
+def _agreement_clause(mode: str) -> str:
+    """Where the two catalogs stand relative to each other.
+
+    'both' means both call it novel — the case worth trusting, because UCSC and
+    TRExplorer were compiled separately.
+    """
+    novel = "{col} <> 'known'"
+    if mode == "both":
+        return f"({novel.format(col='ucsc_novelty')} AND {novel.format(col='trexplorer_novelty')})"
+    if mode == "ucsc_only":
+        return f"({novel.format(col='ucsc_novelty')} AND trexplorer_novelty = 'known')"
+    if mode == "trexplorer_only":
+        return f"(ucsc_novelty = 'known' AND {novel.format(col='trexplorer_novelty')})"
+    return "(ucsc_novelty = 'known' AND trexplorer_novelty = 'known')"
+
+
 def _filter_clause(
     novel_only: bool,
     chrom: str | None,
@@ -106,9 +139,27 @@ def _filter_clause(
     min_purity: float | None,
     disease_gene_only: bool,
     gene: str | None,
-) -> tuple[str, list[Any]]:
+    novelty: str | None = None,
+    platform_agreement: str | None = None,
+    min_insertion_purity: float | None = None,
+    sample: str | None = None,
+    strchive_status: str | None = None,
+    available: set[str] | None = None,
+) -> tuple[str, list[Any], list[str]]:
+    """Build the WHERE clause, and report which filters the table cannot honour."""
+    available = available if available is not None else set()
     clauses: list[str] = []
     params: list[Any] = []
+    ignored: list[str] = []
+
+    def needs(name: str) -> bool:
+        """True when this filter can actually run against the current table."""
+        column = _SCREENED_ONLY[name]
+        if column in available:
+            return True
+        ignored.append(name)
+        return False
+
     if novel_only:
         clauses.append("novel")
     if chrom:
@@ -131,7 +182,24 @@ def _filter_clause(
     if gene:
         clauses.append("gene = ?")
         params.append(gene)
-    return ("WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+    if novelty and needs("novelty"):
+        clauses.append("novelty = ?")
+        params.append(novelty)
+    if platform_agreement and needs("platform_agreement"):
+        clauses.append(_agreement_clause(platform_agreement))
+    if min_insertion_purity is not None and needs("min_insertion_purity"):
+        clauses.append("insertion_purity >= ?")
+        params.append(min_insertion_purity)
+    if sample and needs("sample"):
+        clauses.append("sample = ?")
+        params.append(sample)
+    if strchive_status and needs("strchive_status"):
+        clauses.append("strchive_status = ?")
+        params.append(strchive_status)
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params, ignored
 
 
 # Chromosomes sort as strings otherwise, which puts chr10 before chr2.
@@ -160,6 +228,13 @@ def loci(
     min_purity: float | None = None,
     disease_gene_only: bool = False,
     gene: str | None = None,
+    novelty: str | None = Query(None, pattern="^(known|novel_motif|novel_locus)$"),
+    platform_agreement: str | None = Query(
+        None, pattern="^(both|ucsc_only|trexplorer_only|neither)$"
+    ),
+    min_insertion_purity: float | None = None,
+    sample: str | None = None,
+    strchive_status: str | None = None,
     limit: int = Query(300, le=2000),
     offset: int = 0,
     include_strips: bool = False,
@@ -170,11 +245,17 @@ def loci(
     With `include_strips`, also returns the segment structure of one
     representative (median-length) allele per locus, so the catalog can render
     real motif barcodes rather than summary bars.
+
+    Filters needing a column the current table lacks come back in
+    `ignored_filters` instead of being dropped on the floor — a control that
+    silently matches everything reads as a result, which is worse than an error.
     """
     _require_loci()
-    where, params = _filter_clause(
+    where, params, ignored = _filter_clause(
         novel_only, chrom, motif_class, min_motif_len,
         min_samples, min_purity, disease_gene_only, gene,
+        novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
+        available=_columns("demo_loci"),
     )
     con = registry.cursor()
     total = con.execute(f"SELECT count(*) FROM demo_loci {where}", params).fetchone()[0]
@@ -226,6 +307,7 @@ def loci(
         "offset": offset,
         "loci": rows,
         "strips": strips,
+        "ignored_filters": ignored,
     }
 
 
