@@ -34,7 +34,6 @@ process ANNOTSV {
         -bcftools       "${params.bcftools_path}" \\
         -annotationsDir AnnotSV \\
         ${cg_arg} \\
-        ${ext.args ?: ''} \\
         2>&1 | tee "${meta.id}.annotsv.log"
         
     # Check if the output was successfully created
