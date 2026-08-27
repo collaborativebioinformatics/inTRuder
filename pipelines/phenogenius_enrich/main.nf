@@ -31,6 +31,11 @@ process PHENOGENIUS_ENRICH {
     fi
     mkdir -p pg_runtime/site
     tar -xzf "${phenogenius_bundle}" -C pg_runtime
+    # The source bundle has no Git checkout or installed distribution metadata;
+    # provide the metadata queried by PhenoGenius' Click version callback.
+    mkdir -p pg_runtime/site/phenogenius_cli-1.1.3.dist-info
+    printf 'Metadata-Version: 2.1\nName: phenogenius_cli\nVersion: 1.1.3\n' \\
+      > pg_runtime/site/phenogenius_cli-1.1.3.dist-info/METADATA
     python3 -m pip install --disable-pip-version-check --quiet --target pg_runtime/site \\
       'pandas>=1.3' 'ujson>=5.4' 'numpy>=1.24,<2.1' 'scikit-learn>=1.5.1' \\
       'pandarallel>=1.6.5' 'click>=8.1.7' 'pyarrow>=17,<18' 'pronto>=2.5.8'
