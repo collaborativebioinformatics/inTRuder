@@ -65,6 +65,9 @@ dev = [
     "ruff>=0.6",
     "pytest>=8",
 ]
+dx = [
+    "dxpy>=0.412.0",
+]
 
 [tool.uv]
 # umap-learn pulls numba, which pins llvmlite tightly. llvmlite stopped shipping
