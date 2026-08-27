@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 
 import { CatalogView } from "@/components/CatalogView";
 import { Chat } from "@/components/Chat";
+import { ClassBreakdown } from "@/components/ClassBreakdown";
 import { FilterBar } from "@/components/FilterBar";
 import { Funnel } from "@/components/Funnel";
+import { Inspector, type Selection } from "@/components/Inspector";
 import { LocusView } from "@/components/LocusView";
 import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -36,46 +38,6 @@ import { ViewProvider, useView } from "@/lib/viewStore";
  * object. The routes exist so the surfaces are linkable and bookmarkable; they
  * seed that object and then get out of the way.
  */
-
-function ClassBreakdown({ summary }: { summary: Summary }) {
-  const max = Math.max(...summary.by_class.map((row) => row.n), 1);
-  return (
-    <section aria-labelledby="class-heading" className="space-y-2">
-      <h2 id="class-heading" className="text-sm font-medium text-ink">
-        Novel fraction by motif class
-      </h2>
-      <ul className="space-y-1.5">
-        {summary.by_class.map((row) => (
-          <li key={row.motif_class} className="space-y-1">
-            <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="text-ink-secondary">{row.motif_class}</span>
-              <span className="tabular text-ink-muted">
-                <span style={{ color: "var(--novel)" }}>{row.novel}</span> / {row.n}
-              </span>
-            </div>
-            <div
-              className="relative h-1.5 overflow-hidden rounded-full"
-              style={{ background: "var(--hairline)" }}
-            >
-              <div
-                className="absolute inset-y-0 left-0 rounded-full"
-                style={{ width: `${(row.n / max) * 100}%`, background: "var(--known)" }}
-              />
-              <div
-                className="absolute inset-y-0 left-0 rounded-full"
-                style={{ width: `${(row.novel / max) * 100}%`, background: "var(--novel)" }}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-      <p className="text-[11px] leading-relaxed text-ink-muted">
-        Existing catalogs are built from reference-anchored short-read panels, so
-        coverage falls off as motifs get longer. The gap is what this pipeline is for.
-      </p>
-    </section>
-  );
-}
 
 /** Left rail on the disease-locus surface — orientation, not cohort stats. */
 function StrchiveRail({ summary }: { summary: StrchiveSummary | null }) {
@@ -167,6 +129,10 @@ function WorkspaceInner() {
   const [data, setData] = useState<LociResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The block pinned out of a barcode. Deliberately not part of the view store:
+  // it is what one person clicked, not a description of the data on screen, so
+  // the agent has no business setting it and it does not belong in a URL.
+  const [selection, setSelection] = useState<Selection | null>(null);
 
   const page = filters.page ?? "catalog";
 
@@ -205,6 +171,10 @@ function WorkspaceInner() {
   }, [filters, page]);
 
   const focused = filters.focus_locus_id;
+
+  // A block belongs to the locus it was pinned from; keeping it while the page
+  // moves to another one would leave a panel of numbers about somewhere else.
+  useEffect(() => setSelection(null), [focused]);
 
   return (
     <div className="flex h-full flex-col">
@@ -248,6 +218,12 @@ function WorkspaceInner() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
         <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
+          {/* The pinned block goes at the top of the rail, above the cohort
+              context: it is the most recent thing the reader asked for, and the
+              rail is the one column that never moves under them. */}
+          {page === "catalog" && selection && (
+            <Inspector selection={selection} onClear={() => setSelection(null)} />
+          )}
           {page === "strchive" ? (
             <StrchiveRail summary={strchive} />
           ) : summary ? (
@@ -283,7 +259,11 @@ function WorkspaceInner() {
           ) : focused ? (
             <div className="space-y-3 pt-4">
               <FilterBar ignored={data?.ignored_filters ?? []} />
-              <LocusView locusId={focused} />
+              <LocusView
+                locusId={focused}
+                selection={selection}
+                onSelect={setSelection}
+              />
             </div>
           ) : (
             <>
@@ -293,6 +273,7 @@ function WorkspaceInner() {
                 strips={data?.strips ?? {}}
                 total={data?.total ?? 0}
                 loading={loading}
+                sort={data?.sort}
               />
             </>
           )}

@@ -38,6 +38,8 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   if (filters.min_insertion_purity != null) {
     params.set("min_insertion_purity", String(filters.min_insertion_purity));
   }
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.sort_dir) params.set("sort_dir", filters.sort_dir);
   for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
   return params.toString();
 }

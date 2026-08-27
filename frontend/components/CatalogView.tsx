@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
+import { MotifText } from "@/components/MotifText";
 import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
-import { formatBp, formatPos, shortMotif } from "@/lib/palette";
-import { NOVELTY_LABELS, type Locus, type Segment } from "@/lib/types";
+import { SortControl } from "@/components/SortControl";
+import { formatBp, formatPos } from "@/lib/palette";
+import { NOVELTY_LABELS, type Locus, type Segment, type SortKey } from "@/lib/types";
 import { useView } from "@/lib/viewStore";
 
 /**
@@ -28,11 +30,14 @@ export function CatalogView({
   strips,
   total,
   loading,
+  sort,
 }: {
   loci: Locus[];
   strips: Record<string, Segment[]>;
   total: number;
   loading: boolean;
+  /** The ordering the API actually applied — see LociResponse.sort. */
+  sort?: SortKey;
 }) {
   const { focusLocus } = useView();
   const [hover, setHover] = useState<{ segment: Segment; x: number; y: number } | null>(null);
@@ -58,13 +63,16 @@ export function CatalogView({
 
   return (
     <section aria-labelledby="catalog-heading" className="flex min-h-0 flex-col">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 pb-3">
-        <h2 id="catalog-heading" className="text-sm font-medium text-ink">
-          Candidate loci{" "}
-          <span className="tabular font-normal text-ink-muted">
-            {loci.length.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
-          </span>
-        </h2>
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pb-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h2 id="catalog-heading" className="text-sm font-medium text-ink">
+            Candidate loci{" "}
+            <span className="tabular font-normal text-ink-muted">
+              {loci.length.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
+            </span>
+          </h2>
+          <SortControl applied={sort} />
+        </div>
 
         <div className="flex items-center gap-4 text-xs text-ink-secondary">
           <span className="flex items-center gap-1.5">
@@ -103,12 +111,22 @@ export function CatalogView({
             {loci.map((locus) => {
               const segments = strips[locus.locus_id] ?? [];
               return (
-                <li key={locus.locus_id}>
+                <li key={locus.locus_id} className="group relative">
+                  {/* The row's click target sits *behind* its content rather
+                      than around it, so the motif can be its own button without
+                      nesting one control inside another. The content layer is
+                      pointer-transparent, which lets hover and click fall
+                      through to the row; the two pieces that want a pointer of
+                      their own — the motif and the barcode — take it back. */}
                   <button
                     type="button"
                     onClick={() => focusLocus(locus.locus_id)}
-                    className="grid w-full grid-cols-[minmax(9rem,1fr)_2fr_minmax(7rem,auto)] items-center gap-4 px-3 py-2 text-left transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--motif-1)]"
-                  >
+                    aria-label={`Open ${formatPos(locus.chrom, locus.pos)} — ${
+                      NOVELTY_LABELS[noveltyOf(locus)]
+                    } ${locus.motif_class}, ${formatBp(locus.median_len)}`}
+                    className="absolute inset-0 transition-colors group-hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--motif-1)]"
+                  />
+                  <div className="pointer-events-none relative grid w-full grid-cols-[minmax(9rem,1fr)_2fr_minmax(7rem,auto)] items-center gap-4 px-3 py-2 text-left">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="tabular truncate text-xs text-ink">
@@ -133,12 +151,23 @@ export function CatalogView({
                           trexplorerEdits={locus.trexplorer_motif_edits}
                         />
                       </div>
-                      <div className="tabular truncate text-[11px] text-ink-muted">
-                        {shortMotif(locus.motif)} ×{locus.motif_len}bp · {locus.motif_class}
+                      <div className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-ink-muted">
+                        <MotifText
+                          motif={locus.motif}
+                          className="pointer-events-auto"
+                          label={`motif at ${formatPos(locus.chrom, locus.pos)}`}
+                        />
+                        <span className="tabular">
+                          ×{locus.motif_len}bp · {locus.motif_class}
+                        </span>
                       </div>
                     </div>
 
+                    {/* The strip takes its own pointer so blocks can raise
+                        their tooltip; the row's meaning still applies to it. */}
                     <div
+                      className="pointer-events-auto"
+                      onClick={() => focusLocus(locus.locus_id)}
                       style={{
                         width: `${Math.max(2, Math.sqrt((rowLength.get(locus.locus_id) ?? 1) / globalMax) * 100)}%`,
                       }}
@@ -155,12 +184,8 @@ export function CatalogView({
                               ? "var(--known)"
                               : "var(--novel)"
                         }
-                        onHover={(segment, event) =>
-                          setHover(
-                            segment && event
-                              ? { segment, x: event.clientX, y: event.clientY }
-                              : null,
-                          )
+                        onHover={(segment, at) =>
+                          setHover(segment && at ? { segment, ...at } : null)
                         }
                       />
                     </div>
@@ -186,7 +211,7 @@ export function CatalogView({
                         {locus.n_samples}
                       </span>
                     </div>
-                  </button>
+                  </div>
                 </li>
               );
             })}

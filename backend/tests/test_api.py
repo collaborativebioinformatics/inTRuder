@@ -162,6 +162,71 @@ def test_default_sort_is_genomic_not_lexicographic(client):
     assert chroms.index("chr2") < chroms.index("chr10")
 
 
+@pytest.mark.parametrize(
+    ("sort", "column"),
+    [
+        ("size", "median_len"),
+        ("support", "n_samples"),
+        ("motif_len", "motif_len"),
+        ("purity", "mean_purity"),
+    ],
+)
+def test_each_sort_orders_by_its_own_column_in_both_directions(client, sort, column):
+    for sort_dir, ordered in (("desc", True), ("asc", False)):
+        loci = client.get(
+            "/api/loci", params={"limit": 50, "sort": sort, "sort_dir": sort_dir}
+        ).json()["loci"]
+        values = [row[column] for row in loci]
+        assert values == sorted(values, reverse=ordered), (sort, sort_dir)
+
+
+def test_sorting_by_repeat_arrays_matches_the_strip_the_row_draws(client):
+    """`arrays` orders by how many repeat blocks are in the *representative*
+    allele, which is the one the catalog row renders.
+
+    Sorting by a number the row does not show would be a control with no visible
+    effect, so the count and the strip come from one definition of that allele.
+    """
+    for sort_dir, ordered in (("desc", True), ("asc", False)):
+        body = client.get(
+            "/api/loci",
+            params={
+                "limit": 40,
+                "sort": "arrays",
+                "sort_dir": sort_dir,
+                "include_strips": True,
+            },
+        ).json()
+        assert body["sort"] == "arrays"
+        drawn = [
+            sum(1 for s in body["strips"][row["locus_id"]] if s["seg_type"] == "repeat")
+            for row in body["loci"]
+        ]
+        assert drawn == sorted(drawn, reverse=ordered), sort_dir
+
+
+def test_sort_reports_the_order_actually_applied(client):
+    """The list must not claim an order it is not in.
+
+    Direction defaults per key rather than globally — nobody asking to sort by
+    size wants the smallest first, and nobody asking for position wants to start
+    at the end of chrX.
+    """
+    assert client.get("/api/loci", params={"limit": 1}).json()["sort_dir"] == "asc"
+    body = client.get("/api/loci", params={"limit": 1, "sort": "size"}).json()
+    assert (body["sort"], body["sort_dir"]) == ("size", "desc")
+    assert client.get("/api/loci", params={"limit": 1, "sort": "nope"}).status_code == 422
+
+
+def test_sorting_does_not_change_which_loci_exist(client):
+    """Ordering is not filtering: every sort returns the same population."""
+    counts = {
+        sort: client.get("/api/loci", params={"limit": 1, "sort": sort}).json()["total"]
+        for sort in ("position", "novel", "size", "support", "arrays", "motif_len", "purity")
+    }
+    assert len(set(counts.values())) == 1, counts
+
+
 def test_locus_detail_returns_all_carriers(client):
     locus_id = client.get("/api/loci", params={"limit": 1}).json()["loci"][0]["locus_id"]
     body = client.get(f"/api/loci/{locus_id}").json()

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { CopyEstimate, CopyNumberRange } from "@/components/CopyNumberRange";
 import { NoveltyBadge, PlatformAgreement } from "@/components/NoveltyBadge";
 import { fetchStrchiveLoci, fetchStrchiveMatches, fetchStrchiveSummary } from "@/lib/api";
-import { formatPos, shortMotif } from "@/lib/palette";
+import { MotifText } from "@/components/MotifText";
+import { formatPos } from "@/lib/palette";
 import {
   ALLELE_COLORS,
   cleanProse,
@@ -88,10 +89,14 @@ function MotifClasses({ locus }: { locus: StrchiveLocus }) {
             {group.motifs.map((motif) => (
               <span
                 key={motif}
-                className="tabular rounded-sm px-1.5 py-0.5 text-[11px]"
+                className="rounded-sm px-1.5 py-0.5 text-[11px]"
                 style={{ background: "var(--surface-raised)", color: group.color }}
               >
-                {shortMotif(motif, 14)}
+                <MotifText
+                  motif={motif}
+                  max={14}
+                  label={`${group.label.toLowerCase()} motif`}
+                />
               </span>
             ))}
           </div>
