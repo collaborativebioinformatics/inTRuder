@@ -24,7 +24,24 @@ def client():
 def test_demo_datasets_load(client):
     body = client.get("/api/health").json()
     assert set(body["datasets"]["available"]) >= {"demo_loci", "demo_segments"}
-    assert body["datasets"]["unavailable"] == []
+
+
+def test_a_manifest_without_its_file_degrades_rather_than_breaking(client):
+    """Manifests are committed ahead of the data they describe.
+
+    `strchive-calls.yaml` points at the screened callset the pipeline will
+    produce; until that exists the dataset must report itself unavailable, with a
+    usable reason, while everything else keeps serving.
+    """
+    body = client.get("/api/health").json()
+    unavailable = {row["name"]: row["error"] for row in body["datasets"]["unavailable"]}
+    for name, error in unavailable.items():
+        assert error, f"{name} is unavailable without saying why"
+    assert body["status"] == "ok"
+    assert client.get("/api/summary").status_code == 200
+
+
+
 
 
 def test_summary_funnel_is_monotonically_narrowing(client):
