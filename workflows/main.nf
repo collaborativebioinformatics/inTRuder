@@ -31,9 +31,15 @@ process FIND_TRS {
     path "trf_output.tsv"
 
     script:
-
+    // Calls the copy of sv_trfcaller.py baked into the Docker image at
+    // build time (see Dockerfile's COPY instruction) - NOT the host
+    // filesystem copy in src/python/. This only resolves correctly
+    // when run with -profile docker.
+    //
+    // sv_trfcaller.py takes POSITIONAL args, not flags:
+    //   python sv_trfcaller.py <input.vcf> <output.tsv>
     """
-    python3 ${projectDir}/../src/python/sv_trfcaller.py --vcf ${vcf_file} --out trf_output.tsv
+    python3 /opt/scripts/sv_trfcaller.py ${vcf_file} trf_output.tsv
     """
 }
 
