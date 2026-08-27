@@ -40,7 +40,7 @@ COORDINATES
 Both ``simpleRepeat`` and the BED catalogues are 0-based half-open, and that is
 what the normalised schema uses. VCF ``POS`` is 1-based; mixing the two silently
 shifts every interval by one base, so conversion happens once, at the edges --
-see :func:`novelty.catalog.to_internal`.
+see :func:`trcore.coords.to_internal`.
 """
 
 from __future__ import annotations
@@ -54,7 +54,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+from trcore.coords import normalize_chrom
+from trcore.motifs import (
+    DEFAULT_EQUIVALENCE,
+    MotifEquivalence,
+    canonical_motif,
+)
 
 # The normalised schema every reader produces.
 CATALOG_COLUMNS = ("chrom", "start", "end", "motif")
@@ -92,14 +100,23 @@ def default_cache() -> Path:
 # contigs
 # --------------------------------------------------------------------------- #
 
-def normalize_chrom(chrom: str) -> str:
-    """Map a contig name onto UCSC style (``1`` -> ``chr1``, ``MT`` -> ``chrM``)."""
-    name = str(chrom).strip()
-    if not name.startswith("chr"):
-        name = "chr" + name
-    if name in ("chrMT", "chrmt"):
-        name = "chrM"
-    return name
+def canonical_motifs(values,
+                     equivalence: MotifEquivalence = DEFAULT_EQUIVALENCE) -> np.ndarray:
+    """Vectorised :func:`canonical_motif` over an array-like of motif strings.
+
+    Catalogues repeat their motifs heavily (hg38 ``simpleRepeat`` has 1.05M rows
+    but only 516k distinct sequences), so each distinct string is canonicalised
+    exactly once and the result is broadcast back through the factor codes.
+    Returns an object-dtype array so motifs of different lengths are not padded.
+    """
+    series = pd.Series(values, dtype=object).fillna("")
+    codes, uniques = pd.factorize(series, sort=False)
+    if len(uniques) == 0:
+        return np.empty(len(series), dtype=object)
+    table = np.empty(len(uniques) + 1, dtype=object)
+    table[:-1] = [canonical_motif(str(u), equivalence) for u in uniques]
+    table[-1] = ""                      # factorize marks missing values as -1
+    return table[np.where(codes < 0, len(uniques), codes)]
 
 
 def normalize_chroms(values) -> pd.Series:
