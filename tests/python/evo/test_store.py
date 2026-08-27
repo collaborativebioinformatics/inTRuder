@@ -117,7 +117,7 @@ def test_float16_overflow_is_named_per_layer_and_recorded(tmp_path, capsys):
 
     out = tmp_path / "over.npz"
     save(str(out), vectors, windows, ["blocks.26", "blocks.31"],
-         list(SEGMENTS := ("left", "junction_5p", "repeat", "junction_3p", "right")))
+         ["left", "junction_5p", "repeat", "junction_3p", "right"])
 
     err = capsys.readouterr().err
     assert "blocks.31" in err and "100.0%" in err

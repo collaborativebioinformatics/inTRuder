@@ -49,7 +49,7 @@ from evo.embeddings.extract import (
     LAYER_SETS,
     SEGMENT_POOLING,
     reverse_complement,
-    reverse_span,
+    segment_spans,
 )
 from evo.embeddings.windows import SEGMENTS, Window
 
@@ -114,21 +114,12 @@ class _Stage:
 def spans_for(window: Window, reverse: bool) -> list[tuple[int, int, str]]:
     """``(start, end, pooling)`` per segment, on the requested strand.
 
-    Mapping spans onto the reverse strand is the one part of this that is easy
-    to get wrong, so it is done in exactly one place and both the host and
-    device variants call it -- otherwise an equivalence check between them could
-    pass while both are wrong in the same way.
+    Delegates to :func:`evo.embeddings.extract.segment_spans` rather than
+    repeating it: the production paths use that one, and a profiler with its own
+    copy could report agreement between two variants that were both wrong in the
+    same way -- which is precisely what the comparison is supposed to rule out.
     """
-    length = len(window.sequence)
-    out = []
-    for name in SEGMENTS:
-        span = window.segments[name]
-        start, end = (
-            reverse_span(span.start, span.end, length) if reverse
-            else (span.start, span.end)
-        )
-        out.append((start, end, SEGMENT_POOLING[name]))
-    return out
+    return segment_spans(window, SEGMENTS, SEGMENT_POOLING, reverse=reverse)
 
 
 def pooled_on_host(tokens_by_layer: dict[str, np.ndarray], spans) -> np.ndarray:

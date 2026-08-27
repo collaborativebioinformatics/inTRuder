@@ -139,6 +139,53 @@ class Embedder(Protocol):
         """Return ``{layer: array of shape (len(sequence), width)}``."""
 
 
+class PooledEmbedder(Protocol):
+    """An :class:`Embedder` that can also pool spans without leaving the device.
+
+    Optional, and checked for by :func:`extract_window` rather than required,
+    because the whole point of :class:`Embedder` is that a fake with no GPU can
+    stand in for Evo 2. A fake has nothing to gain here -- its "device" is the
+    host -- so it simply does not implement this and gets the ordinary path.
+    """
+
+    def pooled(
+        self,
+        sequence: str,
+        layers: Sequence[str],
+        spans: Sequence[tuple[int, int, str]],
+    ) -> np.ndarray:
+        """Return ``(len(layers), len(spans), width)``, pooled on the device."""
+
+
+def segment_spans(
+    window: Window,
+    segments: Sequence[str],
+    pooling: dict[str, str],
+    reverse: bool = False,
+) -> list[tuple[int, int, str]]:
+    """``(start, end, how)`` per segment, on the requested strand.
+
+    Mapping a span onto the reverse strand is the one part of this that is easy
+    to get wrong, so it lives in one place that every path calls -- the host
+    path, the device path, and the profiler that compares them. Two
+    implementations could otherwise agree with each other while both being
+    wrong, which is the failure an equivalence check cannot catch.
+    """
+    length = len(window.sequence)
+    spans = []
+    for name in segments:
+        span = window.segments[name]
+        how = pooling.get(name, "mean")
+        if how not in POOLINGS:
+            raise ValueError(f"unknown pooling {how!r}, expected one of {POOLINGS}")
+        start, end = (
+            reverse_span(span.start, span.end, length) if reverse
+            else (span.start, span.end)
+        )
+        spans.append((start, end, how))
+    return spans
+
+
 class Evo2Embedder:
     """The real thing. Imports ``evo2`` lazily so this module stays importable
     on machines that cannot install it (no CUDA, or Python 3.13)."""
@@ -180,6 +227,58 @@ class Evo2Embedder:
             name: embeddings[name][0].to(torch.float32).cpu().numpy()
             for name in layers
         }
+
+    def _forward(self, sequence: str, layers: Sequence[str]):
+        torch = self._torch
+        ids = torch.tensor(
+            self._model.tokenizer.tokenize(sequence), dtype=torch.int
+        ).unsqueeze(0).to(self._device)
+        with torch.inference_mode():
+            _, embeddings = self._model(
+                ids, return_embeddings=True, layer_names=list(layers)
+            )
+        return embeddings
+
+    def pooled(
+        self,
+        sequence: str,
+        layers: Sequence[str],
+        spans: Sequence[tuple[int, int, str]],
+    ) -> np.ndarray:
+        """Pool on the GPU, so only the pooled vectors cross PCIe.
+
+        Measured on an L4 (2026-08-27, evo.profiler, 7 layers): this removes
+        0.92 of the 7.89 s a window used to take, which is 12% of the run and
+        about two hours of the full callset. ``__call__`` moves the entire
+        ``(8192, 4096)`` token grid to the host as float32 -- 134 MB per layer
+        per pass -- for :func:`pool` to reduce it to five vectors; this sends
+        ``len(spans) x width`` per layer instead, around 80 KB.
+
+        ``mean(dtype=torch.float32)`` accumulates in fp32 without materialising
+        an upcast copy of the slice, so the vectors match the host path to
+        2.7e-4 on the ``finite`` layer set -- float16 storage noise. They do
+        *not* match on ``blocks.30``/``blocks.31``, whose activations are large
+        enough that the two reduction orders diverge outright; those are the
+        layers that cannot be stored anyway, and ``LAYER_SETS["finite"]`` drops
+        them.
+        """
+        torch = self._torch
+        embeddings = self._forward(sequence, layers)
+        out = []
+        for name in layers:
+            tokens = embeddings[name][0]
+            vectors = []
+            for start, end, how in spans:
+                if end <= start:
+                    vectors.append(torch.zeros(tokens.shape[-1],
+                                               dtype=torch.float32,
+                                               device=tokens.device))
+                elif how == "mean":
+                    vectors.append(tokens[start:end].mean(dim=0, dtype=torch.float32))
+                else:
+                    vectors.append(tokens[end - 1].to(torch.float32))
+            out.append(torch.stack(vectors))
+        return torch.stack(out).cpu().numpy()
 
 
 class KmerEmbedder:
@@ -256,21 +355,35 @@ def extract_window(
 
     Two passes are run -- forward and reverse complement -- and the two pooled
     vectors are concatenated, so the result is twice ``embedder.width`` wide.
+
+    An embedder that can pool on its own device (:class:`PooledEmbedder`) is
+    asked to, because the alternative is moving every token of every layer to
+    the host only to throw all but a handful of positions away -- 12% of the
+    total run time on an L4. The two paths are held to the same numbers by
+    :mod:`evo.profiler`, which runs both and compares.
     """
     pooling = pooling or SEGMENT_POOLING
-    length = len(window.sequence)
+    fwd_spans = segment_spans(window, segments, pooling, reverse=False)
+    rev_spans = segment_spans(window, segments, pooling, reverse=True)
+
+    pooled = getattr(embedder, "pooled", None)
+    if pooled is not None:
+        return np.concatenate(
+            [
+                pooled(window.sequence, layers, fwd_spans),
+                pooled(reverse_complement(window.sequence), layers, rev_spans),
+            ],
+            axis=-1,
+        ).astype(np.float32, copy=False)
 
     fwd = embedder(window.sequence, layers)
     rev = embedder(reverse_complement(window.sequence), layers)
 
     out = np.zeros((len(layers), len(segments), 2 * embedder.width), dtype=np.float32)
     for li, layer in enumerate(layers):
-        for si, name in enumerate(segments):
-            span = window.segments[name]
-            how = pooling.get(name, "mean")
-            f = pool(fwd[layer], span.start, span.end, how)
-            r_start, r_end = reverse_span(span.start, span.end, length)
-            r = pool(rev[layer], r_start, r_end, how)
+        for si, (f_span, r_span) in enumerate(zip(fwd_spans, rev_spans)):
+            f = pool(fwd[layer], f_span[0], f_span[1], f_span[2])
+            r = pool(rev[layer], r_span[0], r_span[1], r_span[2])
             out[li, si] = np.concatenate([f, r])
     return out
 
