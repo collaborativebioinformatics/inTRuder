@@ -43,9 +43,21 @@ frontend:
 demo-data:
     cd backend && uv run python scripts/make_demo_data.py
 
-# Rent a DNAnexus box, work on it, terminate on exit. See docs/DNANexus.md.
+# Rent a DNAnexus box, work on it, terminate on exit. See docs/scripts/DNANexus.md.
 dx-terminal time="1h":
-    scripts/dx-instance.sh --time {{time}}
+    scripts/dx-instance-cpu.sh --time {{time}}
+
+# The same on a GPU box (1x L4). Costs several times as much per hour.
+dx-terminal-gpu time="1h":
+    scripts/dx-instance-gpu.sh --time {{time}}
+
+# Run a program on a CPU box, fetch $OUT, terminate -- nothing left billing.
+dx-run command time="2h":
+    scripts/dx-batch-cpu.sh --time {{time}} -- {{command}}
+
+# The same on a GPU box.
+dx-run-gpu command time="2h":
+    scripts/dx-batch-gpu.sh --time {{time}} -- {{command}}
 
 # What this project can launch, and what each type is for. Filter: `... gpu`.
 dx-instances pattern="":

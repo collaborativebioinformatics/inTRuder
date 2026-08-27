@@ -4,7 +4,7 @@
 #     source scripts/dx-env.sh
 #
 # Must be sourced, not executed -- it only exports variables. See
-# docs/DNANexus.md for what each one does and why.
+# docs/scripts/DNANexus.md for what each one does and why.
 
 # Every `return` below is followed by `|| exit 1`, the fallback for someone
 # running this file instead of sourcing it; shellcheck cannot see that path and

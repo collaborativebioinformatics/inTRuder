@@ -19,7 +19,7 @@
 # The shell comes before the fetch either way, so whatever you leave in $OUT is
 # downloaded when you exit.
 #
-# See docs/DNANexus.md for the platform details this automates: token auth, org
+# See docs/scripts/DNANexus.md for the platform details this automates: token auth, org
 # billing, which instance types actually launch, and how to do each step by hand.
 set -uo pipefail
 
@@ -34,7 +34,7 @@ die()  { echo "[$(date +%H:%M:%S)] FATAL: $*" >&2; exit 1; }
 # 64 cores; ask for a bigger one by name when the work needs it.
 INSTANCE="${DX_INSTANCE:-mem1_ssd1_v2_x4}"
 # --gpu is shorthand for this one. It is 1x L4, and it is one of only two GPU
-# types this project can actually launch -- see docs/DNANexus.md.
+# types this project can actually launch -- see docs/scripts/DNANexus.md.
 GPU_INSTANCE="${DX_GPU_INSTANCE:-mem2_ssd2_gpu1_v2_x8}"
 TIME="2h"
 # The worker clones from GitHub, so the default is whatever branch you are on --
@@ -43,9 +43,13 @@ BRANCH="${BRANCH:-$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)}"
 [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || BRANCH=main
 REPO_URL="${REPO_URL:-https://github.com/collaborativebioinformatics/novelTRs.git}"
 REPO_DIR="${REPO_DIR:-/home/dnanexus/novelTRs}"
+# Extra flags for the worker's `uv sync`. The setup script has always taken
+# this; until now nothing passed it, so the documented knob did nothing on the
+# only path anyone uses.
+SYNC_ARGS="${SYNC_ARGS:-}"
 REMOTE_OUT="/home/dnanexus/out"
 RUN="dx-$(date +%Y%m%d-%H%M%S)"
-SETUP="$REPO/scripts/setup-worker.sh"
+SETUP="$REPO/scripts/dx-worker-setup.sh"
 # How long to wait for sshd after the job reaches 'running'. The host key is
 # published minutes after the state flips, and on a slow day the gap has been
 # longer than the 10 min this used to allow -- which reads as a hard failure
@@ -68,6 +72,15 @@ ATTACHED=0
 KEEP=0
 SHELL_AFTER=0
 DRY=0
+# Which of the two shapes this run is: "" is whichever you asked for, "batch"
+# runs a program and never opens a shell, "interactive" opens a shell and takes
+# no program. The scripts/dx-{instance,batch}-{cpu,gpu}.sh wrappers set one of
+# these instead of re-implementing the option table above to work out whether a
+# command was given -- which is the only place that answer is reliably known.
+MODE=""
+# --job implies --keep; an explicit --keep is a different thing, and --batch
+# needs to tell them apart to honour "terminates when it is done".
+KEEP_EXPLICIT=0
 LIST=0
 LIST_FILTER=""
 INPUTS=()
@@ -96,7 +109,9 @@ Options:
                                                        [/Results/<you>/<run>/]
   -b, --branch BRANCH     branch the worker clones     [your current branch]
       --setup SCRIPT      environment build to run on the worker
-                                                       [scripts/setup-worker.sh]
+                                                       [scripts/dx-worker-setup.sh]
+      --sync-args ARGS    extra flags for the worker's `uv sync`, as one
+                          argument, e.g. --sync-args "--group dx"      [none]
       --no-setup          leave the box as it boots: no clone, no uv, no venv
       --run NAME          name for this run, used in the default paths
       --job JOB-ID        attach to a job that is already running instead of
@@ -105,6 +120,9 @@ Options:
       --shell             open an interactive shell after the command and before
                           the fetch; anything left in $OUT still comes home
       --keep              do NOT terminate at the end (it keeps billing)
+      --batch             run a program and terminate: a command is required,
+                          no shell is opened, and --shell/--keep are refused
+      --interactive       open a shell and take no command
   -l, --list-instances [PATTERN]
                           print every instance type this project may launch,
                           with what it is for, and exit. PATTERN filters by
@@ -144,12 +162,15 @@ while [ $# -gt 0 ]; do
         -d|--destination) DESTINATION="${2:?}"; shift 2 ;;
         -b|--branch)      BRANCH="${2:?}"; shift 2 ;;
         --setup)          SETUP="${2:?}"; shift 2 ;;
+        --sync-args)      SYNC_ARGS="${2:?}"; shift 2 ;;
         --no-setup)       SETUP=""; shift ;;
         --run)            RUN="${2:?}"; shift 2 ;;
         --job)            JOB="${2:?}"; ATTACHED=1; KEEP=1; shift 2 ;;
         --terminate)      KEEP=0; shift ;;
         --shell)          SHELL_AFTER=1; shift ;;
-        --keep)           KEEP=1; shift ;;
+        --keep)           KEEP=1; KEEP_EXPLICIT=1; shift ;;
+        --batch)          MODE="batch"; shift ;;
+        --interactive)    MODE="interactive"; shift ;;
         -l|--list-instances)
                           LIST=1
                           # The pattern is optional, so only swallow the next
@@ -164,8 +185,64 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# The name to blame in an error. The wrappers export their own so the advice
+# names the command that was actually typed.
+SELF="${DX_WRAPPER_NAME:-scripts/$(basename "${BASH_SOURCE[0]:-$0}")}"
+
+case "$MODE" in
+    batch)
+        # Batch's whole promise is that it finishes and stops costing money, so
+        # the two flags that break that promise are refused rather than ignored.
+        [ ${#COMMAND[@]} -gt 0 ] || die "$SELF needs a program to run:
+       $SELF --time 1h -- novelty screen calls.vcf '\$OUT/hits.tsv'
+       For a terminal instead, use the matching dx-instance-*.sh."
+        [ "$SHELL_AFTER" = 0 ] || die "--shell contradicts $SELF, which never opens one.
+       Use the matching dx-instance-*.sh, or scripts/dx-instance.sh --shell."
+        [ "$KEEP_EXPLICIT" = 0 ] || die "--keep contradicts $SELF: it would leave the box
+       billing after the program finished. Use scripts/dx-instance.sh --keep."
+        # --job set KEEP=1 on our behalf. Batch terminates what it attaches
+        # to -- that is the mode -- but silently killing a box someone else is
+        # using is not a thing to discover afterwards, so say it up front.
+        if [ "$ATTACHED" = 1 ]; then
+            warn "--batch will TERMINATE $JOB when the program is done, even"
+            warn "  though you attached to it. Use scripts/dx-instance.sh --job"
+            warn "  --keep to run something on a box and leave it up."
+        fi
+        KEEP=0
+        ;;
+    interactive)
+        [ ${#COMMAND[@]} -eq 0 ] || die "$SELF opens a terminal and takes no command.
+       To run '${COMMAND[*]}' and come straight back, use the matching
+       dx-batch-*.sh, which terminates the box when the program is done."
+        ;;
+esac
+
 [[ "$TIME" =~ ^[0-9]+[smhd]$ ]] || die "--time $TIME: want a number and s/m/h/d, e.g. 2h"
 [ -z "$SETUP" ] || [ -f "$SETUP" ] || die "--setup $SETUP: no such file"
+
+# The four settings below are the entire contract with the worker: they are
+# interpolated into a remote command string, and a bad one does not fail there,
+# it arrives as a plausible wrong value. The worker re-checks all of them, but
+# it can only do so after a boot -- so reject them here, where the cost of being
+# wrong is a retyped command instead of a provisioned instance.
+if [ -n "$SETUP" ]; then
+    [ -n "$BRANCH" ] || die "--branch is empty"
+    [ -n "$REPO_URL" ] || die "REPO_URL is empty"
+    case "$BRANCH" in
+        *[[:space:]]*) die "--branch '$BRANCH': a branch name cannot contain whitespace" ;;
+    esac
+    case "$REPO_DIR" in
+        *[[:space:]]*) die "REPO_DIR '$REPO_DIR': no whitespace, it is a path on the worker" ;;
+        /*) ;;
+        *) die "REPO_DIR '$REPO_DIR' must be absolute -- the worker cd's to it from \$HOME" ;;
+    esac
+    # `uv sync` flags, not a bare word: --sync-args "dx" is a plausible typo for
+    # --sync-args "--group dx" and uv would reject it an environment build later.
+    case "${SYNC_ARGS:--}" in
+        -*) ;;
+        *) die "--sync-args '$SYNC_ARGS': expected uv sync flags, e.g. '--group dx'" ;;
+    esac
+fi
 : "${OUTPUT_DIR:=$REPO/data/dx/$RUN}"
 
 # --- platform plumbing --------------------------------------------------------
@@ -179,7 +256,7 @@ dx_do() {
 }
 
 # shellcheck source=scripts/dx-env.sh
-source "$REPO/scripts/dx-env.sh" || die "could not authenticate; see docs/DNANexus.md"
+source "$REPO/scripts/dx-env.sh" || die "could not authenticate; see docs/scripts/DNANexus.md"
 PROJECT="${DX_PROJECT_CONTEXT_ID:?dx-env.sh did not pin a project}"
 
 # --- what can we even ask for? ------------------------------------------------
@@ -283,7 +360,7 @@ print("Every name above was submitted for real on 2026-08-27 and accepted, excep
 print("any marked refused. A name NOT in this list is rejected at submit with")
 print('"Requested instance type ... is unavailable from the cloud provider" --')
 print("nothing is created, so it costs a relaunch and not money.")
-print("Only terminating stops the billing; see docs/DNANexus.md.")
+print("Only terminating stops the billing; see docs/scripts/DNANexus.md.")
 PYLIST
     exit $?
 fi
@@ -330,7 +407,8 @@ log "instance     $INSTANCE for $TIME"
 log "project      $PROJECT (bills to the org, not to you)"
 log "destination  $DESTINATION"
 log "local output $OUTPUT_DIR"
-[ -n "$SETUP" ] && log "setup        $(basename "$SETUP") on $BRANCH"
+[ -n "$SETUP" ] && log "setup        $(basename "$SETUP") on $BRANCH -> $REPO_DIR"
+[ -n "$SETUP" ] && [ -n "$SYNC_ARGS" ] && log "sync args    $SYNC_ARGS"
 [ ${#COMMAND[@]} -gt 0 ] && log "command      ${COMMAND[*]}"
 
 # Scratch file for remote output, so it can be both shown live and grepped for
@@ -478,14 +556,20 @@ REMOTE_WRAPPER
 # built fresh every time. --no-setup skips it when you want the bare box.
 if [ -n "$SETUP" ]; then
     log "setting up the worker ($(basename "$SETUP"); a few minutes) ..."
+    # Exactly one shell evaluation happens on the far side of `dx ssh`, so each
+    # value is quoted for it with printf %q rather than wrapped in single quotes
+    # and hoped for. The old form broke on any value containing a quote, and
+    # SYNC_ARGS -- which has spaces by design -- would have arrived as separate
+    # words, silently dropping every flag after the first.
+    remote_env="$(printf 'BRANCH=%q REPO_URL=%q REPO_DIR=%q SYNC_ARGS=%q' \
+        "$BRANCH" "$REPO_URL" "$REPO_DIR" "$SYNC_ARGS")"
     if [ "$DRY" = 1 ]; then
-        echo "+ dx ssh $JOB -T 'BRANCH=$BRANCH REPO_DIR=$REPO_DIR bash -s' < $SETUP" >&2
+        echo "+ dx ssh $JOB -T '$remote_env bash -s' < $SETUP" >&2
     else
         # The setup script ends with a "=== READY ===" banner, which is the
         # signal used here -- it is fed on stdin, so there is no room to append
         # a sentinel to it the way remote() does.
-        "${DX[@]}" ssh "$JOB" -T \
-            "BRANCH='$BRANCH' REPO_URL='$REPO_URL' REPO_DIR='$REPO_DIR' bash -s" \
+        "${DX[@]}" ssh "$JOB" -T "$remote_env bash -s" \
             < "$SETUP" 2>&1 | tee "$remote_log" >&2
         if ! grep -q "=== READY ===" "$remote_log"; then
             # A failed build is fatal for a command that needs the venv, but not
