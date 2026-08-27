@@ -267,15 +267,15 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
-# pkgdown site (generated output only; disabled because docs/ holds this
-# project's documentation and images)
-# docs/
-
 # translation temp files
 po/*~
 
 # RStudio Connect folder
 rsconnect/
+# Reference TR catalogues downloaded from UCSC / TRExplorer, and the index
+# caches built beside them (30 MB+ blobs that `uv run novelty` re-fetches on
+# demand, so they should not land in a commit)
+data/reference/
 
 # Large data files - don't commit
 data/*.vcf
