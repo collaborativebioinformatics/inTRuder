@@ -279,3 +279,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+# Fetched reference catalogs for the web layer. Regenerate with
+# `cd backend && uv run python scripts/fetch_strchive.py`. The manifest that
+# describes this file IS committed (data/web/strchive-loci.yaml); the data is a
+# pinned, checksummed download, so it is not.
+data/web/strchive/

@@ -54,9 +54,10 @@ it is literally what the agent sees when deciding how to answer a question.
 |---|---|---|---|
 | `demo-loci.yaml` | `demo_loci` | 1,200 | Synthetic |
 | `demo-segments.yaml` | `demo_segments` | 132,479 | Synthetic |
-
-Regenerate the demo data with:
+| `strchive-loci.yaml` | `strchive_loci` | 82 | Real (curated reference) |
 
 ```bash
-cd backend && uv run python scripts/make_demo_data.py
+cd backend
+uv run python scripts/make_demo_data.py   # the synthetic demo tables
+uv run python scripts/fetch_strchive.py   # the disease-locus catalog
 ```
