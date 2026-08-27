@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from evo.embeddings.cli import build_parser, resolve_layers, resolve_pooling, select
-from evo.embeddings.extract import LAYER_SETS, SEGMENT_POOLING
+from evo.embeddings.extract import (
+    LAYER_SETS,
+    OVERFLOWS_FLOAT16,
+    SEGMENT_POOLING,
+)
 
 HEADER = """\
 ##fileformat=VCFv4.1
@@ -94,7 +98,20 @@ def test_offset_defaults_to_zero_and_limit_to_none():
 # --- resolve_layers / resolve_pooling ----------------------------------------
 
 def test_named_layer_set_expands():
-    assert resolve_layers("default") == list(LAYER_SETS["default"])
+    assert resolve_layers("deep") == list(LAYER_SETS["deep"])
+
+
+def test_the_default_layer_set_survives_float16():
+    """The 2026-08-27 run spent its GPU hours writing +/-inf for two layers.
+
+    Nothing at extraction time can tell you that: the cast is silent and the
+    file loads. So the guard is here, on the set that runs when nobody passes
+    `--layers` -- the one case where the mistake is made by omission.
+    """
+    args = build_parser().parse_args(["a.vcf", "ref.fa", "out.npz"])
+    layers = resolve_layers(args.layers)
+    assert set(layers).isdisjoint(OVERFLOWS_FLOAT16), args.layers
+
 
 
 def test_comma_separated_layers_are_taken_literally():

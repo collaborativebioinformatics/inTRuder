@@ -21,8 +21,8 @@ Layout of the ``.npz``::
     cropped    bool     (n_windows,)
 
 Vectors are stored as float16. At 4096 dims doubled by the strand concatenation
-that is 16 KB per vector, so a full run -- ~6000 windows x 9 layers x 5 segments
--- is about 4 GB in float16 and 8 GB in float32. The precision lost is well
+that is 16 KB per vector, so a full run -- ~6000 windows x 10 layers x 5 segments
+-- is about 6 GB in float16 and 12 GB in float32. The precision lost is well
 below the noise in any downstream clustering.
 """
 
@@ -34,9 +34,6 @@ from typing import NamedTuple
 import numpy as np
 
 from evo.embeddings.windows import Window
-
-# Bumped when the layout changes in a way that older readers cannot handle.
-FORMAT_VERSION = 1
 
 
 class Embeddings(NamedTuple):
@@ -82,7 +79,7 @@ def _to_float16(vectors: np.ndarray, layers: list[str]) -> tuple[np.ndarray, lis
     attributes as well as on stderr. A reader can then ask what it is holding
     instead of inferring it. The values are still written: they are what the
     model produced at that precision, and a caller who wants them intact should
-    drop the layer (``--layers finite``) rather than have this function guess.
+    drop the layer (``--layers deep``) rather than have this function guess.
     """
     # numpy's own "overflow encountered in cast" says nothing about which layer
     # overflowed or by how much, and it fires once per call regardless. The
@@ -102,7 +99,10 @@ def _to_float16(vectors: np.ndarray, layers: list[str]) -> tuple[np.ndarray, lis
                 f"float16 and are stored as +/-inf (max |x| {np.abs(vectors[:, i]).max():.3g})",
                 file=sys.stderr,
             )
-    print(f"WARNING: re-run with --layers finite to drop {', '.join(overflowed)}",
+    # Naming the offending layers, not just the set to use: `--layers` also
+    # takes a literal list, and that is how a run gets here in the first place.
+    print(f"WARNING: re-run without {', '.join(overflowed)} "
+          f"-- --layers deep is the deepest set that survives float16",
           file=sys.stderr)
     return stored, overflowed
 
@@ -149,7 +149,6 @@ def save(
         "svid": np.asarray(svids if svids is not None else [""] * n, dtype=object),
         "_attrs": np.asarray(
             sorted({
-                "format_version": str(FORMAT_VERSION),
                 "overflowed_layers": ",".join(overflowed),
                 **(attrs or {}),
             }.items()),
@@ -163,11 +162,13 @@ def load(path: str) -> Embeddings:
     """Read back what :func:`save` wrote."""
     with np.load(path, allow_pickle=True) as z:
         attrs = {k: v for k, v in z["_attrs"]}
+        # Every key, unconditionally: a file missing one was written by
+        # something other than `save`, and filling a default here would put
+        # fabricated positions and lengths into the analysis silently.
         meta = {
             k: z[k]
             for k in ("chrom", "pos", "sample", "svid", "insert_length",
                       "n_fraction", "cropped")
-            if k in z
         }
         return Embeddings(
             vectors=z["vectors"],

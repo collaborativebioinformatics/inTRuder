@@ -17,7 +17,7 @@ import pytest
 from evo.embeddings.extract import SEGMENT_POOLING, extract_window
 from evo.embeddings.windows import SEGMENTS, WindowSpec, build_window
 from evo.profiler.throughput import (
-    FINITE_LAYERS,
+    PROFILED_LAYERS,
     VARIANTS,
     pooled_on_host,
     spans_for,
@@ -92,11 +92,12 @@ def test_spans_cover_every_segment_in_order(window):
     ]
 
 
-def test_finite_layers_drops_only_the_inf_pair():
-    """blocks.30/31 overflow float16; nothing else in the default set may go."""
-    from evo.embeddings.extract import LAYER_SETS
+def test_the_profiler_measures_the_set_that_actually_runs():
+    """A profile of layers nobody extracts is a number about nothing."""
+    from evo.embeddings.cli import build_parser, resolve_layers
 
-    assert set(LAYER_SETS["default"]) - set(FINITE_LAYERS) == {"blocks.30", "blocks.31"}
+    args = build_parser().parse_args(["a.vcf", "ref.fa", "out.npz"])
+    assert list(PROFILED_LAYERS) == resolve_layers(args.layers)
 
 
 def test_host_is_the_declared_baseline():

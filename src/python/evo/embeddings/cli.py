@@ -1,6 +1,6 @@
 """``evo-embed`` -- run Evo 2 over one allele of an SV VCF and write one ``.npz``.
 
-    evo-embed calls.vcf hg38.fasta out.npz --layers default
+    evo-embed calls.vcf hg38.fasta out.npz --layers deep
 
 The command is deliberately the only place that touches all four modules, so
 each of them stays independently testable: :mod:`~evo.embeddings.loci` reads the
@@ -41,6 +41,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 
 from evo.embeddings.extract import (
     D_MODEL,
+    DEFAULT_LAYER_SET,
     LAYER_SETS,
     POOLINGS,
     SEGMENT_POOLING,
@@ -85,7 +86,7 @@ def add_shared_options(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
     g = p.add_argument_group("model")
     g.add_argument("--model", default="evo2_7b_base", help="Evo 2 checkpoint")
     g.add_argument("--device", default="cuda:0")
-    g.add_argument("--layers", default="default",
+    g.add_argument("--layers", default=DEFAULT_LAYER_SET,
                    help=f"a named set ({', '.join(LAYER_SETS)}) or a comma-separated list")
     g.add_argument("--segments", default=",".join(SEGMENTS),
                    help="comma-separated segment names to pool")

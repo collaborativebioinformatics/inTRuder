@@ -63,34 +63,97 @@ BLOCK_TYPES: dict[str, tuple[int, ...]] = {
 N_BLOCKS = 32
 D_MODEL = 4096
 
-#: Named layer sets. ``default`` spreads across depth and samples the two block
-#: types with a reason to be informative here, plus the uniform MLP probe that
-#: is comparable across every depth.
+#: Layers measured to exceed float16's 65504 ceiling, so storing one ships
+#: +/-inf rather than numbers. From the 2026-08-27 sweep of all 32 blocks and
+#: all 32 ``mlp.l3`` in `data/evo/verify-layers3/verify.txt`; peaks are 1.1e6
+#: at blocks.29 and 5.1e12 at blocks.30/31. Named here so the layer set can be
+#: tested against it rather than checked by eye.
+OVERFLOWS_FLOAT16: frozenset[str] = frozenset(
+    {"blocks.29", "blocks.29.mlp.l3", "blocks.30", "blocks.31"}
+)
+
+#: The set `evo-embed` uses when `--layers` is not given. It must not intersect
+#: :data:`OVERFLOWS_FLOAT16`: the forward pass is the expensive part, and a run
+#: that silently writes inf for two of its layers has spent those hours for
+#: nothing. `test_the_default_layer_set_survives_float16` enforces it.
+DEFAULT_LAYER_SET = "deep"
+
+#: Named layer sets. ``deep`` is the one that runs; the rest are structural
+#: probes for asking a different question of the same forward pass.
 LAYER_SETS: dict[str, tuple[str, ...]] = {
-    "default": (
+    # Eight block layers plus two MLP probes, spread across depth and ending at
+    # the deepest block that still fits float16. Measured 2026-08-27 on 8 alt
+    # windows and their breakpoint-matched reference windows
+    # (`data/evo/verify-layers3/`): the junction/flank variance ratio -- how
+    # much of a layer's spread is about the insertion rather than about which
+    # locus it sits in -- rises strictly from blocks.9 to blocks.28, twenty
+    # consecutive layers, then falls (33.5, 14.8, 14.8):
+    #
+    #     blocks.28  64.4  (rank  5)     blocks.24  18.6  (rank 12)
+    #     blocks.27  45.6  (rank  9)     blocks.23  11.5  (rank 13)
+    #     blocks.26  28.9  (rank 10)     blocks.17   5.1  (rank 19)
+    #     blocks.25  27.5  (rank 11)     blocks.16   3.8  (rank 20)
+    #
+    # blocks.25 is here as the control rather than for its own ratio, which
+    # ties blocks.26's. It makes 25/26/27/28 four consecutive layers across the
+    # steepest part of the rise, so a re-measurement can test whether the trend
+    # holds locally instead of re-arguing one adjacent pair.
+    #
+    # Ranks are among the 29 blocks that survive float16, and blocks.28 is only
+    # 5th: blocks.0 (337), blocks.1 (206), blocks.6 (65.6) and blocks.5 (64.5)
+    # outrank it. All four are discarded for one reason -- that shallow, their
+    # flank denominator is the numerical noise floor (blocks.0's flank delta is
+    # 4.3e-05; blocks.4-8 sit at flank variance ~1e-06) rather than a measured
+    # background, so a large ratio there says nothing about junction signal.
+    # The ratio is only interpretable where the flank has been processed enough
+    # to have a real background, which is blocks.9 on.
+    #
+    # Layers are nearly free: one forward pass yields every one of them, so the
+    # cost is storage -- 0.63 GiB per layer across the alt and reference runs of
+    # the full callset, 6.3 GiB for these ten, against the ~22 GPU-hours it
+    # costs to get a skipped layer back. That asymmetry, not the size of the
+    # effect, is why the deep end is taken whole. It does not extend
+    # indefinitely: `store.load` reads `vectors` eagerly, so all 29 fp16-safe
+    # blocks would be a 13.6 GiB alt array on the laptop side.
+    #
+    # blocks.29/30/31 are left out because they overflow float16 -- 1.1e6,
+    # 5.1e12, 5.1e12 against a 65504 ceiling. That is a storage limit, not a
+    # verdict on their signal: blocks.29's ratio (33.5) beats blocks.26's, and
+    # blocks.31 is the deepest attention block. Storing bfloat16 would recover
+    # blocks.29; blocks.30/31 are the pair `Evo2Embedder.pooled` diverges on,
+    # so they need more than a wider exponent.
+    #
+    # CAUTION, three things:
+    #   * n = 8. Twenty layers of strict rise is not something noise produces,
+    #     but 64.4-vs-45.6 is a single adjacent pair, and both halves of it
+    #     jumped ~5e4 from blocks.27 in the same step (junc var 0.208 ->
+    #     1.57e4, flank var 4.6e-03 -> 244). Do not read blocks.28 > blocks.27
+    #     off this run; re-measure on a few hundred windows first.
+    #   * blocks.28 reaches max |x| 2416, against 996 for the deepest layer
+    #     below it and 1.1e6 at blocks.29 -- the cliff is one block away.
+    #     `store.save` reports per-layer overflow, so a run that crosses it
+    #     says so rather than shipping inf; check that warning.
+    #   * `Evo2Embedder.pooled` was checked against the host path on the seven
+    #     shallower layers only (2.7e-4), and the layers it diverges on are the
+    #     large-activation ones. blocks.28 is the first layer past that
+    #     validated range. The fp32 accumulation has ample headroom at 2.4e3,
+    #     but it is unmeasured.
+    #
+    # blocks.28 is not a second, independent read alongside blocks.28.mlp.l3.
+    # A block returns the post-MLP residual stream, so blocks.28 contains
+    # blocks.28.mlp.l3 as a summand -- and their max |x| is the same 2416, i.e.
+    # the block's extremes *are* the MLP term already being stored. Keep both
+    # for the residual-vs-update contrast, not as two measurements.
+    "deep": (
         "blocks.9.mlp.l3",
         "blocks.16",
         "blocks.17",
         "blocks.23",
         "blocks.24",
+        "blocks.25",
         "blocks.26",
-        "blocks.28.mlp.l3",
-        "blocks.30",
-        "blocks.31",
-    ),
-    # `default` minus the two blocks whose activations exceed float16's 65504
-    # range and therefore reach disk as +/-inf -- measured at ~100% of elements
-    # in both, i.e. 22% of the whole array, on the 2026-08-27 run. They cost no
-    # forward-pass time (one pass yields every layer), so the only thing keeping
-    # them is the storage and the transfer. Use this set for any run that will
-    # be analysed; `default` stays as it was so old runs remain reproducible.
-    "finite": (
-        "blocks.9.mlp.l3",
-        "blocks.16",
-        "blocks.17",
-        "blocks.23",
-        "blocks.24",
-        "blocks.26",
+        "blocks.27",
+        "blocks.28",
         "blocks.28.mlp.l3",
     ),
     "attention": tuple(f"blocks.{i}" for i in BLOCK_TYPES["attention"]),
@@ -302,11 +365,11 @@ class Evo2Embedder:
 
         ``mean(dtype=torch.float32)`` accumulates in fp32 without materialising
         an upcast copy of the slice, so the vectors match the host path to
-        2.7e-4 on the ``finite`` layer set -- float16 storage noise. They do
-        *not* match on ``blocks.30``/``blocks.31``, whose activations are large
-        enough that the two reduction orders diverge outright; those are the
-        layers that cannot be stored anyway, and ``LAYER_SETS["finite"]`` drops
-        them.
+        2.7e-4 -- float16 storage noise. That was measured over the seven
+        layers up to ``blocks.26``, not over ``blocks.27``/``blocks.28``. They
+        do *not* match on ``blocks.30``/``blocks.31``, whose activations are
+        large enough that the two reduction orders diverge outright; those are
+        the layers :data:`OVERFLOWS_FLOAT16` names and ``deep`` leaves out.
         """
         torch = self._torch
         embeddings = self._forward(sequence, layers)
@@ -437,7 +500,7 @@ def extract_window(
 def extract(
     windows: Iterable[Window],
     embedder: Embedder,
-    layers: Sequence[str] = LAYER_SETS["default"],
+    layers: Sequence[str] = LAYER_SETS[DEFAULT_LAYER_SET],
     segments: Sequence[str] = SEGMENTS,
     pooling: dict[str, str] | None = None,
     max_n_fraction: float | None = 0.1,

@@ -2,7 +2,9 @@
 
 from evo.embeddings.extract import (
     BLOCK_TYPES,
+    DEFAULT_LAYER_SET,
     LAYER_SETS,
+    OVERFLOWS_FLOAT16,
     Embedder,
     Evo2Embedder,
     KmerEmbedder,
@@ -27,7 +29,9 @@ from evo.embeddings.windows import (
 
 __all__ = [
     "BLOCK_TYPES",
+    "DEFAULT_LAYER_SET",
     "LAYER_SETS",
+    "OVERFLOWS_FLOAT16",
     "SEGMENTS",
     "Embedder",
     "Embeddings",
