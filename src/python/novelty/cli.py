@@ -304,8 +304,7 @@ def _load_catalogs(args: argparse.Namespace) -> dict[str, RepeatCatalog]:
         platform = get_platform(name)
         table = ensure_table(name, args.db, override, cache_dir=args.cache_dir,
                              download=override is None and not args.no_download)
-        # A catalogue that ships inside the package is small by construction and
-        # lives in an installed directory that may not be writable; building its
+        # A catalogue kept in the repo is small by construction, so building its
         # index is faster than reading a cache of it anyway.
         bundled = table == platform.bundled_path(args.db)
         catalogs[name] = RepeatCatalog.from_file(

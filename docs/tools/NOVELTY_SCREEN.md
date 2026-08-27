@@ -21,10 +21,11 @@ measurements) and **TRExplorer** (5.6M entries, position and motif only). A locu
 is `known` if at least one catalogue contains it. See
 [Combining platforms](#combining-platforms).
 
-A third catalogue, **`pathogenic`**, ships inside the package: 83 known
-disease-associated TR loci. It covers 83 loci only, so a `novel_locus` verdict
-against it carries no information. It is therefore marked annotation-only and is
-excluded from the combined verdict.
+A third catalogue, **`pathogenic`**, is kept in the repo at
+`data/novelty/pathogenic.hg38.TRGT.bed`: 83 known disease-associated TR loci.
+It covers 83 loci only, so a `novel_locus` verdict against it carries no
+information. It is therefore marked annotation-only and is excluded from the
+combined verdict.
 
 ## Quick start
 
@@ -437,8 +438,8 @@ file vendored.
   where `reverse_complement` translated only `ACGTN`, so `ACRYN` returned
   `NYRGT` instead of `NRYGT`.
 - **83 disease-associated TR loci** (`variant_catalogs/catalog.GRCh38.TRGT.bed`)
-  — vendored unchanged as `src/python/novelty/data/pathogenic.hg38.TRGT.bed`
-  with a provenance header.
+  — vendored unchanged as `data/novelty/pathogenic.hg38.TRGT.bed` with a
+  provenance header.
 
 Their `compute_canonical_motif` was compared and not adopted: it does not reduce
 to the primitive unit (`CAGCAG` → `AGCAGC`), folds in the reverse complement by
