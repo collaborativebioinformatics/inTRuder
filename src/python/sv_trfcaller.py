@@ -37,7 +37,7 @@ def parse_args():
 
 
 @contextmanager
-def suppress_pysam_output():
+def suppress_pytrf_errors():
     """
     Suppress output from pysam (stdout and stderr) within the context.
     This is useful when calling functions that may produce unwanted output to the console.
@@ -119,7 +119,7 @@ def run_trf_on_insertions(args):
                     n_trf = 0
                     trf_repeats    = []
 
-                    with suppress_pysam_output():
+                    with suppress_pytrf_errors():
                         for repeat in pytrf.ATRFinder(sample, ALT, min_motif=args.min_motif,
                                                                 max_motif=args.max_motif,
                                                                 min_identity=args.min_identity,
