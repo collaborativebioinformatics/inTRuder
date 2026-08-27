@@ -88,7 +88,7 @@ def run_trf_on_insertions(args):
     """
     vcf = VCF(args.input)
     out = open(args.output, 'w')
-    print('chrom', 'ins_coord', 'SVID', 'depth', 'insert_size', 'sample', 'rep_start', 'rep_end', 'motif', 'purity',
+    print('chrom', 'ins_coord', 'SVID', 'depth', 'insert_size', 'sample', 'allele', 'rep_start', 'rep_end', 'motif', 'purity',
           'motif_length', 'rep_length', 'rep_units', sep='\t', file=out)
     samples = vcf.samples
     for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
@@ -109,35 +109,38 @@ def run_trf_on_insertions(args):
                 continue
 
             for s, sample in enumerate(samples):
-                if ID[s] == 'NaN': continue
-                var_depth = DV[s][0]
-                ref_depth = DR[s][0]
+                genotype = variant.genotypes[s]
+                for gt in genotype[:2]:
+                    if gt == 0 or gt == '.' or gt == -1: continue  # Skip reference alleles
+                    if ID[s] == 'NaN': continue
+                    var_depth = DV[s][0]
+                    ref_depth = DR[s][0]
 
-                n_trf = 0
-                trf_repeats    = []
+                    n_trf = 0
+                    trf_repeats    = []
 
-                with suppress_pysam_output():
-                    for repeat in pytrf.ATRFinder(sample, ALT, min_motif=args.min_motif,
-                                                               max_motif=args.max_motif,
-                                                               min_identity=args.min_identity,
-                                                               min_seedrep=args.min_rep_units,
-                                                               min_seedlen=args.min_rep_length,
-                                                               max_extend=args.max_rep_length):
+                    with suppress_pysam_output():
+                        for repeat in pytrf.ATRFinder(sample, ALT, min_motif=args.min_motif,
+                                                                max_motif=args.max_motif,
+                                                                min_identity=args.min_identity,
+                                                                min_seedrep=args.min_rep_units,
+                                                                min_seedlen=args.min_rep_length,
+                                                                max_extend=args.max_rep_length):
 
-                        rep_start = repeat.start - 1
-                        rep_end   = repeat.end
-                        motif     = repeat.motif
-                        motif_length = len(motif)
+                            rep_start = repeat.start - 1
+                            rep_end   = repeat.end
+                            motif     = repeat.motif
+                            motif_length = len(motif)
 
-                        rep_length = rep_end - rep_start
-                        rep_units  = rep_length // motif_length
-                        purity       = float(repeat.identity)/100
+                            rep_length = rep_end - rep_start
+                            rep_units  = rep_length // motif_length
+                            purity       = float(repeat.identity)/100
 
-                        trf_repeats.append([variant.CHROM, variant.POS, ID, f'{var_depth},{ref_depth}', LEN, sample, rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
-                        n_trf += 1
+                            trf_repeats.append([variant.CHROM, variant.POS, ID, f'{var_depth},{ref_depth}', LEN, sample, gt, rep_start, rep_end, motif, round(purity, 3), motif_length, rep_length, rep_units])
+                            n_trf += 1
 
-                for rep in trf_repeats:
-                    print(*rep, sep='\t', file=out)
+                    for rep in trf_repeats:
+                        print(*rep, sep='\t', file=out)
 
     out.close()
 
