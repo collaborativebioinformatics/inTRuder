@@ -59,8 +59,7 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | Document | Contents |
 |---|---|
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
-| [Scripts](docs/scripts/README.md) | Usage for `scripts/` — `dx-env.sh`, `dx-instance.sh`, `setup-worker.sh` |
-| [Running on DNAnexus](docs/DNANexus.md) | `dx` authentication, org billing, instance types, connecting to and terminating a worker, and `scripts/dx-instance.sh` — one command for launch, run, fetch, terminate |
+| [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
 
