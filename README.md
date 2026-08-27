@@ -54,6 +54,9 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | Document | Contents |
 |---|---|
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
+| [Scripts](docs/scripts/README.md) | Usage for `scripts/` — `dx-env.sh`, `dx-gpu-instance.sh`, `setup-gpu-worker.sh` |
+| [Running on DNAnexus](docs/DNANexus.md) | `dx` authentication, org billing, GPU instance types, connecting to and terminating a worker, and `scripts/dx-gpu-instance.sh` — one command for launch, run, fetch, terminate |
+| [Analysing Evo 2 embeddings](docs/evo_analysis.md) | `analysis-reduce` / `analysis-cluster`, the reference-allele control, and what the benchmark run measures |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
 

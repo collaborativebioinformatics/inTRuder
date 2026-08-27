@@ -103,10 +103,14 @@ cat <<EOF
 
 [$(date +%H:%M:%S)] === READY ===
 
-  Run extraction with the venv binary, NOT 'uv run':
+  Run extraction with the venv binaries, NOT 'uv run':
 
     cd $REPO_DIR
-    .venv/bin/evo-embed <calls.vcf> <hg38.fasta> out.npz
+    .venv/bin/python -m evo.embeddings <calls.vcf> <hg38.fasta> out/  # both alleles
+    .venv/bin/evo-embed <calls.vcf> <hg38.fasta> out.npz              # one allele
+
+  scripts/dx-gpu-instance.sh runs this script for you, then the command, then
+  fetches the results and terminates the box.
 
   'uv run' resyncs to uv.lock and uninstalls flash-attn; with no extras it
   removes torch as well. If that happens, re-run this script -- it is idempotent.

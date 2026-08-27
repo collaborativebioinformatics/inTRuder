@@ -26,7 +26,14 @@ source scripts/dx-env.sh
 # 4. check it worked
 uv run dx whoami
 uv run dx ls project-JB6zg5Q0pzX96qVJjz7gKg58:/
+
+# 5. rent a GPU, run something on it, fetch the results, terminate
+scripts/dx-gpu-instance.sh --time 2h -- <command>
 ```
+
+Step 5 is [one command for the whole run](#the-whole-run-in-one-command); the
+sections after it are what that command automates, and what to do when it does
+not fit.
 
 ## Credentials
 
@@ -198,6 +205,73 @@ process {
 >   the first kernel launch: it is sm_75, below the sm_80 that current CUDA
 >   wheels expect. Don't use it.
 
+## The whole run in one command
+
+`scripts/dx-gpu-instance.sh` does everything the rest of this document
+describes by hand: launch a GPU box, build the Evo 2 environment on it, run your
+command, bring the results back, and **terminate**. The last step is the reason
+it exists — termination sits in an `EXIT` trap, so it fires on success, on
+failure and on Ctrl-C alike, which is the failure mode that actually costs money.
+
+```bash
+scripts/dx-gpu-instance.sh --time 8h --output-dir data/evo/shard0 \
+    --input /Test_Inputs/first_500_INS.vcf \
+    --input /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta \
+    --input /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta.fai -- \
+    python -m evo.embeddings \
+        /home/dnanexus/first_500_INS.vcf \
+        /home/dnanexus/human_GRCh38_no_alt_analysis_set.fasta \
+        '$OUT' --offset 0 --limit 2000
+```
+
+With **no command** it builds the box and drops you into an interactive shell,
+which is how to measure something before committing to a long run:
+
+```bash
+scripts/dx-gpu-instance.sh --time 1h
+```
+
+The shell runs *before* the fetch in both modes, so anything you leave in `$OUT`
+comes home when you exit — and exiting terminates the box.
+
+`--dry-run` prints every platform call it would make — including the full text
+of the scripts it would send to the worker — and launches nothing. Use it to
+check a long invocation before it starts billing.
+
+| Flag | | Default |
+|---|---|---|
+| `-t, --time` | `max_session_length`; also the backstop if this script is killed | `2h` |
+| `-i, --instance` | GPU type ([the table above](#requesting-a-gpu)) | `mem2_ssd2_gpu1_v2_x8` |
+| `-f, --input` | stage a platform file into `/home/dnanexus`; repeatable. Takes a `file-xxxx` id **or** a project path, resolved before launch | — |
+| `-o, --output-dir` | local directory the results land in | `data/evo/<run>` |
+| `-r, --remote-out` | directory on the worker the command writes to, exported as `$OUT` | `/home/dnanexus/out` |
+| `-d, --destination` | project folder the results are uploaded to | `/Results/<you>/<run>/` |
+| `-b, --branch` | branch the worker clones | `feature/evo-embeds` |
+| `--job` | attach to a job already running instead of launching one; implies `--keep` | — |
+| `--shell` | open an interactive shell after the command, before the fetch | off |
+| `--keep` | do **not** terminate at the end (it keeps billing) | off |
+| `-n, --dry-run` | print the platform calls instead of running them | off |
+
+Four things it does that are easy to forget by hand:
+
+- **Preflight before the meter starts.** It checks for the SSH key pair, that
+  `$BRANCH` exists on GitHub, and whether this checkout has uncommitted changes
+  — the worker clones from GitHub, so local edits are *not* there. Discovering
+  any of these after launch costs a GPU boot.
+- **Two separate waits.** `state=running` means the instance exists; the SSH
+  host key is published minutes later. It waits for both.
+- **`$OUT`, and the venv on `PATH`.** The command runs in the checkout with
+  `.venv/bin` first, so `evo-embed` and `python -m evo.embeddings` resolve
+  without `uv run` — which would resync to `uv.lock` and uninstall flash-attn.
+  Quote `'$OUT'` so your shell leaves it for the worker's.
+- **Worker → project → here.** Results go to project storage first and are
+  downloaded from there, so they outlive the box even if the local download
+  fails. `--destination` is also what decides who pays.
+
+The command is joined with spaces and handed to a login `bash` on the worker,
+exactly as `ssh` does, so pipes and redirection work and anything containing
+spaces needs quoting twice.
+
 ## Connecting to the job
 
 Interactive work goes through `app-cloud_workstation`: it boots the instance and
@@ -262,84 +336,6 @@ uv run dx describe "$JOB"     # state, instance type, billTo, runtime so far
 
 **Nothing on the box survives the session.** Install, run, and `dx upload` the
 results before it stops; anything not uploaded is gone.
-
-## Running Evo 2 on a worker
-
-`scripts/setup-gpu-worker.sh` does all of this. Read the rest of this section
-only when it fails; every step below is something that was measured on a
-`mem3_ssd1_gpu1_x16` worker on 2026-08-27, not something inferred.
-
-```bash
-uv run dx ssh "$JOB" -T "bash -s" < scripts/setup-gpu-worker.sh
-```
-
-The worker image is Ubuntu 24.04, system Python 3.12.3, driver 535.247.01,
-1x L4 at compute capability **8.9** — comfortably above flash-attn's sm_80
-floor. It ships `git`, `curl` and the `dx` CLI, but **no `nvcc` and no
-`/usr/local/cuda`**.
-
-**Sync on 3.12, not the repo's 3.13.** `evo2` caps itself below 3.13, so
-`uv.lock` gates it on `python_full_version < '3.13'`. A 3.13 sync *succeeds* and
-silently installs neither `evo2` nor `vortex`:
-
-```bash
-uv sync --python 3.12 --extra cu128 --extra embed
-```
-
-**flash-attn is required, and installs after the sync.** `vortex` imports
-`flash_attn_2_cuda` at module import time, so `import evo2` raises
-`ModuleNotFoundError: No module named 'flash_attn_2_cuda'` without it — it is
-not an optional fast path. It cannot be built here (no `nvcc`), so take a
-prebuilt wheel, which must match python tag, torch major.minor **and the C++11
-ABI**. Read all three off the interpreter that will run it rather than guessing:
-
-```bash
-.venv/bin/python -c "import sys,torch;print(sys.version_info[:2], torch.__version__, torch._C._GLIBCXX_USE_CXX11_ABI)"
-# (3, 12) 2.7.1+cu128 True
-uv pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post1/flash_attn-2.8.3.post1+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
-```
-
-The wheel is a ~3 second download. Only the ABI is easy to get wrong: torch 2.7
-manylinux builds are `cxx11abiTRUE`, and the `FALSE` wheel installs cleanly and
-then fails at import.
-
-> **Trap, and the one that costs the most time.** Once flash-attn is in, stop
-> using `uv run`. flash-attn is not in `uv.lock`, so `uv run` resyncs the
-> environment to the lock and **uninstalls it** before running your command.
-> `uv run` without the extras is worse — it removes `torch` and `evo2` too, so
-> `uv run python -c "import evo2"` reports `No module named 'torch'` and the
-> environment you just built is gone. Call the venv directly:
->
-> ```bash
-> cd ~/novelTRs && .venv/bin/evo-embed calls.vcf hg38.fasta out.npz
-> ```
-
-**The import name is `vortex`; the distribution is `vtx`.** `import vtx` fails
-whatever else is wrong.
-
-**Preload the inputs at launch** rather than downloading them on the box —
-`-ifids` lands them in `/home/dnanexus/` before you connect:
-
-```bash
-uv run dx run app-cloud_workstation --instance-type mem3_ssd1_gpu1_x16 \
-    -ifids=file-JB7fJKj0pzX9jkpkbbG6jyVG \
-    -ifids=file-JB7X3j00pzXJKQ7j955zvZgj \
-    -ifids=file-JB7X3kj0pzXKB5jjPbFV5180 \
-    --destination project-JB6zg5Q0pzX96qVJjz7gKg58:/Results/<yours>/ \
-    --allow-ssh --yes --brief
-```
-
-**A non-interactive `dx ssh` does not inherit the job's dx credentials.**
-`dx whoami` reports "not logged in" under `dx ssh "$JOB" -T "bash -s"`, because
-the profile is never sourced. Use a login shell (`bash -lc '...'`) for anything
-that calls `dx` on the worker, such as uploading results.
-
-Two cosmetic quirks of `dx ssh` worth knowing before you debug them: it prints
-the first line of remote output appended to its own
-`Checking connectivity to ...:22...` line with no newline in between, so a naive
-`grep -v` on that line silently eats your first line of output; and on exit it
-asks `Terminate now? [y/N]`, which defaults to N at EOF, so scripted sessions
-leave the job running.
 
 ## Stopping an instance
 
