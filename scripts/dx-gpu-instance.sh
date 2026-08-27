@@ -40,6 +40,12 @@ REPO_URL="${REPO_URL:-https://github.com/collaborativebioinformatics/novelTRs.gi
 REPO_DIR="${REPO_DIR:-/home/dnanexus/novelTRs}"
 REMOTE_OUT="/home/dnanexus/out"
 RUN="evo-$(date +%Y%m%d-%H%M%S)"
+# How long to wait for sshd after the job reaches 'running'. The host key is
+# published minutes after the state flips, and on a slow day the gap has been
+# longer than the 10 min this used to allow -- which reads as a hard failure
+# rather than as "wait a bit more".
+SSH_TRIES="${SSH_TRIES:-90}"
+SSH_WAIT="${SSH_WAIT:-10}"
 OUTPUT_DIR=""
 DESTINATION=""
 JOB=""
@@ -263,14 +269,35 @@ if [ "$DRY" = 0 ]; then
     done
     [ "${state:-}" = "running" ] || die "job never reached 'running' (last: ${state:-unknown})"
 
-    log "waiting for ssh ..."
+    # Keep the last attempt's stderr. Discarding it turns every connection
+    # problem into the same opaque timeout, and the next attempt costs another
+    # instance boot to learn nothing again -- an unpublished host key, a
+    # firewall that did not open, and a missing key pair all look identical
+    # from out here, and they have different fixes.
+    log "waiting for ssh (up to $((SSH_TRIES * SSH_WAIT / 60)) min) ..."
     ready=0
-    for _ in $(seq 1 60); do
-        if "${DX[@]}" ssh "$JOB" -T "true" >/dev/null 2>&1; then ready=1; break; fi
-        sleep 10
+    ssh_err="$(mktemp)"
+    for attempt in $(seq 1 "$SSH_TRIES"); do
+        if "${DX[@]}" ssh "$JOB" -T "true" >/dev/null 2>"$ssh_err"; then
+            ready=1
+            break
+        fi
+        # Every ~2 min, not every attempt: enough to show it is still trying
+        # and what it is failing on, without a screenful of the same line.
+        if [ $((attempt % 12)) = 0 ]; then
+            log "  still waiting (${attempt}/${SSH_TRIES}): $(tail -1 "$ssh_err" | cut -c1-100)"
+        fi
+        sleep "$SSH_WAIT"
     done
-    [ "$ready" = 1 ] || die "ssh never came up. The job is running and billing;
-       try 'uv run dx ssh $JOB' by hand, or terminate it."
+    if [ "$ready" != 1 ]; then
+        warn "last ssh error was:"
+        sed 's/^/  | /' "$ssh_err" >&2
+        rm -f "$ssh_err"
+        die "ssh never came up after $((SSH_TRIES * SSH_WAIT / 60)) min. The job is
+       running and billing; try 'uv run dx ssh $JOB' by hand, or terminate it.
+       Raise SSH_TRIES if the box is simply slow today."
+    fi
+    rm -f "$ssh_err"
     log "connected."
 fi
 
