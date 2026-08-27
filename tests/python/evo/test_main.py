@@ -60,7 +60,7 @@ def kmer(monkeypatch):
     """Swap Evo 2 for the k-mer stand-in, so the whole command runs on a laptop."""
     monkeypatch.setattr(
         "evo.embeddings.__main__.Evo2Embedder",
-        lambda model, device: KmerEmbedder(k=2),
+        lambda model, device, use_kernels=False: KmerEmbedder(k=2),
     )
 
 
@@ -172,7 +172,7 @@ def test_the_model_is_loaded_once_for_both_alleles(tmp_path, vcf, fasta, monkeyp
     loads = []
     monkeypatch.setattr(
         "evo.embeddings.__main__.Evo2Embedder",
-        lambda model, device: (loads.append(model), KmerEmbedder(k=2))[1],
+        lambda model, device, use_kernels=False: (loads.append(model), KmerEmbedder(k=2))[1],
     )
     main([vcf, fasta, str(tmp_path / "out"), *SMALL])
     assert len(loads) == 1
