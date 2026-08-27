@@ -97,7 +97,9 @@ def run_trf_on_insertions(args):
             REF   = variant.REF
             if variant.ALT is None or len(variant.ALT) == 0:
                 continue
-            ALT   = variant.ALT[0][len(variant.REF):]  # Get the inserted sequence
+            ALT   = variant.ALT[0]
+            if REF == ALT[:len(variant.REF)]:  # Get the inserted sequence
+                ALT = ALT[len(variant.REF):]
             DR    = variant.format('DR')    # depth of reads supporting the reference allele
             DV    = variant.format('DV')    # depth of reads supporting the variant allele
             if variant.INFO.get("SVLEN") is None:
