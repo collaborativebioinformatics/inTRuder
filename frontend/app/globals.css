@@ -158,6 +158,20 @@ body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Scroll containers in the workspace hide their scrollbar track.
+   Every column is already bounded by a hairline, so a track drawn down the
+   middle of one — and straight across the pinned reference band — reads as a
+   seam in the layout rather than as a control. Only the drawing is suppressed:
+   wheel, trackpad, keyboard and programmatic scrolling are untouched, and the
+   region stays focusable and announced as scrollable. */
+.scroll-quiet {
+  scrollbar-width: none;
+}
+
+.scroll-quiet::-webkit-scrollbar {
+  display: none;
+}
+
 /* Coordinates, motifs and sample IDs are identifiers — always monospace. */
 .tabular {
   font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;

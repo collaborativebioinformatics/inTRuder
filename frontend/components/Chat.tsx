@@ -143,7 +143,7 @@ export function Chat({ agentEnabled }: { agentEnabled: boolean }) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+        <ThreadPrimitive.Viewport className="scroll-quiet min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
           <ThreadPrimitive.Empty>
             <div className="space-y-3">
               <p className="text-xs leading-relaxed text-ink-secondary">

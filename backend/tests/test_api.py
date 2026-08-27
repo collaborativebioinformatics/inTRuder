@@ -44,18 +44,67 @@ def test_a_manifest_without_its_file_degrades_rather_than_breaking(client):
 def test_filters_needing_absent_columns_are_reported_not_silently_dropped(client):
     """A filter that cannot run must say so, not quietly match everything.
 
-    The demo fixtures carry no per-catalog verdicts, so `novelty` and
-    `platform_agreement` have no column to filter on. Returning the full table
-    while showing an active filter chip would read as a result.
+    `demo_loci` is one row per locus, so it has no `sample` column, and the
+    STRchive step has not been run against it, so it has no `strchive_status`.
+    Returning the full table while showing an active filter chip would read as a
+    result, so those come back in `ignored_filters` instead.
     """
     baseline = client.get("/api/loci", params={"limit": 1}).json()
     filtered = client.get(
         "/api/loci",
-        params={"limit": 1, "novelty": "novel_motif", "platform_agreement": "both"},
+        params={"limit": 1, "sample": "HG00597", "strchive_status": "pathogenic_motif"},
     ).json()
     assert filtered["total"] == baseline["total"]
-    assert set(filtered["ignored_filters"]) == {"novelty", "platform_agreement"}
+    assert set(filtered["ignored_filters"]) == {"sample", "strchive_status"}
     assert baseline["ignored_filters"] == []
+
+
+def test_reference_screen_filters_run_against_the_demo_fixtures(client):
+    """The other half of the contract: a filter whose column *is* present must
+    actually filter, and must not be reported as ignored.
+
+    The demo fixtures carry the reference-screen columns (see
+    scripts/make_demo_data.py), so `novelty`, `platform_agreement` and
+    `min_insertion_purity` are real filters here rather than inert controls.
+    """
+    baseline = client.get("/api/loci", params={"limit": 1}).json()
+    for params in (
+        {"novelty": "novel_motif"},
+        {"platform_agreement": "both"},
+        {"min_insertion_purity": 0.8},
+    ):
+        body = client.get("/api/loci", params={"limit": 1, **params}).json()
+        assert body["ignored_filters"] == [], params
+        assert 0 < body["total"] < baseline["total"], params
+
+
+def test_every_locus_carries_a_reference_verdict(client):
+    """The locus view puts the reference at the top of the page, so a locus
+    without per-catalog columns would render an empty comparison.
+
+    `novelty` and `novel` are two views of one screen and must agree: `novel` is
+    true exactly when the combined verdict is not `known`. A catalog that found
+    nothing must report null, not zero -- "no repeat annotated here" and "a
+    repeat of length zero" are different statements.
+    """
+    loci = client.get("/api/loci", params={"limit": 300}).json()["loci"]
+    assert loci
+    for locus in loci:
+        assert locus["novelty"] in {"known", "novel_motif", "novel_locus"}
+        assert locus["novel"] is (locus["novelty"] != "known")
+        assert bool(locus["catalogs"]) is (locus["novelty"] == "known")
+        for platform in ("ucsc", "trexplorer"):
+            verdict = locus[f"{platform}_novelty"]
+            assert verdict in {"known", "novel_motif", "novel_locus"}
+            found = verdict != "novel_locus"
+            assert (locus[f"{platform}_motif"] is not None) is found
+            assert (locus[f"{platform}_start"] is not None) is found
+            assert (locus[f"{platform}_n_nearby"] > 0) is found
+        # The combined verdict is the least novel of the two, never more novel.
+        rank = {"known": 0, "novel_motif": 1, "novel_locus": 2}
+        assert rank[locus["novelty"]] == min(
+            rank[locus["ucsc_novelty"]], rank[locus["trexplorer_novelty"]]
+        )
 
 
 def test_strchive_catalog_is_served(client):

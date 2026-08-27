@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
 import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
+import { ReferenceComparison, referenceHits, trackScale } from "@/components/ReferenceTrack";
 import { fetchLocus } from "@/lib/api";
 import { buildMotifScale, formatBp, formatPos, motifColor, shortMotif } from "@/lib/palette";
 import {
@@ -55,9 +56,16 @@ export function LocusView({ locusId }: { locusId: string }) {
     [detail],
   );
   const motifScale = useMemo(() => buildMotifScale(allSegments), [allSegments]);
+
+  // The reference track shares this scale with the allele rows, so the widths
+  // can be read against each other — see the coordinate caveat in
+  // ReferenceTrack. `trackScale` caps how far one very long reference repeat is
+  // allowed to stretch the denominator.
+  const hits = useMemo(() => (detail ? referenceHits(detail.locus) : []), [detail]);
   const maxLen = useMemo(
-    () => Math.max(1, ...(detail?.alleles.map((a) => a.allele_len) ?? [1])),
-    [detail],
+    () =>
+      trackScale(hits, Math.max(1, ...(detail?.alleles.map((a) => a.allele_len) ?? [1]))),
+    [detail, hits],
   );
 
   // Legend entries, in the same fixed slot order the scale assigned.
@@ -96,7 +104,7 @@ export function LocusView({ locusId }: { locusId: string }) {
   const { locus, alleles } = detail;
 
   return (
-    <section aria-labelledby="locus-heading" className="flex min-h-0 flex-col">
+    <section aria-labelledby="locus-heading" className="flex flex-col">
       <header className="pb-3">
         <button
           type="button"
@@ -153,26 +161,49 @@ export function LocusView({ locusId }: { locusId: string }) {
         </dl>
       </header>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-hairline pt-2.5 pb-3 text-xs">
-        <span className="text-ink-muted">Motifs:</span>
-        {legend.map(({ color, motif }) => (
-          <span key={color} className="flex items-center gap-1.5 text-ink-secondary">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ background: color }}
-            />
-            <span className="tabular">
-              {color === "var(--motif-other)" ? "other" : shortMotif(motif, 10)}
+      {/* The reference and the motif legend are what every row below is read
+          against, so they pin to the top of the column while the rest of the
+          page — heading, stats, every carrier — scrolls under them as one
+          document. The negative margin lets the band's background span the
+          column's full width; the matching padding keeps the track aligned to
+          the allele grid. The column itself carries no top padding, so the
+          band pins flush and nothing can show through above it. */}
+      <div className="sticky top-0 z-20 -mx-4 bg-plane px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pb-3 text-xs">
+          <span className="text-ink-muted">Motifs:</span>
+          {legend.map(({ color, motif }) => (
+            <span key={color} className="flex items-center gap-1.5 text-ink-secondary">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm"
+                style={{ background: color }}
+              />
+              <span className="tabular">
+                {color === "var(--motif-other)" ? "other" : shortMotif(motif, 10)}
+              </span>
             </span>
+          ))}
+          <span className="flex items-center gap-1.5 text-ink-secondary">
+            <span
+              className="inline-block h-1 w-2.5 rounded-sm"
+              style={{ background: "var(--flank)" }}
+            />
+            flank
           </span>
-        ))}
-        <span className="flex items-center gap-1.5 text-ink-secondary">
-          <span className="inline-block h-1 w-2.5 rounded-sm" style={{ background: "var(--flank)" }} />
-          flank
-        </span>
+        </div>
+
+        <ReferenceComparison locus={locus} maxLen={maxLen} verdict={noveltyOf(locus)} />
+
+        {/* Rows dissolve into the band rather than being sliced by a rule at
+            its edge — a hard line there reads as a second panel border stacked
+            on the one the allele list already has. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-full h-4"
+          style={{ background: "linear-gradient(to bottom, var(--plane), transparent)" }}
+        />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-hairline bg-surface p-3">
+      <div className="rounded-lg border border-hairline bg-surface p-3">
         <ul className="space-y-1">
           {alleles.map((allele) => (
             <li
