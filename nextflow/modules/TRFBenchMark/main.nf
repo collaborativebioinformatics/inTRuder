@@ -1,13 +1,35 @@
+process TRF_TSV_TO_BED {
+    // TRF results are chrom/pos only; bedtools needs a 3rd column.
+    // Header is dropped because bedtools can't parse it as an interval.
+    // convert TRF TSV into a zero-based half open BED file
+
+    input:
+    path query_tsv
+
+    output:
+    path "${query_tsv.baseName}.bed", emit: bed
+
+    script:
+    """
+    awk 'BEGIN{FS=OFS="\\t"} NR>1 {\$2=\$2 OFS (\$2+1); print}' "${query_tsv}" > "${query_tsv.baseName}.bed"
+    """
+
+    stub:
+    """
+    touch "${query_tsv.baseName}.bed"
+    """
+}
+
 process INTERSECT_BED {
     container "community.wave.seqera.io/library/bedtools:2.31.1--7c4ce4cb07c09ee4"
 
     input:
     path truth_bed // e.g. a bed from https://zenodo.org/records/11522276
-    path query_vcf // VCF from SV caller with insertions only
+    path query_bed // BED converted TRF output
     val min_overlap_b // Can be a float (e.g., 0.5) or null/1e-9
 
     output:
-    path "tr_intersections.bed.gz", emit: intersections
+    path "trf_truth_intersections.bed.gz", emit: intersections
 
     script:
     def overlap_flag = min_overlap_b ? "-F ${min_overlap_b}" : ""
@@ -15,12 +37,12 @@ process INTERSECT_BED {
     bedtools intersect \
         ${overlap_flag} \
         -a "${truth_bed}" \
-        -b "${query_vcf}" | gzip > tr_intersections.bed.gz
+        -b "${query_bed}" | gzip > trf_truth_intersections.bed.gz
     """
 
     stub:
     """
-    tr_intersections.bed.gz
+    touch trf_truth_intersections.bed.gz
     """
 }
 
