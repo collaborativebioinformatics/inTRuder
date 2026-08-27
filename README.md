@@ -146,29 +146,9 @@ without one. Anthropic, Google, Ollama and OpenAI are all selectable via
 | [`data/web/`](./data/web) | Dataset manifests — add your own data here |
 | [`docker/`](./docker) | Images for both services; `data/` is bind-mounted, not baked in |
 
-### Adding your data
-
-Press **Upload** and drop in a file — or drag one anywhere onto the window.
-
-- A **Parquet/CSV/TSV** table becomes a queryable dataset immediately. Tell the
-  dialog it is your candidate loci and the catalog, funnel and barcodes redraw
-  from it; no restart, no rebuild.
-- A **VCF** is stored and read: sample names, the caller from its `##source`
-  line, whether several callers were merged. The assistant can then be asked
-  about it. It does not become a table — that is what the TR-detection step is
-  for, and the interface says so rather than implying otherwise.
-
-Files land in `data/uploads/`, and their manifests beside the hand-written ones
-in `data/web/`. That directory is the `/data` bind mount under Docker and the
-repository's own `data/` without it, so **uploading behaves identically in both**
-— nothing in the code branches on which one you are running.
-
-Nothing leaves your machine: the backend is the one running on it, and the file
-is moved into a directory you already own. Neither uploads nor their manifests
-are committed.
-
-**Adding a dataset is still one YAML file and no code changes** if you would
-rather write it yourself. See [`data/web/README.md`](./data/web/README.md).
+**Adding a dataset is one YAML file, no code changes.** Manifests point at paths
+on your own machine; nothing is uploaded and nothing but the small synthetic demo
+set is committed. See [`data/web/README.md`](./data/web/README.md).
 
 > The bundled demo data is **synthetic**. Sample names and the motif-length mix
 > mirror the real HPRC callset so the shapes look right, but every locus,
