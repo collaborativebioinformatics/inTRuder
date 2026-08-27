@@ -47,7 +47,7 @@ process FIND_TRS {
 }
 
 // ---------------------------------------------------------------------
-// 02 - NOVELTY (optional)
+// 02A - NOVELTY (optional)
 // ---------------------------------------------------------------------
 process FIND_NOVEL {
     // TODO: change to output in corresponding parent directory
@@ -74,8 +74,31 @@ process FIND_NOVEL {
     """
 }
 
+
 // ---------------------------------------------------------------------
-// 03a - PREPROCESS (optional, real) - converts SVTYPE=INS to SVTYPE=DUP
+// 02B - FILTER_BY_COVERAGE
+// Filters out SVs where less than 80% of the insertion is covered by
+// tandem repeat (using novelty's insertion_purity column, 0-1 scale).
+// Always runs right after 02A whenever novelty is on - no separate flag.
+// ---------------------------------------------------------------------
+process FILTER_BY_COVERAGE {
+    publishDir "results/02_novelty", mode: "copy"
+
+    input:
+    path novelty_tsv
+
+    output:
+    path "novelty_filtered.tsv"
+
+    script:
+    """
+    echo "TODO: real filtering script goes here, using ${novelty_tsv}" > novelty_filtered.tsv
+    """
+}
+
+
+// ---------------------------------------------------------------------
+// 03A - PREPROCESS (optional, real) - converts SVTYPE=INS to SVTYPE=DUP
 // so the (currently placeholder) AnnotSV step will eventually be able
 // to handle our insertion-only data correctly. Calls the annotation
 // team's own pipeline (pipelines/sv_preprocess/main.nf) as a separate
@@ -106,7 +129,7 @@ process PREPROCESS {
 
 
 // ---------------------------------------------------------------------
-// 03b - ANNOTATION (optional) - PLACEHOLDER
+// 03B - ANNOTATION (optional) - PLACEHOLDER
 // Takes the ORIGINAL vcf (or a BED derived from it) - not 01's output.
 // TODO: replace with the real AnnotSV command once ready.
 // ---------------------------------------------------------------------
@@ -273,7 +296,8 @@ workflow {
     // --- 02: optional, branches off 01's output ---
     if (params.run_novelty) {
     FIND_NOVEL(FIND_TRS.out)
-    novelty_out = FIND_NOVEL.out
+    FILTER_BY_COVERAGE(FIND_NOVEL.out)
+    novelty_out = FILTER_BY_COVERAGE.out
     } else {
         novelty_out = Channel.fromPath("${projectDir}/assets/NO_FILE")
     }
