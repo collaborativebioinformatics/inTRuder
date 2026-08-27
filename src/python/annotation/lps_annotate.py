@@ -293,22 +293,53 @@ def prep_for_lps(long_df):
     return long_df
 
 
+OUTPUT_COLUMNS_HELP = """\
+Output TSV columns:
+  sampleID                        sample this row's genotype belongs to
+  CHROM, POS, ID, REF, ALT, QUAL,
+  FILTER, INFO, FORMAT            passed through from the input VCF site record
+  <FORMAT fields, e.g. GT, AAL...> per-sample genotype fields (split out of the VCF sample column)
+  ALT1, ALT2                      resolved diploid allele sequences ("." if no call)
+  ALT1_LPS_motif, ALT1_LPS_repeat,
+  ALT1_LPS_length                 longest pure (uninterrupted) repeat found in ALT1:
+                                   its motif, repeat count, and length (motif_len * repeat_count)
+  ALT2_LPS_motif, ALT2_LPS_repeat,
+  ALT2_LPS_length                 same, for ALT2
+  ALT_LPS_motif, ALT_LPS_repeat,
+  ALT_LPS_length, ALT_LPS_allele  whichever of ALT1/ALT2 has the longer LPS ("ALT1" or "ALT2")
+  ALT1_LPS_motif_norm,
+  ALT2_LPS_motif_norm,
+  ALT_LPS_motif_norm              motif normalized to its lexicographically smallest rotation
+                                   (e.g. TAT/ATT/TTA -> ATT), so equivalent motifs compare equal
+  total_alt_count                 number of called alleles at this site (0, 1, or 2)
+  has_dual_alleles                True if both ALT1 and ALT2 are called
+  lps_length_diff                 abs(ALT1_LPS_length - ALT2_LPS_length)
+"""
+
+
 def main():
     parser = argparse.ArgumentParser(
             prog='lps_annotate.py',
-            usage='lps_annotate.py --sample <SampleID> --output <OutputPath>'
+            usage='lps_annotate.py --sample=<path/to/merged.vcf> --output=<path/to/output.tsv>',
+            description=(
+                'Compute per-sample LPS (Longest Pure Segment) annotations for a '
+                'SURVIVOR-merged, multi-sample sniffles VCF, and write the result as a '
+                'long-form TSV (one row per sample x locus).'
+            ),
+            epilog=OUTPUT_COLUMNS_HELP,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
     parser.add_argument(
         '--sample',
         dest='sample_path',
         required=True,
-        help='Sample ID'
+        help='Path to the input SURVIVOR-merged, multi-sample sniffles VCF'
     )
     parser.add_argument(
         '--output',
         dest='output_path',
         required=True,
-        help='output path'
+        help='Path to write the output TSV (see column descriptions below)'
     )
     args = parser.parse_args()
     sample_path = args.sample_path
