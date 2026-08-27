@@ -282,6 +282,10 @@ rsconnect/
 # demand, so they should not land in a commit)
 data/reference/
 
+# Results fetched off a DNAnexus worker by scripts/dx-instance.sh. They are on
+# the platform too (under /Results/<you>/), which is where they belong.
+data/dx/
+
 # Fetched reference catalogs for the web layer. Regenerate with
 # `cd backend && uv run python scripts/fetch_strchive.py`. The manifest that
 # describes this file IS committed (data/web/strchive-loci.yaml); the data is a
