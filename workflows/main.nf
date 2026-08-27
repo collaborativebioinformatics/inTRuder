@@ -43,6 +43,36 @@ process FIND_TRS {
     """
 }
 
+// ---------------------------------------------------------------------
+// PROCESS: novelty screening
+// Wraps the `novelty` CLI (installed via uv sync, from pyproject.toml)
+// to screen TRF calls against UCSC simpleRepeat + TRExplorer, adding a
+// verdict column (known / novel_motif / novel_locus / unscreened).
+// ---------------------------------------------------------------------
+process FIND_NOVEL {
+
+    publishDir "results/novel", mode: "copy"
+
+    input:
+    path trf_tsv
+
+    output:
+    path "novelty_output.tsv"
+
+     script:
+    // --min-rep-units 3 matches the standard TR definition floor
+    // discussed earlier (AJHG catalog: >=3 repeat units to count as a
+    // real TR). Deliberately NOT setting --min-purity: interrupted /
+    // imperfect repeats are real biology, not noise - a hard purity
+    // gate would bias against exactly the messier, more-likely-novel
+    // loci this pipeline is hunting for. Not using --drop-filtered
+    // either, so nothing is silently discarded - every row is kept and
+    // tagged, with filtering decisions left to a downstream step.
+    """
+    uv run novelty --platform ucsc,trexplorer annotate ${trf_tsv} novelty_output.tsv \
+        --min-rep-units 3
+    """
+}
 
 // ---------------------------------------------------------------------
 // WORKFLOW: wires everything together, including the input-handling
@@ -64,11 +94,7 @@ workflow {
 
     // --- Decision point ---
     if (params.find_novel) {
-        // TODO: this is where Stage 3 (reliability filtering) and
-        // Stage 4 (novelty determination) will plug in, once those
-        // pieces are built. For now, just a placeholder so the branch
-        // exists and is easy to find later.
-        println "find_novel=true: novelty filtering pipeline would run here (not yet built)."
+    FIND_NOVEL(FIND_TRS.out)
     } else {
         println "find_novel=false: stopping after baseline TR-finding step."
     }

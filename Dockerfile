@@ -22,16 +22,51 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir pytrf parasail cyvcf2 tqdm
+# --- uv setup ---
+# Pinned to 0.12.6 (released 2026-08-25) for reproducible builds
+COPY --from=ghcr.io/astral-sh/uv:0.12.6 /uv /uvx /bin/
 
-# You might not need to use python-slim
-# DOWNLOAD UV instead of doing this then run "uv sync"
-# RUN pip install --no-cache-dir pytrf parasail
+# Install directly into the system Python (no venv) - keeps this a
+# simple single-purpose container.
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
 
-# Bundle the pipeline's scripts directly into the image, so containerized
-# runs are self-contained and don't depend on the container being able
-# to see paths outside the pipeline's own folder on the host machine.
+WORKDIR /app
+
+# The real pyproject.toml + uv.lock already exist in the repo (built by
+# a teammate) - copy both so `uv sync --locked` installs the EXACT
+# pinned versions already resolved, not a fresh re-resolution.
+   COPY pyproject.toml uv.lock README.md ./
+
+# `novelty` is declared as a real installable package built from
+# src/python (see [tool.uv.build-backend] in pyproject.toml), so the
+# source needs to be present before `uv sync` runs - it's not just
+# installing third-party deps, it's building this project too.
+COPY src/python ./src/python
+
+RUN uv sync --locked
+
+# Bundle sv_trfcaller.py at a stable, simple path for FIND_TRS to call
+# (in addition to it already being installed as part of the novelty
+# package above).
 COPY src/python/sv_trfcaller.py /opt/scripts/sv_trfcaller.py
 
-# More `pip install` and `COPY` lines go here as later pipeline stages
-# get added.
+# --- Pre-bake novelty's reference catalogs (UCSC simpleRepeat ~30MB,
+# TRExplorer ~45MB) at build time, so runs never need network access
+# and are instant.
+#
+# IMPORTANT: novelty's default cache dir ("data/reference") is a
+# RELATIVE path. Nextflow runs each task in its own work directory
+# (not /app), so a relative path baked in at /app/data/reference would
+# NOT be found at runtime - the container would silently look in the
+# wrong place and re-download every run, defeating the whole point.
+# Setting NOVELTY_CACHE as an absolute path fixes the location
+# regardless of what directory a command is actually run from.
+ENV NOVELTY_CACHE=/opt/novelty_cache
+
+# Dummy query forces both catalogs to download and cache now, at build
+# time, rather than on first real use.
+RUN mkdir -p /opt/novelty_cache && \
+    uv run novelty --platform ucsc,trexplorer query --chrom chr1 --pos 1000000 --motif AT
+# More dependencies go in pyproject.toml as later pipeline stages need
+# them - then re-run `uv lock` locally, commit the updated uv.lock, and
+# rebuild.
