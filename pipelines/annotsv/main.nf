@@ -40,13 +40,9 @@ def helpMessage() {
       --outdir              <dir>        Output directory                [default: results]
       --genome_build        <str>        GRCh38 or GRCh37                [default: GRCh38]
       --candidate_genes     <file>       Candidate genes list file       [default: none]
+      --annotations_dir     <dir>        AnnotSV database directory
       --publish_dir_mode    <str>        Output file mode                [default: copy]
       --help                             Show this help message
-
-    Automatic Platform Settings (Configured in nextflow.config):
-      - Project ID:         ${params.dx_project ?: 'local'}
-      - Reference DBs:      ${params.dx_annotations_path ?: params.annotations_dir}
-      - Memory:             64 GB (Cloud) / 8 GB (Local)
     """.stripIndent()
 }
 
@@ -103,6 +99,16 @@ workflow {
         input_pattern = "${clean_path}/*.{vcf,vcf.gz,bed,bed.gz,bcf}"
     }
 
+    // 3. Resolve annotations directory path
+    def resolved_annot = params.annotations_dir
+    if (params.dx_project && resolved_annot && !resolved_annot.startsWith('dx://') && (resolved_annot.startsWith('/') || resolved_annot.startsWith('project-'))) {
+        if (resolved_annot.startsWith('/')) {
+            resolved_annot = "dx://${params.dx_project}:${resolved_annot}"
+        } else {
+            resolved_annot = "dx://${resolved_annot}"
+        }
+    }
+
     log.info """
     ╔══════════════════════════════════════════════════════════╗
     ║        AnnotSV Annotation Pipeline                       ║
@@ -112,12 +118,11 @@ workflow {
       outdir              : ${params.outdir}
       genome_build        : ${params.genome_build ?: 'GRCh38'}
       candidate_genes     : ${params.candidate_genes ?: 'none'}
-      dx_project          : ${params.dx_project ?: 'local'}
-      dx_annotations_path : ${params.dx_annotations_path ?: 'local (not using dx storage)'}
+      annotations_dir     : ${resolved_annot}
       publish_dir_mode    : ${params.publish_dir_mode}
     """.stripIndent()
 
-    // 3. Create input channel
+    // 4. Create input channel
     Channel
         .fromPath(input_pattern, checkIfExists: true)
         .map { vcf_file ->
@@ -126,29 +131,31 @@ workflow {
         }
         .set { ch_sv_input }
 
-    // 4. Optional candidate-genes file channel
+    // 5. Optional candidate-genes file channel
     ch_candidate_genes = params.candidate_genes
         ? Channel.fromPath(params.candidate_genes, checkIfExists: true)
         : Channel.value(file('NO_FILE'))
 
-    // 5. DNAnexus annotations path channel
-    ch_dx_annotations = Channel.value(params.dx_annotations_path ?: '')
+    // 6. Annotations directory channel
+    ch_annotations = resolved_annot
+        ? Channel.fromPath(resolved_annot, checkIfExists: true)
+        : Channel.value(file('NO_DIR'))
 
-    // 6. Run ANNOTSV on all sample files
+    // 7. Run ANNOTSV on all sample files
     ANNOTSV(
         ch_sv_input,
         ch_candidate_genes,
-        ch_dx_annotations
+        ch_annotations
     )
 
-    // 7. Collect all annotated TSVs and generate summary report table
+    // 8. Collect all annotated TSVs and generate summary report table
     all_tsvs = ANNOTSV.out.tsv
         .map { meta, tsv -> tsv }
         .collect()
 
     GENERATE_SUMMARY(all_tsvs)
 
-    // 8. Log outputs
+    // 9. Log outputs
     all_tsvs.subscribe { files ->
         def count = files instanceof List ? files.size() : 1
         log.info "✅ All ${count} samples annotated successfully!"
