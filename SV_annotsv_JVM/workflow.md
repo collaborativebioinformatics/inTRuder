@@ -147,9 +147,9 @@ Downloaded from the `Group2_2026` test project:
   `/Test_Inputs/first_500_INS.vcf`.
 - `examples/first_500_INS.phenogenius.tsv` — successful output from
   `/Results/PhenoGenius_Test4/results/first_500_INS.phenogenius.tsv`.
-- `demo_output_annot_sv.tsv` — compact AnnotSV demonstration output.
-- `column_description.xlsx` — selected AnnotSV column descriptions.
-- `take_info_annotsv.R` — downstream extraction/plotting script.
+- `examples/demo_output_annot_sv.tsv` — compact AnnotSV demonstration output.
+- `examples/column_description.xlsx` — selected AnnotSV column descriptions.
+- `src/R/take_info_annotsv.R` — canonical downstream extraction/plotting script.
 
 The example TSV is an output artifact for inspection; rerun the workflow for new
 inputs. For cohorts, keep inputs and intermediate outputs in DNAnexus and pass

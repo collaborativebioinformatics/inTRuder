@@ -6,11 +6,28 @@ library(ggplot2)
 library(forcats)
 library(scales)
 
-dup_annot <- fread("/Users/kjxz732/Hackathon_SVs/20260826_AnnotSV/DUP_prova_nova.vcf.tsv")
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) < 1 || length(args) > 2) {
+  stop("Usage: Rscript take_info_annotsv.R <annotated.tsv> [output.tsv]")
+}
+input_file <- args[[1]]
+output_file <- if (length(args) == 2) args[[2]] else "results/TR_annotsv.tsv"
+dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+dup_annot <- fread(input_file)
+
+# The standalone PhenoGenius stage uses these five columns. Keep aliases for
+# older AnnotSV outputs so the analysis remains readable across prior runs.
+if (!"PhenoGenius_score" %in% names(dup_annot) && "PhenoGenius_best_score" %in% names(dup_annot))
+  dup_annot[, PhenoGenius_score := suppressWarnings(as.numeric(PhenoGenius_best_score))]
+if (!"PhenoGenius_specificity" %in% names(dup_annot) && "PhenoGenius_best_specificity" %in% names(dup_annot))
+  dup_annot[, PhenoGenius_specificity := PhenoGenius_best_specificity]
+if (!"PhenoGenius_phenotype" %in% names(dup_annot))
+  dup_annot[, PhenoGenius_phenotype := NA_character_]
 
 dup_split <- dup_annot %>% filter("split" == Annotation_mode)
-dup_split <- dup_split[,c("AnnotSV_ID","Tx","Overlapped_tx_length","Overlapped_CDS_percent","Frameshift","Location","Location2","Dist_nearest_SS","GenCC_disease","GenCC_moi",
-                          "GenCC_classification","OMIM_phenotype","OMIM_inheritance","PhenoGenius_score","PhenoGenius_phenotype","Human_pheno_evidence")]
+split_cols <- c("AnnotSV_ID","Tx","Overlapped_tx_length","Overlapped_CDS_percent","Frameshift","Location","Location2","Dist_nearest_SS","GenCC_disease","GenCC_moi",
+                "GenCC_classification","OMIM_phenotype","OMIM_inheritance","PhenoGenius_score","PhenoGenius_phenotype","Human_pheno_evidence")
+dup_split <- dup_split[, intersect(split_cols, names(dup_split)), with = FALSE]
 dup_full <- dup_annot %>% filter("full" == Annotation_mode)
 cols_to_remove <- c(
   "Tx", "Overlapped_tx_length",
@@ -22,15 +39,25 @@ cols_to_remove <- c(
 )
 
 dup_full <- dup_full %>%
-  dplyr::select(-dplyr::all_of(cols_to_remove))
+  dplyr::select(-dplyr::any_of(cols_to_remove))
 
 
 dup_full<- merge(dup_full,dup_split,by.x="AnnotSV_ID",by.y="AnnotSV_ID", all.x=T)
 
-dup_full<- dup_full %>% select("AnnotSV_ID", "SV_chrom", "SV_start",  "SV_end", "SV_length", "SV_type","REF","ALT","Gene_name","Location","Location2","Tx", "Overlapped_tx_length", "Overlapped_CDS_percent", "Frameshift","RE_gene","P_gain_source","B_gain_source","TAD_coordinate",
-                               "Repeat_type_left","Repeat_type_right","SegDup_left", "SegDup_right","ACMG","HI","TS", "DDD_HI_percent","ExAC_dupZ",  "ExAC_cnvZ","LOEUF_bin","GnomAD_pLI", "ExAC_pLI","Exomiser_gene_pheno_score","PhenoGenius_score","PhenoGenius_specificity","PhenoGenius_phenotype","GenCC_disease","GenCC_classification","Human_pheno_evidence",
-                               "AnnotSV_ranking_criteria","AnnotSV_ranking_score","ACMG_class")
-fwrite(dup_full,"/Users/kjxz732/Hackathon_SVs/20260826_AnnotSV/TR_annotsv.tsv",sep="\t")
+output_cols <- c("AnnotSV_ID", "SV_chrom", "SV_start", "SV_end", "SV_length", "SV_type", "REF", "ALT", "Gene_name", "Location", "Location2", "Tx", "Overlapped_tx_length", "Overlapped_CDS_percent", "Frameshift", "RE_gene", "P_gain_source", "B_gain_source", "TAD_coordinate",
+                 "Repeat_type_left", "Repeat_type_right", "SegDup_left", "SegDup_right", "ACMG", "HI", "TS", "DDD_HI_percent", "ExAC_dupZ", "ExAC_cnvZ", "LOEUF_bin", "GnomAD_pLI", "ExAC_pLI", "Exomiser_gene_pheno_score", "PhenoGenius_score", "PhenoGenius_specificity", "PhenoGenius_phenotype", "GenCC_disease", "GenCC_classification", "Human_pheno_evidence", "AnnotSV_ranking_criteria", "AnnotSV_ranking_score", "ACMG_class")
+dup_full <- dup_full %>% dplyr::select(dplyr::any_of(output_cols))
+# AnnotSV databases and input type determine which optional fields exist.
+# Add absent analysis fields as NA so plotting remains valid for both the
+# AnnotSV-only and PhenoGenius-enriched outputs.
+analysis_cols <- c("Gene_name", "Location", "Location2", "Frameshift", "ACMG_class",
+                   "GenCC_disease", "Human_pheno_evidence", "Exomiser_gene_pheno_score",
+                   "PhenoGenius_score", "B_gain_source")
+for (col in setdiff(analysis_cols, names(dup_full))) dup_full[[col]] <- NA
+for (col in c("Exomiser_gene_pheno_score", "PhenoGenius_score", "AnnotSV_ranking_score")) {
+  if (col %in% names(dup_full)) dup_full[[col]] <- suppressWarnings(as.numeric(as.character(dup_full[[col]])))
+}
+fwrite(dup_full, output_file, sep = "\t")
 
 
 show_missing <- function(x) {
@@ -374,5 +401,3 @@ ggplot(variant_status, aes(x = Variant_status, y = n, fill = Variant_status)) +
     plot.title = element_text(face = "bold")
   ) +
   expand_limits(y = max(variant_status$n) * 1.15)
-
-
