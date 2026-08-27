@@ -37,6 +37,17 @@
   --motif-other: #898781;
   --flank: #e1e0d9;
 
+  /* Clinical allele classes — the reserved status palette, not a series ramp.
+     These encode state (benign → pathogenic), so they are the fixed status steps
+     rather than categorical slots, and they never carry meaning alone: every band
+     is directly labelled with its copy-number range and sits at a fixed position
+     on the axis. That labelling is also the required relief for --intermediate,
+     which is deliberately sub-3:1 on the light surface. */
+  --benign: #0ca30c;
+  --intermediate: #fab219;
+  --pathogenic: #d03b3b;
+  --allele-unknown: #898781;
+
   /* Funnel — single-hue ordinal ramp, monotone lightness. */
   --step-1: #86b6ef;
   --step-2: #5598e7;
@@ -71,6 +82,11 @@
     --motif-other: #898781;
     --flank: #2c2c2a;
 
+    --benign: #0ca30c;
+    --intermediate: #fab219;
+    --pathogenic: #d03b3b;
+    --allele-unknown: #898781;
+
     --step-1: #b7d3f6;
     --step-2: #86b6ef;
     --step-3: #3987e5;
@@ -104,6 +120,11 @@
   --motif-other: #898781;
   --flank: #2c2c2a;
 
+  --benign: #0ca30c;
+  --intermediate: #fab219;
+  --pathogenic: #d03b3b;
+  --allele-unknown: #898781;
+
   --step-1: #b7d3f6;
   --step-2: #86b6ef;
   --step-3: #3987e5;
@@ -124,6 +145,9 @@
   --color-novel-soft: var(--novel-soft);
   --color-known: var(--known);
   --color-known-soft: var(--known-soft);
+  --color-benign: var(--benign);
+  --color-intermediate: var(--intermediate);
+  --color-pathogenic: var(--pathogenic);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
