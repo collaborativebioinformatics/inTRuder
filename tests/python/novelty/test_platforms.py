@@ -232,9 +232,9 @@ def test_ensure_table_looks_in_the_given_cache_directory(tmp_path):
 # bundled catalogues
 # --------------------------------------------------------------------------- #
 
-def test_the_pathogenic_catalogue_ships_with_the_package():
-    """It is 5KB of known disease loci, so shipping it means the tool works
-    offline and pins the exact version results were produced against."""
+def test_the_pathogenic_catalogue_is_kept_in_the_repo():
+    """It is 5KB of known disease loci, so keeping it in data/novelty/ means the
+    tool works offline and pins the exact version results were produced against."""
     platform = get_platform("pathogenic")
     assert platform.annotation_only
     path = platform.bundled_path("hg38")
@@ -259,6 +259,12 @@ def test_ensure_table_prefers_the_bundled_copy_without_downloading(tmp_path):
 def test_a_bundled_platform_still_honours_an_explicit_path(tmp_path, write_bed):
     override = write_bed()
     assert ensure_table("pathogenic", "hg38", override, download=False) == override
+
+
+def test_the_bundled_path_is_under_data_novelty():
+    path = get_platform("pathogenic").bundled_path("hg38")
+    assert path is not None
+    assert path.parent.name == "novelty" and path.parent.parent.name == "data"
 
 
 def test_only_hg38_is_bundled():

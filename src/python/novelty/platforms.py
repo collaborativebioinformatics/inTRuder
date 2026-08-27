@@ -316,7 +316,7 @@ class Platform:
     filename: str                   # ``.format(db=...)``
     fmt: str = "auto"
     assemblies: tuple[str, ...] = ()   # empty == whatever the host serves
-    bundled: str | None = None      # ``.format(db=...)``, relative to ``data/``
+    bundled: str | None = None      # ``.format(db=...)``, relative to ``data/novelty/``
     annotation_only: bool = False   # excluded from the combined novelty verdict
 
     def url_for(self, db: str) -> str:
@@ -328,12 +328,21 @@ class Platform:
         return self.url.format(db=db)
 
     def bundled_path(self, db: str) -> Path | None:
-        """The copy that ships inside the package, if this platform has one."""
+        """The copy kept in the repo's ``data/novelty/``, if this platform has one.
+
+        Resolved the same way as :func:`default_cache`: catalogues are data, so
+        they live under ``data/`` with the rest of it rather than inside the
+        installed module. Outside a checkout there is nothing to point at, so
+        this returns ``None`` and the caller falls back to ``--repeats``.
+        """
         if self.bundled is None:
             return None
         if self.assemblies and db not in self.assemblies:
             return None
-        return Path(__file__).resolve().parent / "data" / self.bundled.format(db=db)
+        here = Path(__file__).resolve()
+        if len(here.parents) <= 3 or not (here.parents[3] / "data").is_dir():
+            return None
+        return here.parents[3] / "data" / "novelty" / self.bundled.format(db=db)
 
     def default_path(self, db: str, cache_dir: Path | None = None) -> Path:
         return (cache_dir or default_cache()) / self.name / self.filename.format(db=db)
@@ -362,7 +371,7 @@ PLATFORMS: dict[str, Platform] = {
     ),
     "pathogenic": Platform(
         name="pathogenic",
-        description="83 known disease-associated TR loci (ships with the package; "
+        description="83 known disease-associated TR loci (kept in data/novelty/; "
                     "annotation only, never folded into the combined verdict)",
         url="",
         filename="{db}.pathogenic.TRGT.bed",
@@ -396,9 +405,9 @@ def ensure_table(platform: str | Platform = "ucsc", db: str = "hg38",
     """Return a local catalogue file, fetching it from the platform if missing."""
     platform = get_platform(platform) if isinstance(platform, str) else platform
     if path is None:
-        # A catalogue small enough to ship needs neither a download nor a cache
-        # entry, and shipping it means the tool works offline and pins the exact
-        # version the results were produced against.
+        # A catalogue small enough to keep in the repo needs neither a download
+        # nor a cache entry, and keeping it there means the tool works offline
+        # and pins the exact version the results were produced against.
         bundled = platform.bundled_path(db)
         if bundled is not None and bundled.exists():
             return bundled
