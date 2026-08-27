@@ -12,6 +12,7 @@
 process GENERATE_SUMMARY {
 
     label 'process_low'
+    container 'python:3.10-slim'
 
     publishDir path: "${params.outdir}/summary",
                mode: params.publish_dir_mode ?: 'copy',

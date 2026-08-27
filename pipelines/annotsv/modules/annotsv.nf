@@ -28,7 +28,7 @@ process ANNOTSV {
     maxRetries 2
 
     // Software environment
-    container 'YOUR_DOCKERHUB_USERNAME/annotsv:3.5.10'
+    container 'quay.io/biocontainers/annotsv:3.4.4--py310hdfd78af_0'
     conda 'bioconda::annotsv=3.4.4 bioconda::bedtools bioconda::bcftools'
 
     // Inputs
