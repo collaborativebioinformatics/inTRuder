@@ -25,6 +25,9 @@ strchive = "strchive.__main__:main"
 dev = [
     "ruff>=0.6",
     "pytest>=8",
+    "matplotlib>=3.11.1",
+    "jupyterlab>=4.6.3",
+    "ipykernel>=7.3.0",
 ]
 
 [build-system]
