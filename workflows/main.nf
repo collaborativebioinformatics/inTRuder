@@ -84,9 +84,39 @@ process FIND_NOVEL {
     """
 }
 
+// ---------------------------------------------------------------------
+// 03a - PREPROCESS (optional, real) - converts SVTYPE=INS to SVTYPE=DUP
+// so the (currently placeholder) AnnotSV step will eventually be able
+// to handle our insertion-only data correctly. Calls the annotation
+// team's own pipeline (pipelines/sv_preprocess/main.nf) as a separate
+// nextflow run, rather than importing its internals directly - avoids
+// depending on their file's use of `projectDir` (which would resolve
+// incorrectly if their process were pulled into our file via include).
+//
+// NOT containerized (see nextflow.config withName block) - this
+// process's job is just launching another nextflow run on the host;
+// containerizing it would mean Docker-in-Docker, which we don't need.
+// ---------------------------------------------------------------------
+process PREPROCESS {
+    publishDir "results/03_annotation/preprocess", mode: "copy"
+
+    input:
+    path vcf_file
+
+    output:
+    path "*.preprocessed.vcf"
+
+    script:
+    """
+    python3 /opt/scripts/normalize_svtype.py \
+        --input ${vcf_file} \
+        --output ${vcf_file.simpleName}.preprocessed.vcf
+    """
+}
+
 
 // ---------------------------------------------------------------------
-// 03 - ANNOTATION (optional) - PLACEHOLDER
+// 03b - ANNOTATION (optional) - PLACEHOLDER
 // Takes the ORIGINAL vcf (or a BED derived from it) - not 01's output.
 // TODO: replace with the real AnnotSV command once ready.
 // ---------------------------------------------------------------------
@@ -216,7 +246,8 @@ workflow {
 
     // --- 03: optional, branches off the ORIGINAL vcf, not 01's output ---
     if (params.run_annotation) {
-        ANNOTATE(vcf_ch)
+        PREPROCESS(vcf_ch)
+        ANNOTATE(PREPROCESS.out)
         annotation_out = ANNOTATE.out
     } else {
         annotation_out = Channel.fromPath("${projectDir}/assets/NO_FILE")

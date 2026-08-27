@@ -50,6 +50,13 @@ RUN uv sync --locked
 # package above).
 COPY src/python/sv_trfcaller.py /opt/scripts/sv_trfcaller.py
 
+# Bundle normalize_svtype.py (from the annotation team's sv_preprocess
+# pipeline - not yet merged to their main branch, so this is a local
+# copy for now) for the PREPROCESS process to call directly. It's pure
+# standard-library Python (argparse + gzip only), so no extra
+# dependencies are needed for it.
+COPY pipelines/sv_preprocess/scripts/normalize_svtype.py /opt/scripts/normalize_svtype.py
+
 # --- Pre-bake novelty's reference catalogs (UCSC simpleRepeat ~30MB,
 # TRExplorer ~45MB) at build time, so runs never need network access
 # and are instant.
