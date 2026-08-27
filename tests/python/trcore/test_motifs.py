@@ -1,4 +1,9 @@
-"""Motif canonicalisation -- run with `uv run pytest`."""
+"""Motif canonicalisation -- the rule every step uses to decide two repeats match.
+
+There is one implementation now, so there is one suite: exhaustive brute-force
+rotation checks, the full equivalence/tolerance matrix, and motif pairs taken
+from real pathogenic loci where the catalogues disagree on phase or strand.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ from itertools import product
 
 import pytest
 
-from novelty.motifs import (
+from trcore.motifs import (
     DEFAULT_EQUIVALENCE,
     DEFAULT_TOLERANCE,
     MATCH_EXACT,
@@ -17,8 +22,8 @@ from novelty.motifs import (
     STR_MAX_MOTIF,
     MotifEquivalence,
     MotifTolerance,
+    _edit_distance,
     canonical_motif,
-    canonical_motifs,
     edit_budget,
     least_rotation,
     motif_distance,
@@ -164,22 +169,6 @@ def test_reverse_complement_bp_restricts_rc_to_long_enough_motifs(unit, rc_expec
 def test_reverse_complement_bp_is_inert_without_reverse_complement():
     policy = MotifEquivalence(reverse_complement_bp=1)
     assert canonical_motif("TAACCC", policy) != canonical_motif("GGGTTA", policy)
-
-
-@pytest.mark.parametrize("equivalence", [
-    DEFAULT_EQUIVALENCE, RC, NO_ROTATION, RC_ONLY,
-    MotifEquivalence(reverse_complement=True, reverse_complement_bp=4),
-])
-def test_canonical_motifs_matches_the_scalar_version(equivalence):
-    """The vectorised path canonicalises the uniques and broadcasts them back."""
-    values = ["GC", "cg", " AT ", "ATAT", "AAT", "GC", "TAACCC", "", None]
-    got = canonical_motifs(values, equivalence)
-    want = [canonical_motif(v or "", equivalence) for v in values]
-    assert list(got) == want
-
-
-def test_canonical_motifs_handles_an_empty_input():
-    assert list(canonical_motifs([])) == []
 
 
 @pytest.mark.parametrize("a,b,expected", [
@@ -371,3 +360,82 @@ def test_max_fuzzy_motif_caps_every_loose_rule():
     capped = MotifTolerance(max_edit_fraction=0.5, min_subrepeat_motif=4,
                             max_fuzzy_motif=10)
     assert not capped.compare(long_query, long_target).matched
+
+
+# --------------------------------------------------------------------------- #
+# real motif pairs from pathogenic loci
+#
+# A step screening insertion sequences cannot know which strand a motif was
+# called off, so it folds strands by default where a genome-wide screen does
+# not. The strand-dependent cases below are therefore written against `RC`
+# rather than the default equivalence.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("a,b,equivalence", [
+    ("ATAT", "TA", DEFAULT_EQUIVALENCE),            # copies written out, rotation
+    ("ccg", "CCG", DEFAULT_EQUIVALENCE),            # case
+    (" CCG ", "CCG", DEFAULT_EQUIVALENCE),          # whitespace
+    ("GGCGCGGAGC", "AGCGGCGCGG", DEFAULT_EQUIVALENCE),   # VWA1: rotations
+    ("CCG", "CGG", RC),                             # opposite strands
+])
+def test_equivalent_motifs_share_a_key(a, b, equivalence):
+    assert canonical_motif(a, equivalence) == canonical_motif(b, equivalence)
+
+
+@pytest.mark.parametrize("a,b", [
+    ("AAAAG", "AAGGG"),     # RFC1: reference vs pathogenic
+    ("AAAAT", "TGAAA"),     # DAB1
+    ("AAT", "AAC"),
+    ("CCG", "CCGG"),
+    ("A", "C"),
+])
+def test_distinct_motifs_have_distinct_keys(a, b):
+    # Distinct under strand folding implies distinct without it, so assert both.
+    for equivalence in (DEFAULT_EQUIVALENCE, RC):
+        assert canonical_motif(a, equivalence) != canonical_motif(b, equivalence)
+
+
+def test_every_rotation_and_strand_of_one_repeat_collapses():
+    same = ["AAT", "ATA", "TAA", "ATT", "TTA", "TAT"]
+    assert len({canonical_motif(m, RC) for m in same}) == 1
+
+
+def test_canonical_motif_of_empty_is_empty():
+    assert canonical_motif("") == ""
+    assert canonical_motif("   ") == ""
+
+
+@pytest.mark.parametrize("a,b,cutoff,expected", [
+    ("ACGT", "ACGT", 2, 0),
+    ("ACGT", "ACTT", 2, 1),
+    ("ACGT", "ACT", 2, 1),
+    ("ACGT", "AAAA", 1, 2),      # beyond cutoff -> cutoff + 1
+    ("ACGT", "TTTTTTTT", 2, 3),  # length gap alone exceeds cutoff
+])
+def test_edit_distance(a, b, cutoff, expected):
+    assert _edit_distance(a, b, cutoff) == expected
+
+
+def test_motif_distance_scores_near_misses_only_when_asked():
+    assert motif_distance("AAAAG", "AAAGG", 0) == 1
+    assert motif_distance("AAAAG", "AAAGG", 1) == 1
+    assert motif_distance("AAAAG", "AAGGG", 1) == 2
+
+
+def test_motif_distance_handles_rotation_and_indels_together():
+    assert motif_distance("GCCG", "CCG", 1) <= 1
+
+
+def test_long_motifs_fall_back_to_exact_comparison():
+    # Reduces to AC, so length is not an obstacle.
+    assert motif_distance("AC" * 40, "CA", 2) == 0
+    # Genuinely long irreducible motifs cannot be compared fuzzily. MAX_FUZZY_MOTIF
+    # is 200, so this needs to be longer than the old 50 bp bound to be excluded.
+    irreducible = "ACGT" * 60 + "A"     # 241 bp, no whole-number period
+    assert motif_distance(irreducible, "ACGT", 2) == 3
+
+
+def test_max_fuzzy_motif_is_tunable_per_call():
+    long_a, long_b = "ACGTACGTACGTACGTACGTA", "ACGTACGTACGTACGTACGTC"   # 21 bp, 1 edit
+    assert motif_distance(long_a, long_b, 1, max_fuzzy_motif=50) == 1
+    assert motif_distance(long_a, long_b, 1, max_fuzzy_motif=10) == 2   # not attempted
