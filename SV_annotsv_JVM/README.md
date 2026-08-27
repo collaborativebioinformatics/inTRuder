@@ -1,13 +1,16 @@
+# AnnotSV examples
 
-1- Firstly we modified the survivor.vcf file to convert SVTYPE=INS by SVTYPE=DUP following this command
-sed "s/INS/DUP/g" survivor.vcf > survivor_DUP.vcf 
-DUP.vcf file is the input for AnnotSV
-2- This AnnotSV has been executed like this
-./AnnotSV-3.5.3/bin/AnnotSV -SVinputFile survivor_DUP.vcf -tx ENSEMBL -hpo HP:0001156,HP:0001363,HP:0011304 -SVinputInfo 1 -outputFile prova_nova.vcf
+This directory contains small example input/output artifacts and links to the
+annotation instructions. The maintained workflow is documented in
+[workflow.md](workflow.md); it covers local execution, DNAnexus CLI, and the
+DNAnexus Web UI.
 
-3- Analysis of the output. R script called take_info_annotsv.R
-This script select 42 columns related with TR annotations and then generate many figures that describes the effect of TR.
+The canonical R analysis script is
+[src/R/take_info_annotsv.R](../src/R/take_info_annotsv.R). Run it against an
+AnnotSV or PhenoGenius-enriched TSV:
 
-
-demo_output_annot_sv.tsv --> Demo of AnnotSV can provide
-column_description.xlsx --> Description of each AnnotSV column (42 columns)
+```bash
+Rscript src/R/take_info_annotsv.R \
+  SV_annotsv_JVM/examples/first_500_INS.phenogenius.tsv \
+  results/TR_annotsv.tsv
+```

@@ -37,6 +37,14 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 
 ## Quickstart guide
 
+For the complete annotation sequence, see
+[SV annotation workflow](SV_annotsv_JVM/workflow.md). The individual stages
+have focused documentation:
+
+- [AnnotSV](pipelines/annotsv/README.md)
+- [SV preprocessing](pipelines/sv_preprocess/README.md)
+- [PhenoGenius enrichment](pipelines/phenogenius_enrich/README.md)
+
 ## Documentation
 
 ### Data
@@ -56,7 +64,8 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
-| [TR Annotation Pipeline](pipelines/annotsv/README.md) | Nextflow DSL2 workflow for functional and clinical annotation of TR insertions using AnnotSV |
+| [TR Annotation Pipeline](pipelines/annotsv/README.md) | Nextflow DSL2 workflow for functional and clinical annotation using AnnotSV |
+| [SV annotation workflow](SV_annotsv_JVM/workflow.md) | End-to-end local and DNAnexus execution order |
 
 ## Flowchart
 
