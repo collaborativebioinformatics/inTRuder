@@ -276,3 +276,14 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Large data files - don't commit
+data/*.vcf
+data/*.vcf.gz
+
+# Nextflow run artifacts
+.nextflow/
+.nextflow.log*
+work/
+results/
+reports/
