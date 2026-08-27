@@ -97,3 +97,48 @@ def test_row_count_mismatch_is_caught_at_write_time(tmp_path, windows, vectors):
 def test_axis_mismatch_is_caught_at_write_time(tmp_path, windows, vectors):
     with pytest.raises(ValueError, match="do not match"):
         save(str(tmp_path / "e.npz"), vectors, windows, LAYERS, ["left"])
+
+
+def test_float16_overflow_is_named_per_layer_and_recorded(tmp_path, capsys):
+    """The 2026-08-27 run shipped 22% inf and said nothing. Never again.
+
+    One layer is given values beyond float16's 65504 range and the other is
+    left small, so the report has to identify *which* layer went rather than
+    just noticing that something did.
+    """
+    from evo.embeddings.store import load, save
+    from evo.embeddings.windows import WindowSpec, build_window
+    from evo.utils import DictReference
+
+    ref = DictReference({"chr1": "ACGT" * 64})
+    windows = [build_window(ref, "chr1", 128, "TT", WindowSpec(flank=16, junction=4))]
+    vectors = np.ones((1, 2, 5, 8), dtype=np.float32)
+    vectors[:, 1] = 1e6  # blocks.31's actual failure mode
+
+    out = tmp_path / "over.npz"
+    save(str(out), vectors, windows, ["blocks.26", "blocks.31"],
+         list(SEGMENTS := ("left", "junction_5p", "repeat", "junction_3p", "right")))
+
+    err = capsys.readouterr().err
+    assert "blocks.31" in err and "100.0%" in err
+    assert "blocks.26" not in err
+    assert "--layers finite" in err
+
+    back = load(str(out))
+    assert back.attrs["overflowed_layers"] == "blocks.31"
+    assert np.isfinite(back.view("blocks.26", "left")).all()
+
+
+def test_no_overflow_leaves_the_attribute_empty_and_stderr_quiet(tmp_path, capsys):
+    from evo.embeddings.store import load, save
+    from evo.embeddings.windows import WindowSpec, build_window
+    from evo.utils import DictReference
+
+    ref = DictReference({"chr1": "ACGT" * 64})
+    windows = [build_window(ref, "chr1", 128, "TT", WindowSpec(flank=16, junction=4))]
+    out = tmp_path / "fine.npz"
+    save(str(out), np.ones((1, 1, 5, 8), dtype=np.float32), windows,
+         ["blocks.26"], ["left", "junction_5p", "repeat", "junction_3p", "right"])
+
+    assert capsys.readouterr().err == ""
+    assert load(str(out)).attrs["overflowed_layers"] == ""

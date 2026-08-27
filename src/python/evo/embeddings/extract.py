@@ -78,6 +78,21 @@ LAYER_SETS: dict[str, tuple[str, ...]] = {
         "blocks.30",
         "blocks.31",
     ),
+    # `default` minus the two blocks whose activations exceed float16's 65504
+    # range and therefore reach disk as +/-inf -- measured at ~100% of elements
+    # in both, i.e. 22% of the whole array, on the 2026-08-27 run. They cost no
+    # forward-pass time (one pass yields every layer), so the only thing keeping
+    # them is the storage and the transfer. Use this set for any run that will
+    # be analysed; `default` stays as it was so old runs remain reproducible.
+    "finite": (
+        "blocks.9.mlp.l3",
+        "blocks.16",
+        "blocks.17",
+        "blocks.23",
+        "blocks.24",
+        "blocks.26",
+        "blocks.28.mlp.l3",
+    ),
     "attention": tuple(f"blocks.{i}" for i in BLOCK_TYPES["attention"]),
     "long_filter": tuple(f"blocks.{i}" for i in BLOCK_TYPES["hyena_long"]),
     "uniform": tuple(f"blocks.{i}.mlp.l3" for i in range(0, N_BLOCKS, 4)),
