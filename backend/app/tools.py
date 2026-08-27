@@ -70,7 +70,24 @@ def run_sql(
 
 @tool
 def set_view(
+    page: Annotated[
+        Literal["catalog", "strchive"] | None,
+        "Which surface to show. 'catalog' is this cohort's candidate loci; "
+        "'strchive' is the curated disease-locus reference and our screen against it.",
+    ] = None,
     novel_only: Annotated[bool | None, "Show only loci absent from every catalog."] = None,
+    novelty: Annotated[
+        Literal["known", "novel_motif", "novel_locus"] | None,
+        "The screen's three-valued verdict. 'novel_motif' means the reference has "
+        "repeats here but none with this motif; 'novel_locus' means it annotates "
+        "nothing here. Prefer this over novel_only when the user's question "
+        "distinguishes the two.",
+    ] = None,
+    platform_agreement: Annotated[
+        Literal["both", "ucsc_only", "trexplorer_only", "neither"] | None,
+        "Restrict by how the reference catalogs compare. 'both' means UCSC and "
+        "TRExplorer independently call it novel — the case worth trusting.",
+    ] = None,
     chrom: Annotated[str | None, "Restrict to one chromosome, e.g. 'chr4'. Use null to clear."] = None,
     motif_class: Annotated[
         Literal["homopolymer", "STR", "mid", "VNTR"] | None,
@@ -79,9 +96,32 @@ def set_view(
     min_motif_len: Annotated[int | None, "Minimum motif length in bp."] = None,
     min_samples: Annotated[int | None, "Minimum number of carrier samples, out of 68."] = None,
     min_purity: Annotated[float | None, "Minimum mean repeat purity, 0-1."] = None,
+    min_insertion_purity: Annotated[
+        float | None,
+        "Minimum fraction of the insertion that is tandem repeat at all, 0-1. "
+        "Low values mean the insertion is mostly something else.",
+    ] = None,
     disease_gene_only: Annotated[bool | None, "Show only loci in known disease genes."] = None,
     gene: Annotated[str | None, "Restrict to one gene symbol, e.g. 'XYLT1'."] = None,
+    sample: Annotated[str | None, "Restrict to one sample, e.g. 'HG00290'."] = None,
+    strchive_status: Annotated[
+        Literal[
+            "pathogenic_expansion", "pathogenic_motif", "locus_novel_motif",
+            "locus_known_motif", "no_locus_match",
+        ] | None,
+        "Restrict by the STRchive disease verdict.",
+    ] = None,
+    strchive_novel_only: Annotated[
+        bool | None,
+        "On the strchive page: show only the disease loci whose pathogenic motif "
+        "is absent from hg38 (11 of 82).",
+    ] = None,
     focus_locus_id: Annotated[str | None, "Open one locus in the detail view, e.g. 'TRL000123'."] = None,
+    focus_strchive_id: Annotated[
+        str | None,
+        "Open one disease locus on the strchive page, e.g. 'CANVAS_RFC1'. "
+        "Sets page to 'strchive' implicitly on the frontend.",
+    ] = None,
 ) -> str:
     """Change what the user is looking at in the browser.
 
@@ -92,19 +132,31 @@ def set_view(
 
     Prefer calling this alongside your answer rather than instead of it: set the
     view so the user sees the loci, and say what they are looking at.
+
+    A filter needing a column the registered tables do not have is reported back
+    as inactive in the interface rather than silently matching everything, so it
+    is safe to set one before the screened callset exists — but say so.
     """
     view = {
         key: value
         for key, value in {
+            "page": page,
             "novel_only": novel_only,
+            "novelty": novelty,
+            "platform_agreement": platform_agreement,
             "chrom": chrom,
             "motif_class": motif_class,
             "min_motif_len": min_motif_len,
             "min_samples": min_samples,
             "min_purity": min_purity,
+            "min_insertion_purity": min_insertion_purity,
             "disease_gene_only": disease_gene_only,
             "gene": gene,
+            "sample": sample,
+            "strchive_status": strchive_status,
+            "strchive_novel_only": strchive_novel_only,
             "focus_locus_id": focus_locus_id,
+            "focus_strchive_id": focus_strchive_id,
         }.items()
         if value is not None
     }
