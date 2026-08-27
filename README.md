@@ -1,4 +1,4 @@
-# Novel Tandem Repeats
+# inTRuder
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](.python-version)
 [![uv](https://img.shields.io/badge/uv-managed-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
@@ -8,8 +8,12 @@
 [![Sniffles2](https://img.shields.io/badge/SV%20calls-Sniffles2-4C8CBF)](https://github.com/fritzsedlazeck/Sniffles)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/images/logo.png" alt="inTRuder logo" width="480">
+</p>
+
 ## Motivation 
-Tandem repeat catalogs are built from the reference genome, so TR loci the reference lacks are invisible to every genotyper that depends on them. novelTRs recovers these loci from long-read SV insertion calls — where, by construction, any reference-absent repeat expansion already sits — without whole-genome assembly.
+Tandem repeat catalogs are built from the reference genome, so TR loci the reference lacks are invisible to every genotyper that depends on them. inTRuder recovers these loci from long-read SV insertion calls — where, by construction, any reference-absent repeat expansion already sits — without whole-genome assembly.
 
 ## Table of Contents
 
@@ -20,6 +24,7 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
   - [Data](#data)
   - [Code and environments](#code-and-environments)
   - [Project](#project)
+- [Web interface (proof of concept)](#web-interface-proof-of-concept)
 - [Flowchart](#flowchart)
 - [Contributing](#contributing)
 - [Team](#team)
@@ -63,6 +68,41 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
+
+## Web interface (proof of concept)
+
+An interactive browser for candidate loci, with an agent that queries the same
+data the charts read and can move the view for you.
+
+```bash
+just setup     # installs everything, generates the synthetic demo dataset
+just dev       # backend on :8000, frontend on :3000
+```
+
+Or in containers, with no toolchain to install:
+
+```bash
+docker compose up --build      # same two ports
+```
+
+Add a model credential to `backend/.env` to enable chat — the data views work
+without one. Anthropic, Google, Ollama and OpenAI are all selectable via
+`LLM_PROVIDER`.
+
+| Directory | What it is |
+|---|---|
+| [`frontend/`](./frontend) | Next.js + Tailwind + assistant-ui |
+| [`backend/`](./backend) | FastAPI + LangGraph + DuckDB (its own uv project) |
+| [`data/web/`](./data/web) | Dataset manifests — add your own data here |
+| [`docker/`](./docker) | Images for both services; `data/` is bind-mounted, not baked in |
+
+**Adding a dataset is one YAML file, no code changes.** Manifests point at paths
+on your own machine; nothing is uploaded and nothing but the small synthetic demo
+set is committed. See [`data/web/README.md`](./data/web/README.md).
+
+> The bundled demo data is **synthetic**. Sample names and the motif-length mix
+> mirror the real HPRC callset so the shapes look right, but every locus,
+> coordinate and catalog membership is generated. It is not a result.
 
 ## Flowchart
 
