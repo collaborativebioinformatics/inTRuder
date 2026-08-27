@@ -82,6 +82,11 @@ process ANNOTSV {
                 ${hpo_arg} \\
             ${cg_arg}
     else
+        if [[ -d "${params.phenogenius_env ?: ''}/bin" ]]; then
+            export PATH="${params.phenogenius_env}/bin:\${PATH}"
+            export CONDA_PREFIX="${params.phenogenius_env}"
+            export CONDA_DEFAULT_ENV="annotsv"
+        fi
         if [[ -n "${params.hpo ?: ''}" && -n "${params.annotsv_dir ?: ''}" ]]; then
             # AnnotSV 3.5.x expects this optional directory when HPO is used.
             mkdir -p "${params.annotsv_dir}/share/python3/phenogeniuscli"
