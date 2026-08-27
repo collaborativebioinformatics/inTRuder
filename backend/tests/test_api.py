@@ -41,6 +41,21 @@ def test_a_manifest_without_its_file_degrades_rather_than_breaking(client):
     assert client.get("/api/summary").status_code == 200
 
 
+def test_filters_needing_absent_columns_are_reported_not_silently_dropped(client):
+    """A filter that cannot run must say so, not quietly match everything.
+
+    The demo fixtures carry no per-catalog verdicts, so `novelty` and
+    `platform_agreement` have no column to filter on. Returning the full table
+    while showing an active filter chip would read as a result.
+    """
+    baseline = client.get("/api/loci", params={"limit": 1}).json()
+    filtered = client.get(
+        "/api/loci",
+        params={"limit": 1, "novelty": "novel_motif", "platform_agreement": "both"},
+    ).json()
+    assert filtered["total"] == baseline["total"]
+    assert set(filtered["ignored_filters"]) == {"novelty", "platform_agreement"}
+    assert baseline["ignored_filters"] == []
 
 
 def test_strchive_catalog_is_served(client):
@@ -60,6 +75,7 @@ def test_strchive_catalog_is_served(client):
     assert loci["total"] == 11
     assert all(locus["novel_in_reference"] for locus in loci["loci"])
     assert {"RFC1", "SAMD12"} <= {locus["gene"] for locus in loci["loci"]}
+
 
 def test_strchive_matches_reports_absence_rather_than_failing(client):
     """Not-yet-run is a state the page renders, not an error."""
