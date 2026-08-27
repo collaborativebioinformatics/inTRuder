@@ -3,18 +3,6 @@
 // ---------------------------------------------------------------------
 // PARAMETERS
 // ---------------------------------------------------------------------
-// Architecture (matches the DNAnexus applet structure):
-//
-//   01 Find TRs (always runs)
-//        |
-//        +--> 02 Novelty     (optional, --run_novelty)
-//        +--> 03 Annotation  (optional, --run_annotation) - takes the
-//        |                    original VCF/BED, not 01's output
-//        +--> 04 Validation  (optional, --run_validation) - takes 01's
-//                             output + a TR catalogue BED
-//        |
-//   05 Merge (always runs) - joins 01 + whichever of 02/03/04 ran,
-//        keyed on CHROM_POS_END_SVTYPE_SVLEN
 
 params.input_vcf   = null
 params.run_novelty  = false
@@ -24,6 +12,8 @@ params.run_validation = false
 // TODO: set the actual path to your TR catalogue BED file (needed by
 // stage 04 - Validation)
 params.tr_catalogue_bed = null
+params.min_overlap_b = null
+
 params.default_vcf_path = "${projectDir}/../data/HPRC_SV.survivor.ins.vcf"
 
 
@@ -138,24 +128,68 @@ process ANNOTATE {
 
 
 // ---------------------------------------------------------------------
-// 04 - VALIDATION (optional) - PLACEHOLDER
-// Takes 01's output + a TR catalogue BED file.
-// TODO: replace with the real python3/R validation script once ready.
+// 04a - TRF_TO_BED
+// Converts FIND_TRS's TSV into a clean 3-column BED for bedtools.
+// Used by the aggregate sensitivity check below.
 // ---------------------------------------------------------------------
-process VALIDATE {
-    // TODO: change to output in corresponding parent directory
+process TRF_TO_BED {
+    input:
+    path trf_tsv
+    output:
+    path "trf_calls.bed"
+    script:
+    """
+    python3 -c "
+import pandas as pd
+df = pd.read_csv('${trf_tsv}', sep='\\t')
+bed = df[['chrom', 'ins_coord']].drop_duplicates().copy()
+bed['start'] = bed['ins_coord'] - 1
+bed['end'] = bed['ins_coord']
+bed[['chrom', 'start', 'end']].sort_values(['chrom', 'start']).to_csv(
+    'trf_calls.bed', sep='\\t', header=False, index=False
+)
+"
+    """
+}
+
+
+// ---------------------------------------------------------------------
+// 04b - CALCULATE_SENSITIVITY (teammate's process, unmodified)
+// Aggregate QC report, published standalone. NOT fed into MERGE - it's
+// a single summary row, not a per-row column.
+// ---------------------------------------------------------------------
+process CALCULATE_SENSITIVITY {
+    container "community.wave.seqera.io/library/bedtools:2.31.1--7c4ce4cb07c09ee4"
+
     publishDir "results/04_validation", mode: "copy"
 
     input:
-    path trf_tsv
-    path catalogue_bed
+    path truth_bed
+    path query_vcf
+    val min_overlap_b
 
     output:
-    path "validation_output.tsv"
+    path "sensitivity_metrics.tsv", emit: metrics
+    path "false_negatives.bed.gz" , emit: fn_bed
 
     script:
+    def overlap_flag = (min_overlap_b && min_overlap_b != '1e-9') ? "-F ${min_overlap_b}" : ""
     """
-    echo "TODO: real validation script goes here" > validation_output.tsv
+    TOTAL_TRUTH=\$(zcat "${truth_bed}" 2>/dev/null | grep -v '^#' | wc -l || grep -v '^#' "${truth_bed}" | wc -l)
+    TRUE_POSITIVES=\$(bedtools intersect ${overlap_flag} -u -a "${truth_bed}" -b "${query_vcf}" | wc -l)
+    bedtools intersect ${overlap_flag} -v -a "${truth_bed}" -b "${query_vcf}" | gzip > false_negatives.bed.gz
+    FALSE_NEGATIVES=\$(zcat false_negatives.bed.gz | wc -l)
+    SENSITIVITY=\$(awk -v tp="\$TRUE_POSITIVES" -v total="\$TOTAL_TRUTH" 'BEGIN {
+        if (total > 0) printf "%.4f", tp / total; else print "0.0000"
+    }')
+    echo -e "total_truth\ttrue_positives\tfalse_negatives\tsensitivity" > sensitivity_metrics.tsv
+    echo -e "\${TOTAL_TRUTH}\t\${TRUE_POSITIVES}\t\${FALSE_NEGATIVES}\t\${SENSITIVITY}" >> sensitivity_metrics.tsv
+    """
+
+    stub:
+    """
+    touch sensitivity_metrics.tsv
+    touch false_negatives.bed.gz
     """
 }
 
@@ -258,9 +292,15 @@ workflow {
         if (!params.tr_catalogue_bed) {
             error "run_validation=true requires --tr_catalogue_bed to be set"
         }
-        catalogue_ch = Channel.fromPath(params.tr_catalogue_bed)
-        VALIDATE(FIND_TRS.out, catalogue_ch)
-        validation_out = VALIDATE.out
+        truth_bed_ch = Channel.fromPath(params.tr_catalogue_bed)
+         // TODO: once teammate's reformatted TSV (with in_catalog logic)
+        // is ready, wire it in here as validation_out
+        validation_out = Channel.fromPath("${projectDir}/assets/NO_FILE")
+
+        // Aggregate QC report - independent of the reformatting work,
+        // safe to wire in now
+        TRF_TO_BED(FIND_TRS.out)
+        CALCULATE_SENSITIVITY(truth_bed_ch, TRF_TO_BED.out, params.min_overlap_b)
     } else {
         validation_out = Channel.fromPath("${projectDir}/assets/NO_FILE")
     }
