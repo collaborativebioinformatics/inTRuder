@@ -13,6 +13,15 @@
 ARG PYTHON_VERSION=3.13
 ARG UV_VERSION=0.9
 
+# Who the service runs as. Uploads are written into the bind-mounted ./data, so
+# on Linux — where bind-mount ownership is NOT virtualized the way it is under
+# Docker Desktop — the container user has to be one that can write your data
+# directory:
+#
+#   docker compose build --build-arg UID=$(id -u) --build-arg GID=$(id -g) backend
+ARG UID=10001
+ARG GID=10001
+
 
 # --------------------------------------------------------------------------- #
 # Builder — resolve the locked dependency set into a self-contained venv.
@@ -47,7 +56,10 @@ ENV PYTHONUNBUFFERED=1 \
 # Unprivileged: agent-authored SQL runs in this process. The DuckDB connection
 # is already read-only with external access disabled (app/registry.py), and a
 # non-root user is the second layer of that.
-RUN useradd --create-home --uid 10001 noveltrs
+ARG UID
+ARG GID
+RUN groupadd --gid ${GID} noveltrs 2>/dev/null || true \
+ && useradd --create-home --uid ${UID} --gid ${GID} noveltrs
 
 WORKDIR /app
 
@@ -57,7 +69,7 @@ COPY --chown=noveltrs:noveltrs backend/scripts ./scripts
 
 # The registry materializes every dataset into a DuckDB file under .cache at
 # startup, so this has to be writable by the unprivileged user.
-RUN install -d -o noveltrs -g noveltrs /app/.cache /data
+RUN install -d -o noveltrs -g noveltrs /app/.cache /data /data/uploads
 
 USER noveltrs
 EXPOSE 8000

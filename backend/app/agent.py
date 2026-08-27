@@ -16,6 +16,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
+from app import uploads
 from app.config import settings
 from app.llm import build_chat_model
 from app.registry import registry
@@ -72,7 +73,33 @@ THREE THINGS TO GET RIGHT ABOUT THIS DOMAIN:
 Available data:
 
 {schema}
-"""
+{uploads}"""
+
+
+def _uploads_prompt() -> str:
+    """Files someone has handed the interface, named so the agent knows they exist.
+
+    Without this, a user who has just dropped a VCF into the browser has to
+    explain to the assistant that they did — which is precisely the moment the
+    interface should already know.
+    """
+    records = uploads.listing()
+    if not records:
+        return ""
+
+    lines = ["Files uploaded to this interface (see the `list_uploads` tool):"]
+    for record in records:
+        detail = []
+        if record.dataset:
+            detail.append(f"queryable as \"{record.dataset}\"")
+        elif record.kind == uploads.KIND_VARIANTS:
+            n_samples = record.inspect.get("n_samples")
+            detail.append(f"{n_samples} samples" if n_samples else "variants")
+            detail.append("NOT a table yet")
+        else:
+            detail.append("not registered as a table yet")
+        lines.append(f"  - {record.filename} (id {record.id}) — {', '.join(detail)}")
+    return "\n" + "\n".join(lines) + "\n"
 
 
 def build_agent():
@@ -87,7 +114,11 @@ def build_agent():
 
 
 def _system_message() -> SystemMessage:
-    return SystemMessage(content=SYSTEM_PROMPT.format(schema=registry.schema_prompt()))
+    return SystemMessage(
+        content=SYSTEM_PROMPT.format(
+            schema=registry.schema_prompt(), uploads=_uploads_prompt()
+        )
+    )
 
 
 def _to_langchain(messages: list[dict[str, str]]) -> list[Any]:
