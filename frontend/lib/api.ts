@@ -26,8 +26,10 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   if (filters.novel_only) params.set("novel_only", "true");
   if (filters.disease_gene_only) params.set("disease_gene_only", "true");
   if (filters.chrom) params.set("chrom", filters.chrom);
+  if (filters.region) params.set("region", filters.region);
   if (filters.motif_class) params.set("motif_class", filters.motif_class);
   if (filters.gene) params.set("gene", filters.gene);
+  if (filters.gene_query) params.set("gene_query", filters.gene_query);
   if (filters.min_motif_len != null) params.set("min_motif_len", String(filters.min_motif_len));
   if (filters.min_samples != null) params.set("min_samples", String(filters.min_samples));
   if (filters.min_purity != null) params.set("min_purity", String(filters.min_purity));

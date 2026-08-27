@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -97,6 +98,47 @@ def _require_loci() -> None:
         )
 
 
+# --------------------------------------------------------------------------- #
+# Genomic ranges
+# --------------------------------------------------------------------------- #
+
+#: A range as a person writes it: `chr3:1,000-50,000`. The `chr` prefix is
+#: optional because VCF and Ensembl drop it, thousands separators are tolerated
+#: because they survive a copy-paste out of a genome browser, and `..` is
+#: accepted beside `-` for the same reason.
+_REGION = re.compile(
+    r"^(?:chr)?(\d{1,2}|X|Y|M|MT)\s*:\s*([\d,_]+)\s*(?:\.\.|-)\s*([\d,_]+)$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_chrom(name: str) -> str:
+    """`3` -> `chr3`, `x` -> `chrX`, `MT` -> `chrM`."""
+    upper = name.upper()
+    return "chr" + ("M" if upper == "MT" else upper)
+
+
+def parse_region(region: str) -> tuple[str, int, int]:
+    """`chr3:1,000-50,000` -> `("chr3", 1000, 50000)`.
+
+    Both ends are inclusive, which is how a range reads in a genome browser
+    rather than how a BED file stores one — this string is typed by a person, not
+    parsed out of a file. A backwards range is read in the order it was meant
+    rather than matching nothing.
+    """
+    match = _REGION.match(region.strip())
+    if match is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot read {region!r} as a genomic range. Write it like "
+                   "'chr3:1000-50000'.",
+        )
+    name, start_text, end_text = match.groups()
+    start = int(start_text.replace(",", "").replace("_", ""))
+    end = int(end_text.replace(",", "").replace("_", ""))
+    return _normalize_chrom(name), min(start, end), max(start, end)
+
+
 #: Filters that depend on a column the current table may not carry. Each maps to
 #: the column that supplies it; when that column is absent the filter is reported
 #: back as ignored rather than silently matching everything. `demo_loci` carries
@@ -141,6 +183,8 @@ def _filter_clause(
     min_purity: float | None,
     disease_gene_only: bool,
     gene: str | None,
+    region: str | None = None,
+    gene_query: str | None = None,
     novelty: str | None = None,
     platform_agreement: str | None = None,
     min_insertion_purity: float | None = None,
@@ -184,6 +228,17 @@ def _filter_clause(
     if gene:
         clauses.append("gene = ?")
         params.append(gene)
+    if region:
+        # A candidate locus is an insertion *point*, so overlapping a range means
+        # the insertion site falls inside it. Both ends inclusive; see parse_region.
+        region_chrom, start, end = parse_region(region)
+        clauses.append("(chrom = ? AND pos BETWEEN ? AND ?)")
+        params.extend([region_chrom, start, end])
+    if gene_query:
+        # `contains` rather than LIKE: this text comes from a search box, where
+        # % and _ mean those characters and not wildcards.
+        clauses.append("contains(upper(gene), upper(?))")
+        params.append(gene_query)
 
     if novelty and needs("novelty"):
         clauses.append("novelty = ?")
@@ -298,6 +353,8 @@ def loci(
     min_purity: float | None = None,
     disease_gene_only: bool = False,
     gene: str | None = None,
+    region: str | None = None,
+    gene_query: str | None = None,
     novelty: str | None = Query(None, pattern="^(known|novel_motif|novel_locus)$"),
     platform_agreement: str | None = Query(
         None, pattern="^(both|ucsc_only|trexplorer_only|neither)$"
@@ -316,6 +373,13 @@ def loci(
 ) -> dict[str, Any]:
     """Filtered locus list backing the catalog view.
 
+    `region` takes a genomic range as a person writes it — `chr3:1,000-50,000`,
+    with or without the `chr` and the commas — and keeps the loci whose insertion
+    site falls inside it. A range that does not parse is a 400 rather than an
+    empty list, because an empty list reads as a finding. `gene_query` is the
+    free-text counterpart of `gene`: a case-insensitive substring of the gene
+    symbol, for a search box rather than an exact pick.
+
     With `include_strips`, also returns the segment structure of one
     representative (median-length) allele per locus, so the catalog can render
     real motif barcodes rather than summary bars.
@@ -332,6 +396,7 @@ def loci(
     where, params, ignored = _filter_clause(
         novel_only, chrom, motif_class, min_motif_len,
         min_samples, min_purity, disease_gene_only, gene,
+        region, gene_query,
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
         available=_columns("demo_loci"),
     )

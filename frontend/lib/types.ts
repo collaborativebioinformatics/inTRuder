@@ -392,6 +392,12 @@ export interface ViewFilters {
   /** Restrict to loci the named catalogs agree on. */
   platform_agreement?: "both" | "ucsc_only" | "trexplorer_only" | "neither" | null;
   chrom?: string | null;
+  /**
+   * A genomic range, canonical `chr3:1000-50000`, both ends inclusive. Keeps the
+   * loci whose insertion site falls inside it — a candidate is an insertion
+   * *point*, so that is what overlapping a range means here.
+   */
+  region?: string | null;
   motif_class?: MotifClass | null;
   min_motif_len?: number | null;
   min_samples?: number | null;
@@ -399,6 +405,9 @@ export interface ViewFilters {
   min_insertion_purity?: number | null;
   disease_gene_only?: boolean;
   gene?: string | null;
+  /** Free-text gene search: a case-insensitive substring of the gene symbol.
+   *  The exact `gene` is what the agent reaches for when it knows the symbol. */
+  gene_query?: string | null;
   sample?: string | null;
   strchive_status?: StrchiveStatus | null;
   /** Restrict the STRchive catalog to loci whose pathogenic motif is not in hg38. */
