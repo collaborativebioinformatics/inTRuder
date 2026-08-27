@@ -1,6 +1,12 @@
 "use client";
 
-import type { ViewFilters } from "@/lib/types";
+import {
+  NOVELTY_LABELS,
+  STRCHIVE_STATUS_LABELS,
+  type NoveltyStatus,
+  type StrchiveStatus,
+  type ViewFilters,
+} from "@/lib/types";
 import { useView } from "@/lib/viewStore";
 
 /**
@@ -12,29 +18,60 @@ import { useView } from "@/lib/viewStore";
  */
 
 const LABELS: Record<keyof ViewFilters, (value: unknown) => string> = {
+  page: (v) => `${v}`,
   novel_only: () => "Novel only",
+  novelty: (v) => NOVELTY_LABELS[v as NoveltyStatus] ?? `${v}`,
+  platform_agreement: (v) =>
+    v === "both" ? "Both catalogs agree" : `${v}`.replace("_", " "),
   disease_gene_only: () => "Disease genes",
   chrom: (v) => `${v}`,
   motif_class: (v) => `${v}`,
   gene: (v) => `${v}`,
+  sample: (v) => `${v}`,
+  strchive_status: (v) => STRCHIVE_STATUS_LABELS[v as StrchiveStatus] ?? `${v}`,
+  strchive_novel_only: () => "Pathogenic motif not in hg38",
   min_motif_len: (v) => `motif ≥ ${v} bp`,
   min_samples: (v) => `≥ ${v} carriers`,
   min_purity: (v) => `purity ≥ ${v}`,
+  min_insertion_purity: (v) => `insertion ≥ ${v} repeat`,
   focus_locus_id: (v) => `${v}`,
+  focus_strchive_id: (v) => `${v}`,
 };
 
-const QUICK: { label: string; patch: ViewFilters }[] = [
-  { label: "Novel only", patch: { novel_only: true } },
+/**
+ * Keys that are navigation or drill-down rather than filters. They change what
+ * you are looking at, not which subset of it, so they do not belong in a row of
+ * removable chips.
+ */
+const NOT_A_CHIP: (keyof ViewFilters)[] = ["page", "focus_locus_id", "focus_strchive_id"];
+
+const QUICK: { label: string; patch: ViewFilters; title?: string }[] = [
+  {
+    label: "Novel motif",
+    patch: { novelty: "novel_motif" },
+    title: "The reference has repeats here, but none with this motif.",
+  },
+  {
+    label: "Novel locus",
+    patch: { novelty: "novel_locus" },
+    title: "The reference annotates no repeat at all near this locus.",
+  },
+  {
+    label: "Both catalogs agree",
+    patch: { platform_agreement: "both" },
+    title:
+      "UCSC and TRExplorer were compiled separately — where they agree, the call is a property of the data rather than of a threshold.",
+  },
   { label: "VNTR", patch: { motif_class: "VNTR" } },
   { label: "Disease genes", patch: { disease_gene_only: true } },
   { label: "Shared ≥ 10", patch: { min_samples: 10 } },
 ];
 
-export function FilterBar() {
+export function FilterBar({ ignored = [] }: { ignored?: (keyof ViewFilters)[] }) {
   const { filters, agentTouched, patch, reset } = useView();
 
   const active = (Object.keys(filters) as (keyof ViewFilters)[]).filter(
-    (key) => key !== "focus_locus_id",
+    (key) => !NOT_A_CHIP.includes(key),
   );
 
   return (
@@ -45,6 +82,7 @@ export function FilterBar() {
             key={quick.label}
             type="button"
             onClick={() => patch(quick.patch)}
+            title={quick.title}
             className="rounded-full border border-hairline px-2.5 py-1 text-xs text-ink-secondary transition-colors hover:border-baseline hover:text-ink"
           >
             + {quick.label}
@@ -56,17 +94,28 @@ export function FilterBar() {
         <div className="flex flex-wrap items-center gap-1.5">
           {active.map((key) => {
             const touched = agentTouched.has(key);
+            // A filter the current table cannot honour is drawn as inactive: it
+            // is doing nothing, and a chip that looks live implies the list
+            // below was narrowed by it.
+            const isIgnored = ignored.includes(key);
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => patch({ [key]: null } as ViewFilters)}
-                title="Remove filter"
+                title={
+                  isIgnored
+                    ? "Not applied — this filter needs the screened callset, which is not registered yet. The list below is unfiltered by it."
+                    : "Remove filter"
+                }
                 className="group flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors"
                 style={{
-                  background: "var(--surface-raised)",
-                  border: `1px solid ${touched ? "var(--motif-1)" : "var(--hairline)"}`,
-                  color: "var(--ink)",
+                  background: isIgnored ? "transparent" : "var(--surface-raised)",
+                  border: `1px ${isIgnored ? "dashed" : "solid"} ${
+                    touched && !isIgnored ? "var(--motif-1)" : "var(--hairline)"
+                  }`,
+                  color: isIgnored ? "var(--ink-muted)" : "var(--ink)",
+                  textDecoration: isIgnored ? "line-through" : undefined,
                 }}
               >
                 {touched && (
@@ -89,6 +138,13 @@ export function FilterBar() {
             clear all
           </button>
         </div>
+      )}
+
+      {ignored.length > 0 && (
+        <p className="text-[11px] leading-relaxed text-ink-muted">
+          Struck-through filters need the screened callset from the novelty screen,
+          which is not registered yet — the list below is not narrowed by them.
+        </p>
       )}
     </div>
   );

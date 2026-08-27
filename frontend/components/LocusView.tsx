@@ -3,9 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
+import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
 import { fetchLocus } from "@/lib/api";
 import { buildMotifScale, formatBp, formatPos, motifColor, shortMotif } from "@/lib/palette";
-import type { LocusDetail, Segment } from "@/lib/types";
+import {
+  NOVELTY_NOTES,
+  STRCHIVE_STATUS_LABELS,
+  type LocusDetail,
+  type Segment,
+} from "@/lib/types";
 import { useView } from "@/lib/viewStore";
 
 /**
@@ -104,15 +110,22 @@ export function LocusView({ locusId }: { locusId: string }) {
           <h2 id="locus-heading" className="tabular text-base font-medium text-ink">
             {formatPos(locus.chrom, locus.pos)}
           </h2>
-          <span
-            className="rounded-sm px-1.5 py-0.5 text-[11px] font-medium"
-            style={{
-              background: locus.novel ? "var(--novel-soft)" : "var(--known-soft)",
-              color: locus.novel ? "var(--novel)" : "var(--ink-secondary)",
-            }}
-          >
-            {locus.novel ? "Absent from all catalogs" : `In ${locus.catalogs.split(";").join(", ")}`}
-          </span>
+          <NoveltyBadge status={noveltyOf(locus)} size="md" />
+          <PlatformAgreement
+            ucsc={locus.ucsc_novelty}
+            trexplorer={locus.trexplorer_novelty}
+            ucscEdits={locus.ucsc_motif_edits}
+            trexplorerEdits={locus.trexplorer_motif_edits}
+          />
+          {locus.strchive_status && locus.strchive_status !== "no_locus_match" && (
+            <span
+              className="rounded-sm px-1.5 py-0.5 text-[11px] font-medium"
+              style={{ background: "var(--novel-soft)", color: "var(--novel)" }}
+              title={locus.strchive_disease ?? undefined}
+            >
+              {STRCHIVE_STATUS_LABELS[locus.strchive_status]}
+            </span>
+          )}
           {locus.gene && (
             <span className="text-xs text-ink-secondary">
               {locus.gene}
@@ -120,6 +133,14 @@ export function LocusView({ locusId }: { locusId: string }) {
             </span>
           )}
         </div>
+
+        {/* The verdict's meaning, spelled out. "novel_motif" is not
+            self-explanatory, and the near-miss caveat belongs beside it rather
+            than in the docs. */}
+        <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-ink-muted">
+          {NOVELTY_NOTES[noveltyOf(locus)]}
+          {!locus.novelty && locus.catalogs && ` Catalogs: ${locus.catalogs.split(";").join(", ")}.`}
+        </p>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
           <Stat label="Motif" value={shortMotif(locus.motif, 16)} />
