@@ -28,6 +28,7 @@ below the noise in any downstream clustering.
 
 from __future__ import annotations
 
+import sys
 from typing import NamedTuple
 
 import numpy as np
@@ -67,6 +68,45 @@ class Embeddings(NamedTuple):
         return self.vectors[:, li, si, :]
 
 
+def _to_float16(vectors: np.ndarray, layers: list[str]) -> tuple[np.ndarray, list[str]]:
+    """Cast to float16 and say which layers did not survive it.
+
+    The 2026-08-27 run shipped ``blocks.30`` and ``blocks.31`` as ~100% +/-inf
+    and nothing said so: the cast is silent, the file loads, and the loss only
+    surfaces much later as an all-NaN projection. 22% of that run's array was
+    unusable and the GPU hours that produced it were spent.
+
+    So the overflow is counted at the one moment it is introduced, named per
+    layer -- the granularity at which it actually happens, since it is a
+    property of a block's activation scale -- and recorded in the file's own
+    attributes as well as on stderr. A reader can then ask what it is holding
+    instead of inferring it. The values are still written: they are what the
+    model produced at that precision, and a caller who wants them intact should
+    drop the layer (``--layers finite``) rather than have this function guess.
+    """
+    # numpy's own "overflow encountered in cast" says nothing about which layer
+    # overflowed or by how much, and it fires once per call regardless. The
+    # report below replaces it rather than competing with it.
+    with np.errstate(over="ignore"):
+        stored = vectors.astype(np.float16)
+    lost = np.isfinite(vectors) & ~np.isfinite(stored)
+    if not lost.any():
+        return stored, []
+    overflowed = []
+    for i, layer in enumerate(layers):
+        fraction = float(lost[:, i].mean())
+        if fraction:
+            overflowed.append(layer)
+            print(
+                f"WARNING: {layer}: {100 * fraction:.1f}% of values exceed "
+                f"float16 and are stored as +/-inf (max |x| {np.abs(vectors[:, i]).max():.3g})",
+                file=sys.stderr,
+            )
+    print(f"WARNING: re-run with --layers finite to drop {', '.join(overflowed)}",
+          file=sys.stderr)
+    return stored, overflowed
+
+
 def save(
     path: str,
     vectors: np.ndarray,
@@ -95,8 +135,9 @@ def save(
         )
 
     n = len(windows)
+    stored, overflowed = _to_float16(vectors, layers)
     payload = {
-        "vectors": vectors.astype(np.float16),
+        "vectors": stored,
         "layers": np.asarray(layers, dtype=object),
         "segments": np.asarray(segments, dtype=object),
         "chrom": np.asarray([w.chrom for w in windows], dtype=object),
@@ -107,7 +148,11 @@ def save(
         "sample": np.asarray(samples if samples is not None else [""] * n, dtype=object),
         "svid": np.asarray(svids if svids is not None else [""] * n, dtype=object),
         "_attrs": np.asarray(
-            sorted({"format_version": str(FORMAT_VERSION), **(attrs or {})}.items()),
+            sorted({
+                "format_version": str(FORMAT_VERSION),
+                "overflowed_layers": ",".join(overflowed),
+                **(attrs or {}),
+            }.items()),
             dtype=object,
         ),
     }

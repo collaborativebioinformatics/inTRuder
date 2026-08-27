@@ -53,14 +53,14 @@ from evo.embeddings.extract import (
 )
 from evo.embeddings.windows import SEGMENTS, Window
 
-FINITE_LAYERS: tuple[str, ...] = tuple(
-    layer for layer in LAYER_SETS["default"] if layer not in ("blocks.30", "blocks.31")
-)
+FINITE_LAYERS: tuple[str, ...] = LAYER_SETS["finite"]
 """The ``default`` set minus the two layers that store as +/-inf in float16.
 
-They cost no forward-pass time -- one pass yields every layer -- but they do
-cost a staging copy, a transfer, and 22% of the output file, all for values that
-are unusable by the time they reach disk. Dropping them is free; whether it also
+Aliased from :data:`~evo.embeddings.extract.LAYER_SETS` rather than rebuilt, so
+what is profiled here is literally what ``--layers finite`` will run. They cost
+no forward-pass time -- one pass yields every layer -- but they do cost a
+staging copy, a transfer, and 22% of the output file, all for values that are
+unusable by the time they reach disk. Dropping them is free; whether it also
 buys VRAM headroom is one of the things measured here.
 """
 
