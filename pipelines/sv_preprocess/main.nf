@@ -19,5 +19,9 @@ process NORMALIZE_SVTYPE {
 
 workflow {
     if (!params.input) { log.error 'ERROR: --input is required'; exit 1 }
-    NORMALIZE_SVTYPE(Channel.fromPath(params.input, checkIfExists: true))
+    def resolved_input = params.input
+    if (params.dx_project && resolved_input.startsWith('/')) {
+        resolved_input = "dx://${params.dx_project}:${resolved_input}"
+    }
+    NORMALIZE_SVTYPE(Channel.fromPath(resolved_input, checkIfExists: true))
 }
