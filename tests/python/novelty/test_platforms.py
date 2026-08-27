@@ -226,3 +226,56 @@ def test_ensure_table_looks_in_the_given_cache_directory(tmp_path):
     target.parent.mkdir(parents=True)
     target.write_text("")
     assert ensure_table("ucsc", "hg38", cache_dir=tmp_path, download=False) == target
+
+
+# --------------------------------------------------------------------------- #
+# bundled catalogues
+# --------------------------------------------------------------------------- #
+
+def test_the_pathogenic_catalogue_ships_with_the_package():
+    """It is 5KB of known disease loci, so shipping it means the tool works
+    offline and pins the exact version results were produced against."""
+    platform = get_platform("pathogenic")
+    assert platform.annotation_only
+    path = platform.bundled_path("hg38")
+    assert path is not None and path.exists()
+
+    frame = read_catalog(path, platform.fmt)
+    assert len(frame) == 83
+    assert set(frame.columns) >= {"chrom", "start", "end", "motif"}
+    # the ABCD3 GCC locus, cross-checked against the ExpansionHunter JSON that
+    # ships beside it upstream, whose ReferenceRegion is chr1:94418421-94418442
+    abcd3 = frame[(frame.chrom == "chr1") & (frame.start == 94418421)]
+    assert list(abcd3.end) == [94418442]
+    assert list(abcd3.motif) == ["GCC"]
+
+
+def test_ensure_table_prefers_the_bundled_copy_without_downloading(tmp_path):
+    path = ensure_table("pathogenic", "hg38", download=False, cache_dir=tmp_path)
+    assert path == get_platform("pathogenic").bundled_path("hg38")
+    assert not list(tmp_path.iterdir())      # nothing was cached or fetched
+
+
+def test_a_bundled_platform_still_honours_an_explicit_path(tmp_path, write_bed):
+    override = write_bed()
+    assert ensure_table("pathogenic", "hg38", override, download=False) == override
+
+
+def test_only_hg38_is_bundled():
+    """Upstream ships GRCh37 as ExpansionHunter JSON only, which this tool cannot
+    read, so asking for it must not silently hand back the hg38 file."""
+    assert get_platform("pathogenic").bundled_path("hg19") is None
+
+
+# --------------------------------------------------------------------------- #
+# IUPAC in a catalogue
+# --------------------------------------------------------------------------- #
+
+def test_sniff_accepts_a_bed_whose_motifs_carry_ambiguity_codes(tmp_path):
+    """TRExplorer v2 has 11 rows with an N in the motif; a catalogue is entitled
+    to write any IUPAC base in a consensus."""
+    path = tmp_path / "iupac.bed"
+    path.write_text("chr1\t100\t200\tGCN\nchr1\t300\t400\tACRYT\n")
+    assert sniff_format(path) == "bed"
+    frame = read_catalog(path)
+    assert list(frame.motif) == ["GCN", "ACRYT"]

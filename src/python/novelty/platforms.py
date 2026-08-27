@@ -171,7 +171,9 @@ _SIMPLEREPEAT_FIELDS = {
 }
 _SIMPLEREPEAT_REQUIRED = ("chrom", "chromStart", "chromEnd", "sequence")
 
-_DNA = set("ACGTNacgtn")
+# Full IUPAC, so a catalogue that writes an ambiguous base in a consensus is
+# still recognised as a BED of motifs rather than rejected as unidentifiable.
+_DNA = set("ACGTUNRYSWKMBDHVacgtunryswkmbdhv")
 
 
 def sniff_format(path: str | os.PathLike[str]) -> str:
@@ -314,6 +316,8 @@ class Platform:
     filename: str                   # ``.format(db=...)``
     fmt: str = "auto"
     assemblies: tuple[str, ...] = ()   # empty == whatever the host serves
+    bundled: str | None = None      # ``.format(db=...)``, relative to ``data/``
+    annotation_only: bool = False   # excluded from the combined novelty verdict
 
     def url_for(self, db: str) -> str:
         if self.assemblies and db not in self.assemblies:
@@ -322,6 +326,14 @@ class Platform:
                 f"{', '.join(self.assemblies)}"
             )
         return self.url.format(db=db)
+
+    def bundled_path(self, db: str) -> Path | None:
+        """The copy that ships inside the package, if this platform has one."""
+        if self.bundled is None:
+            return None
+        if self.assemblies and db not in self.assemblies:
+            return None
+        return Path(__file__).resolve().parent / "data" / self.bundled.format(db=db)
 
     def default_path(self, db: str, cache_dir: Path | None = None) -> Path:
         return (cache_dir or default_cache()) / self.name / self.filename.format(db=db)
@@ -348,6 +360,17 @@ PLATFORMS: dict[str, Platform] = {
         fmt="bed",
         assemblies=("hg38",),
     ),
+    "pathogenic": Platform(
+        name="pathogenic",
+        description="83 known disease-associated TR loci (ships with the package; "
+                    "annotation only, never folded into the combined verdict)",
+        url="",
+        filename="{db}.pathogenic.TRGT.bed",
+        fmt="trgt",
+        assemblies=("hg38",),
+        bundled="pathogenic.{db}.TRGT.bed",
+        annotation_only=True,
+    ),
     "bed": Platform(
         name="bed",
         description="any local BED4 catalogue (chrom start end motif); no download",
@@ -372,6 +395,13 @@ def ensure_table(platform: str | Platform = "ucsc", db: str = "hg38",
                  cache_dir: str | os.PathLike[str] | None = None) -> Path:
     """Return a local catalogue file, fetching it from the platform if missing."""
     platform = get_platform(platform) if isinstance(platform, str) else platform
+    if path is None:
+        # A catalogue small enough to ship needs neither a download nor a cache
+        # entry, and shipping it means the tool works offline and pins the exact
+        # version the results were produced against.
+        bundled = platform.bundled_path(db)
+        if bundled is not None and bundled.exists():
+            return bundled
     target = (Path(path) if path
               else platform.default_path(db, Path(cache_dir) if cache_dir else None))
     if target.exists():

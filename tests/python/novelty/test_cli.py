@@ -65,6 +65,90 @@ def test_query_screens_every_platform_and_combines_them(write_simplerepeat,
     assert "combined      : known" in out.out
 
 
+# --------------------------------------------------------------------------- #
+# motif equivalence
+# --------------------------------------------------------------------------- #
+
+def _query(capsys, write_simplerepeat, motif, *flags):
+    return _run([*flags, "--platform", "ucsc", "--repeats", str(write_simplerepeat()),
+                 "--no-cache", "query", "--chrom", "chr1", "--pos", "10101",
+                 "--motif", motif], capsys)
+
+
+def test_reverse_complement_is_off_by_default(write_simplerepeat, capsys):
+    """The headline default: the opposite strand of TAACCC is not a match."""
+    _, out = _query(capsys, write_simplerepeat, "GGGTTA")
+    assert "status      : novel_motif" in out.out
+
+
+def test_reverse_complement_flag_turns_the_strand_fold_on(write_simplerepeat, capsys):
+    _, out = _query(capsys, write_simplerepeat, "GGGTTA", "--reverse-complement")
+    assert "status      : known" in out.out
+
+
+def test_reverse_complement_bp_gates_the_strand_fold(write_simplerepeat, capsys):
+    """TAACCC is 6bp: a 6bp threshold admits it, a 7bp one does not."""
+    _, at_six = _query(capsys, write_simplerepeat, "GGGTTA",
+                       "--reverse-complement", "--reverse-complement-bp", "6")
+    _, at_seven = _query(capsys, write_simplerepeat, "GGGTTA",
+                         "--reverse-complement", "--reverse-complement-bp", "7")
+    assert "status      : known" in at_six.out
+    assert "status      : novel_motif" in at_seven.out
+
+
+def test_reverse_complement_bp_alone_is_inert_and_says_so(write_simplerepeat, capsys):
+    _, out = _query(capsys, write_simplerepeat, "GGGTTA", "--reverse-complement-bp", "1")
+    assert "status      : novel_motif" in out.out
+    assert "--reverse-complement-bp does nothing without --reverse-complement" in out.err
+
+
+def test_circular_is_on_by_default_and_no_circular_turns_it_off(write_simplerepeat,
+                                                                capsys):
+    _, rotated = _query(capsys, write_simplerepeat, "AACCCT")
+    assert "status      : known" in rotated.out
+    _, strict = _query(capsys, write_simplerepeat, "AACCCT", "--no-circular")
+    assert "status      : novel_motif" in strict.out
+
+
+def test_query_states_the_equivalence_policy_in_force(write_simplerepeat, capsys):
+    _, default = _query(capsys, write_simplerepeat, "TAACCC")
+    assert "same repeat if it differs by: period reduction + rotation" in default.out
+    assert "motif tolerance             : exact canonical match only" in default.out
+    _, rc = _query(capsys, write_simplerepeat, "TAACCC",
+                   "--reverse-complement", "--reverse-complement-bp", "4")
+    assert "reverse complement (>=4bp only)" in rc.out
+
+
+def test_a_one_substitution_near_miss_stays_novel_by_default(write_simplerepeat,
+                                                             capsys):
+    """CAG must not match a CAT reference repeat unless --max-motif-edits says so."""
+    rows = [(585, "chr1", 10000, 10468, "trf", 3, 100.0, 3, 100, 0, 400,
+             0, 0, 0, 0, 1.0, "CAT")]
+    path = write_simplerepeat(rows, name="cat.txt.gz")
+    base = ["--platform", "ucsc", "--repeats", str(path), "--no-cache",
+            "query", "--chrom", "chr1", "--pos", "10101", "--motif", "CAG"]
+    _, default = _run(base, capsys)
+    assert "status      : novel_motif" in default.out
+    _, fuzzy = _run([*base, "--max-motif-edits", "1"], capsys)
+    assert "status      : known" in fuzzy.out
+
+
+def test_equivalence_changes_the_annotated_verdicts(trf_table, tmp_path,
+                                                    write_simplerepeat, capsys):
+    """The flags reach `annotate`, not just `query`."""
+    out = tmp_path / "rc.tsv"
+    rows = [(585, "chr1", 10000, 10468, "trf", 6, 77.2, 6, 95, 3, 789,
+             33, 51, 0, 15, 1.43, "GGGTTA")]
+    # The equivalence flags live on the top-level parser, before the subcommand.
+    head = ["--platform", "ucsc", "--repeats",
+            str(write_simplerepeat(rows, name="rc.txt.gz")), "--no-cache"]
+    tail = ["annotate", str(trf_table), str(out)]
+    _run([*head, *tail], capsys)
+    assert pd.read_csv(out, sep="\t").loc[0, "novelty"] == "novel_motif"
+    _run([*head, "--reverse-complement", *tail], capsys)
+    assert pd.read_csv(out, sep="\t").loc[0, "novelty"] == "known"
+
+
 def test_a_bare_repeats_path_needs_a_single_platform(write_simplerepeat, capsys):
     with pytest.raises(SystemExit, match="ambiguous"):
         main(["--platform", "ucsc,bed", "--repeats", str(write_simplerepeat()),
@@ -390,3 +474,81 @@ def test_metrics_appends_so_an_external_loop_can_accumulate(trf_table, tmp_path,
                   "--max-motif-edits", edits, "--metrics", str(metrics))
     frame = pd.read_csv(metrics, sep="\t")
     assert list(frame.max_motif_edits) == [0, 1]
+
+
+# --------------------------------------------------------------------------- #
+# motif tolerance
+# --------------------------------------------------------------------------- #
+
+def test_annotate_reports_which_rule_accepted_each_motif(trf_table, tmp_path,
+                                                         write_simplerepeat, capsys):
+    frame, _ = _annotate(trf_table, tmp_path, write_simplerepeat, capsys)
+    assert "ucsc_match" in frame.columns
+    assert frame.loc[frame.motif == "TAACCC", "ucsc_match"].iloc[0] == "exact"
+
+
+def test_max_motif_edit_fraction_leaves_short_motifs_alone(trf_table, tmp_path,
+                                                           write_simplerepeat, capsys):
+    """A generous proportional budget must not make CAG match the 6bp TAACCC:
+    below the STR boundary the exact sequence of the unit is the evidence."""
+    frame, _ = _annotate(trf_table, tmp_path, write_simplerepeat, capsys,
+                         "--max-motif-edit-fraction", "0.9")
+    assert frame.loc[frame.SVID == "INS2", "ucsc_novelty"].iloc[0] == "novel_motif"
+
+
+def test_min_subrepeat_motif_alone_warns_that_it_does_nothing(trf_table, tmp_path,
+                                                              write_simplerepeat,
+                                                              capsys):
+    _, captured = _annotate(trf_table, tmp_path, write_simplerepeat, capsys,
+                            "--min-subrepeat-motif", "3")
+    assert "no edit budget to spend" in captured.err
+
+
+def test_query_states_the_tolerance_in_force(write_simplerepeat, capsys):
+    _, out = _query(capsys, write_simplerepeat, "TAACCC",)
+    assert "motif tolerance             : exact canonical match only" in out.out
+
+
+# --------------------------------------------------------------------------- #
+# contig coverage
+# --------------------------------------------------------------------------- #
+
+def test_annotate_says_which_query_contigs_a_catalogue_cannot_speak_for(
+        tmp_path, write_simplerepeat, capsys):
+    table = tmp_path / "offcontig.trf.tsv"
+    table.write_text(_COLUMNS
+                     + "chr9\t1000\tINS1\t[100]\tS1\t0\t90\tCAG\t0.95\t3\t90\t30\n")
+    frame, captured = _annotate(table, tmp_path, write_simplerepeat, capsys)
+    assert "no repeats on 1 of 1 query contig(s) (chr9)" in captured.err
+    assert frame["ucsc_novelty"].iloc[0] == "unscreened"
+    assert frame["novelty"].iloc[0] == "unscreened"
+
+
+# --------------------------------------------------------------------------- #
+# annotation-only platforms
+# --------------------------------------------------------------------------- #
+
+def test_pathogenic_alone_is_refused(capsys):
+    """83 loci cannot decide novelty: everything else in the genome would read as
+    novel on the strength of a catalogue that never claimed to be genome-wide."""
+    with pytest.raises(SystemExit):
+        main(["--platform", "pathogenic", "query", "--chrom", "chr1",
+              "--pos", "94418430", "--motif", "GCC"])
+    assert "annotation-only" in capsys.readouterr().err
+
+
+def test_pathogenic_annotates_without_voting(trf_table, tmp_path,
+                                             write_simplerepeat, capsys):
+    out = tmp_path / "annotated.tsv"
+    code, captured = _run([
+        "--platform", "ucsc,pathogenic", "--repeats", f"ucsc={write_simplerepeat()}",
+        "--no-cache", "annotate", str(trf_table), str(out),
+        "--insertion-key", "chrom,ins_coord,SVID",
+    ], capsys)
+    assert code == 0, captured.err
+    frame = pd.read_csv(out, sep="\t")
+    # its columns are there ...
+    assert "pathogenic_novelty" in frame.columns
+    # ... but the combined verdict is the screening catalogue's alone, so the
+    # rows the pathogenic catalogue knows nothing about are not called novel by it
+    assert list(frame["novelty"]) == list(frame["ucsc_novelty"])

@@ -1,283 +1,470 @@
 # Novelty screen (`novelty`)
 
-Tandem repeats called inside SV insertions are only interesting if the reference
-genome does not already have them. This tool takes the per-insertion TR calls
-from [`sv_trfcaller.py`](../../src/python/sv_trfcaller.py) and asks, for each
-one, whether a reference TR catalogue already annotates that repeat at that
-locus. Every call comes back as one of three verdicts:
+**Screens the tandem repeats that
+[`sv_trfcaller.py`](../../src/python/sv_trfcaller.py) found inside SV insertions
+against reference TR catalogues, and reports which ones the reference does not
+already contain.**
+
+The input is a TSV of TR calls. The output is the same TSV with a verdict column
+added:
 
 | verdict | meaning |
 |---|---|
-| `known` | a reference repeat with an equivalent motif sits at this locus |
+| `known` | a reference repeat with a matching motif is present at this locus |
 | `novel_motif` | the reference has repeats here, but none with this motif |
-| `novel_locus` | the reference annotates no repeat at all near this locus |
+| `novel_locus` | the reference annotates no repeat within the search window |
+| `unscreened` | this catalogue has no rows on this contig, so it cannot classify the locus |
 
-Which reference you ask changes the answer, so the screen is not tied to one
-catalogue. It ships adapters for the **UCSC `simpleRepeat`** track (1.05M
-entries, with the Tandem Repeat Finder measurements attached) and the
-**TRExplorer** catalog (5.6M entries, position and motif only), and can screen
-against several at once — a locus is only novel if none of them knows it.
+Catalogues disagree about many loci, so several can be screened in one run.
+Two are genome-wide: **UCSC `simpleRepeat`** (1.05M entries, with TRF
+measurements) and **TRExplorer** (5.6M entries, position and motif only). A locus
+is `known` if at least one catalogue contains it. See
+[Combining platforms](#combining-platforms).
 
-It also computes **insertion purity**: what fraction of the whole inserted
-sequence is tandem repeat at all, so insertions that are mostly something else
-can be set aside.
+A third catalogue, **`pathogenic`**, ships inside the package: 83 known
+disease-associated TR loci. It covers 83 loci only, so a `novel_locus` verdict
+against it carries no information. It is therefore marked annotation-only and is
+excluded from the combined verdict.
 
-## How to use it
-
-There are two ways to run it, and they are the same program:
+## Quick start
 
 ```bash
-# through uv, from anywhere in the repo -- what the examples below use
-uv sync                      # once; installs the `novelty` command, editable
-uv run novelty --help
+uv sync                                    # once; installs the `novelty` command
 
-# or directly, without installing anything
-cd src/python
-python -m novelty --help
+# 1. what can I screen against?
+uv run novelty platforms
+
+# 2. check a single locus by hand
+uv run novelty query --chrom chr1 --pos 10772 --motif GC
+
+# 3. screen a whole table against both catalogues
+uv run novelty --platform ucsc,trexplorer annotate in.trf.tsv out.novelty.tsv
+
+# 4. the same, keeping only rows that pass the filters, plus a summary row
+uv run novelty --platform ucsc,trexplorer annotate in.trf.tsv out.tsv \
+    --min-purity 0.8 --min-insertion-purity 0.8 --drop-filtered \
+    --metrics run.metrics.tsv
+
+# 5. measure how far the result depends on the thresholds
+uv run novelty --platform ucsc,trexplorer sweep in.trf.tsv sweep.tsv \
+    --window 0,1,10,50 --min-insertion-purity none,0.5,0.8
 ```
 
-`uv sync` puts the package in editable mode, so the `novelty` command always
-tracks your working copy and there is nothing to reinstall after an edit. The
-`python -m` form needs `src/python` on the path, which is why it is run from
-there; `PYTHONPATH=src/python python -m novelty` from the repo root does the
-same. Paths in the examples below are relative to the repo root, so adjust them
-if you `cd` into `src/python`.
+Without installing: `cd src/python && python -m novelty --help`.
 
-There are four commands. `annotate` is the one you normally want.
+Catalogues are downloaded on first use into `data/reference/` (UCSC 30 MB,
+TRExplorer 45 MB) and an index is cached beside the file, reducing startup from
+about 30 s to about 1 s. Both are gitignored. Set the location with
+`--cache-dir` or `$NOVELTY_CACHE`.
+
+## Commands
 
 | command | what it does |
 |---|---|
-| `annotate IN.tsv OUT.tsv` | **the main job.** Screens every row of a `sv_trfcaller.py` table and writes the same table back with the verdict and the matching reference repeat added as columns on the right. Nothing is removed or reordered — your rows are handed back with notes attached |
-| `query --chrom --pos --motif` | screen a single locus and print the result. For checking one case by hand |
-| `sweep IN.tsv OUT.tsv` | run `annotate` repeatedly under different settings and report what each produced. See [Searching the settings](#searching-the-settings) |
-| `platforms` | print the catalogues, file formats and tunable settings this build supports, with their defaults |
+| `annotate IN.tsv OUT.tsv` | the primary command. Screens every row and writes the table back with the verdict added. No rows are removed or reordered |
+| `query --chrom --pos --motif` | screens one locus and prints the result. Intended for inspecting individual cases |
+| `sweep IN.tsv OUT.tsv` | runs `annotate` repeatedly under different settings, writing one row of counts per run. See [Searching the settings](#searching-the-settings) |
+| `platforms` | prints the catalogues, formats and settings this build supports |
 
-```bash
-# what can we screen against?
-uv run novelty platforms
-
-# one locus
-uv run novelty query --chrom chr1 --pos 10772 --motif GC
-
-# the whole sv_trfcaller.py table, against both catalogues
-uv run novelty --platform ucsc,trexplorer annotate \
-    data/sv_output/survivor_multi_sample_vcf/first_500_INS.trf.tsv \
-    data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv
-```
-
-Catalogues download themselves on first use into `data/reference/` (UCSC 30 MB,
-TRExplorer 45 MB) and build an index cache beside the file, which cuts a ~30 s
-startup to ~1 s on every later run. Both are gitignored. Put them somewhere else
-with `--cache-dir` or the `NOVELTY_CACHE` environment variable.
+## Settings
 
 ### Structural options
 
-These describe the data and the run rather than the science, so they are not
-things to tune.
+These describe the input data and the run itself. They do not affect how motifs
+are compared.
 
-| flag | what it does |
-|---|---|
-| `--platform ucsc,trexplorer` | catalogue(s) to screen against. Each gets its own block of output columns, and the leading `novelty` column combines them |
-| `--repeats [PLATFORM=]PATH` | use a local catalogue file instead of downloading one |
-| `--cache-dir PATH` | where downloaded catalogues are kept (default: the repo's `data/reference`) |
-| `--format` | the catalogue file's layout. Detected from the file unless you say otherwise |
-| `--coord-base {0,1}` | whether positions in your table start counting at 0 or at 1. VCF `POS` counts from 1, which is the default; getting it wrong shifts every interval by one base |
-| `--stranded` | treat a motif and its reverse complement as different repeats. Canonicalisation happens when the index is built, so this rebuilds the catalogue and cannot be swept |
-| `--drop-filtered` | write only the rows that pass your thresholds. Without it every row is kept and simply tagged |
-| `--metrics PATH` | also append a one-row summary of this run, in the layout `sweep` writes |
+| flag | default | what it does |
+|---|---|---|
+| `--platform ucsc,trexplorer` | `ucsc` | catalogue(s) to screen against; each gets its own output columns |
+| `--repeats [PLATFORM=]PATH` | download | use a local catalogue file instead |
+| `--cache-dir PATH` | `data/reference` | where downloaded catalogues live |
+| `--format` | auto | catalogue file layout; detected from the file |
+| `--coord-base {0,1}` | `1` | whether input positions count from 0 or 1. VCF `POS` counts from 1. An incorrect value shifts every interval by one base |
+| `--db NAME` | `hg38` | assembly to screen against |
+| `--no-download` / `--no-cache` | off | fail rather than fetch a missing catalogue / rebuild the index rather than reuse its cache |
+| `--drop-filtered` | off | write only rows that pass every filter. Without it, all rows are kept and tagged |
+| `--metrics PATH` | off | also append a one-row summary, in the layout `sweep` writes |
+| `--chrom-col`, `--pos-col`, `--motif-col`, `--purity-col`, `--rep-start-col`, `--rep-end-col`, `--insert-size-col` | the names below | the input column names the tool reads |
+| `--insertion-key COLS` | `chrom,ins_coord,SVID,sample` | which columns identify one insertion, for [insertion purity](#insertion-purity) |
+| `--no-insertion-purity` | off | skip the insertion-purity columns entirely |
 
-### Tunable settings
+### Motif equivalence
 
-Every threshold in the screen is a flag with a default, and
-`uv run novelty platforms` lists them. Write `none` to switch one off. They
-split into two kinds, which matters for speed: a **screening** setting changes
-the verdicts, so changing it means screening the table again; a **row filter**
-only decides which already-screened rows you keep.
+What makes two motif *strings* the same *repeat*. Catalogue-level: changing one
+rebuilds the index, so these cannot be swept.
+[In depth](#motif-equivalence-in-depth).
 
-| flag | default | kind | what it does |
-|---|---|---|---|
-| `--window BP` | `10` | screening | how far a reference repeat may sit from the insertion point and still count as being at the same locus — [explained below](#--window-how-far-off-the-coordinates-may-be) |
-| `--max-motif-edits N` | `0` | screening | how many edits two motifs may differ by and still count as equivalent. `0` means exact. `1` is well supported by our data and resolves most near-misses |
-| `--max-fuzzy-motif BP` | `50` | screening | the longest motif near-miss matching is attempted on at all — [explained below](#--max-fuzzy-motif-when-to-stop-looking-for-near-misses) |
-| `--min-reference-identity PCT` | off | screening | ignore reference repeats whose sequence identity is below this. A **percentage**, 0–100; only UCSC records it (`perMatch`) |
-| `--min-reference-copy-num N` | off | screening | ignore reference repeats with fewer than this many copies of their motif |
-| `--min-reference-length BP` | off | screening | ignore reference repeats shorter than this |
-| `--min-purity FRAC` | off | row filter | drop rows whose own repeat has lower TRF identity than this. A **fraction**, 0–1 |
-| `--min-insertion-purity FRAC` | off | row filter | drop rows whose insertion is less than this fraction tandem repeat. A **fraction**, 0–1 |
-| `--min-motif-length BP` | off | row filter | drop very short motifs |
-| `--max-motif-length BP` | off | row filter | drop very long or compound ones |
-| `--min-rep-length BP` | off | row filter | drop rows where the repeat covers only a little of the insertion |
-| `--min-rep-units N` | off | row filter | drop rows with only a few copies of the motif |
+| | flag | default | treats as the same repeat | example |
+|---|---|---|---|---|
+| period reduction | *(none)* | always on | a motif that is only several copies of a shorter one | `CAGCAG` = `CAG` |
+| rotation | `--circular` / `--no-circular` | **on** | the same unit started at a different base | `CAG` = `AGC` = `GCA` |
+| reverse complement | `--reverse-complement` | **off** | the same unit read from the other strand | `CAG` = `CTG`, `A` = `T` |
+| ↳ length gate | `--reverse-complement-bp BP` | off | the same, but only for units ≥ `BP` | at `6`: `TAACCC` = `GGGTTA`, but `A` ≠ `T` |
 
-Watch the two scales: `--min-reference-identity` is a percentage because that is
-how UCSC records it, while `--min-purity` is a fraction because that is how the
-`sv_trfcaller.py` table records it.
+None of these is fuzzy matching. No combination of them makes `CAG` match `CAT`.
+Approximate matching is controlled by the [tolerance settings](#motif-tolerance),
+which are off by default.
 
-The three `--min-reference-*` thresholds do more than tidy the output. They
-decide what counts as annotation in the first place, so raising one moves
-`n_nearby` and can turn a `known` verdict into `novel_locus` — you are saying a
-short or low-identity catalogue entry is not enough evidence that a repeat is
-already known. A catalogue that lacks the underlying column is left alone, and
-the run says so on stderr.
+### Screening settings
 
-#### `--window`: how far off the coordinates may be
+Change the verdict itself, so changing one re-screens the table. `none` switches
+a threshold off.
 
-An insertion has one coordinate — the base it was placed after. A reference
-repeat has an interval. Neither is exact: the breakpoint comes from aligning
-noisy reads, and the annotated repeat has its own boundaries. Requiring the
-coordinate to land strictly inside the interval is therefore too harsh, and a
-repeat one base past the edge would be called `novel_locus` purely because of
-where the caller drew the line.
+| flag | default | what it does |
+|---|---|---|
+| `--window BP` | `10` | how far a reference repeat may lie from the insertion point and still count as being at this locus. [Why slack is needed](#window-why-coordinates-need-slack) |
+| `--max-motif-edits N` | `0` | edit budget applied at every motif length. `0` means exact matching. At `1` or above, `CAG` also matches `CAT` |
+| `--max-motif-edit-fraction FRAC` | off | edit budget as a fraction of motif length, applied to motifs over 6 bp only. Intended for [VNTR consensus disagreements](#motif-tolerance) |
+| `--min-subrepeat-motif BP` | off | also match a motif that tiles the other, when the tiling unit is at least this long. See [motif tolerance](#motif-tolerance) |
+| `--max-fuzzy-motif BP` | `200` | the longest motif the three settings above are attempted on. Has no effect when they are all off |
+| `--min-reference-identity PCT` | off | ignore reference repeats below this identity. A **percentage**, 0–100. UCSC only |
+| `--min-reference-copy-num N` | off | ignore reference repeats with fewer copies than this |
+| `--min-reference-length BP` | off | ignore reference repeats shorter than this |
 
-`--window` is how much distance to forgive, in base pairs. At the default of 10,
-any reference repeat coming within 10 bp of the insertion point counts as being
-at this locus:
+The three `--min-reference-*` thresholds decide which catalogue rows count as
+annotation at all. Raising one lowers `n_nearby` and can change `known` to
+`novel_locus`. A catalogue that lacks the underlying column is unaffected, and
+the run reports this on stderr.
+
+### Row filters
+
+These select which already-screened rows are kept, so a sweep can reuse one
+screen across several filter settings. Rows are tagged rather than dropped unless
+`--drop-filtered` is given. A missing value passes.
+
+| flag | default | drops rows where |
+|---|---|---|
+| `--min-purity FRAC` | off | TRF identity of this repeat is below this. A **fraction** 0–1 |
+| `--min-insertion-purity FRAC` | off | [insertion purity](#insertion-purity) is below this. A **fraction** 0–1 |
+| `--min-motif-length BP` | off | the motif is shorter than this |
+| `--max-motif-length BP` | off | the motif is longer than this |
+| `--min-rep-length BP` | off | the repeat covers fewer bases of the insertion |
+| `--min-rep-units N` | off | there are fewer copies of the motif |
+
+Note the two different scales. `--min-reference-identity` is a percentage,
+because UCSC records identity that way. `--min-purity` is a fraction, because
+`sv_trfcaller.py` writes it that way.
+
+## Input columns
+
+One row per **locus × sample × TRF call**. Three columns are read by default
+(`--chrom-col`, `--pos-col`, `--motif-col`). The rest are copied to the output
+unchanged; several are used by the row filters.
+
+| column | what it is | example |
+|---|---|---|
+| `chrom` | contig of the insertion site | `chr1` |
+| `ins_coord` | reference position the insertion sits after, 1-based | `10772` |
+| `SVID` | the caller's variant ID | `Sniffles2.INS.2S0` |
+| `depth` | VCF depth field, copied verbatim including brackets | `[0 0]` |
+| `insert_size` | length of the inserted sequence; the first integer is used | `[138]` |
+| `sample` | the genome this call came from | `HG00597` |
+| `rep_start`, `rep_end` | the repeat's span **inside the insertion**, not in the genome | `1`, `68` |
+| `motif` | the repeat unit TRF reported | `GC` |
+| `purity` | TRF identity of this one repeat, 0–1 | `0.725` |
+| `motif_length`, `rep_length`, `rep_units` | motif size, bases covered, copies | `2`, `67`, `33` |
+
+Only `ins_coord` is a genome coordinate.
+
+## Output columns
+
+The input table unchanged, then the columns below, then one block per platform.
+The examples are from the first row of the sample output: a `GC` repeat covering
+half of a 138 bp insertion at `chr1:10772`.
+
+| column | what it is | example |
+|---|---|---|
+| `novelty` | the verdict, [combined across platforms](#combining-platforms) | `novel_motif` |
+| `canonical_motif` | the query motif's [canonical form](#motif-equivalence-in-depth) | `CG` |
+| `insertion_repeat_bases` | bases of this insertion covered by the union of its TRF calls | `67` |
+| `insertion_purity` | [fraction of the insertion that is tandem repeat](#insertion-purity), 0–1 | `0.486` |
+| `filter` | `PASS`, or the thresholds this row failed | `PASS` |
+
+Per platform, prefixed with its name (`ucsc_`, `trexplorer_`, …):
+
+| column | what it is | example |
+|---|---|---|
+| `<p>_novelty` | this catalogue's verdict, taken alone | `novel_motif` |
+| `<p>_n_nearby` | reference repeats within `--window`, after the `--min-reference-*` filters. A value of `0` produces `novel_locus` | `2` |
+| `<p>_start`, `<p>_end` | span of the best reference repeat, in the `--coord-base` convention | `10628`, `10800` |
+| `<p>_distance` | bp from the insertion point to that repeat; `0` means the point is inside it | `0` |
+| `<p>_motif`, `<p>_canonical` | that repeat's motif and its canonical form. Compare with `canonical_motif` to see why the verdict was reached | `AGGCGCGCC…` |
+| `<p>_motif_edits` | `0` when the motifs are equivalent. [Not a distance when tolerance is off](#motif-tolerance) | `1` |
+| `<p>_match` | which rule accepted the motif: `exact`, `fuzzy`, `vntr` or `subrepeat`. Empty when no rule matched | `NA` |
+
+UCSC also carries `<p>_period`, `_copy_num`, `_consensus_size`, `_per_match`,
+`_per_indel` (`29`, `6.0`, `29`, `100`, `0` here). TRExplorer carries none.
+
+Two summaries are printed to stderr: one per row and one per locus. Rows are
+locus × sample × TRF call, so per-row percentages reflect how often a locus
+recurs as much as they reflect novelty. Use the per-locus summary.
+
+---
+
+# Details
+
+## Motif equivalence in depth
+
+Two motifs match when their canonical forms are equal. Three transformations
+feed that canonical form, and each has its own flag because they differ in how
+likely they are to merge repeats that are genuinely distinct.
+
+**Period reduction** is arithmetic, not a judgement: `CAGCAG` is a 3 bp repeat
+written twice. Always applied, no flag.
+
+**Rotation** is on by default. The starting phase of a unit comes from the
+caller, not the sequence, and both sides of the comparison are TRF output (the
+UCSC track is TRF run over the reference). It matters most for long motifs, where
+two catalogues are least likely to have picked the same phase: in the sample data
+every match on a motif of 51 bp or more required rotation. It is also safest
+there, since a primitive *n*-mer has *n* rotations out of 4ⁿ strings, so a
+coincidental rotation match is plausible at 2–3 bp and effectively impossible
+above 20 bp. Rotation is a cyclic shift, not a reversal: `ATC` gives `TCA` and
+`CAT`, never `CTA`.
+
+**Reverse complement** is off by default, because whether a repeat and its
+reverse complement are the same locus feature depends on the question. For a
+CAG/CTG expansion they usually are; the same rule also merges `A` and `T`, and a
+poly-A tail is not a poly-T tail. `--reverse-complement-bp BP` restricts the fold
+to units of at least `BP` bases, where the match is unlikely to be coincidental.
+
+| query | reference | default | `--reverse-complement` | `--no-circular` | why |
+|---|---|---|---|---|---|
+| `CAG` | `CAG` | match | match | match | identical |
+| `CAG` | `CAGCAG` | match | match | match | period reduction |
+| `CAG` | `AGC` | match | match | **no** | rotation |
+| `GC` | `CG` | match | match | **no** | rotation, *not* a strand pair |
+| `CAG` | `CTG` | **no** | match | no | reverse complement |
+| `A` | `T` | **no** | match | no | reverse complement |
+| `CAG` | `CAT` | **no** | **no** | no | one substitution; not an equivalence |
+
+`GC`/`CG` and `AT`/`TA` are reverse complements but also rotations of each other,
+so they match at any `--reverse-complement` setting. Only `--no-circular`
+separates them.
+
+## Motif tolerance
+
+Tolerance accepts motifs that are *not* equivalent. It is applied per query
+rather than stored in the index, so it can be swept without a rebuild, and unlike
+equivalence it can make `CAG` match `CAT`. All three settings are off by default,
+and with them off `<p>_match` is `exact` on every match.
+
+**Flat versus proportional budget.** A 47 bp VNTR consensus and its counterpart
+in another catalogue typically differ by 3–5 bases, about 8% of their length,
+while `CAG` and `CAT` differ by 1. No flat budget accepts the first and rejects
+the second. On the sample data `--max-motif-edits 1` reclassifies 575 rows, 344
+of them (60%) motifs of 6 bp or less — `CAG`/`CAT` matches between different
+STRs. `--max-motif-edit-fraction` scales with length and applies only above 6 bp,
+so short motifs keep exact matching; at `0.10` it reclassifies 28 of 81
+`novel_motif` loci as `known`, all of them long motifs differing only in
+consensus. The 6 bp line is the STR/VNTR boundary used by str-analysis.
+
+**Sub-repeat containment.** TRF picks one representative unit per locus, so the
+same repeat can be reported as `ACC` from the insertion and `ACCATC` from the
+reference. `--min-subrepeat-motif` tiles the shorter motif across the longer one
+at the best phase, and the mismatches must fit the edit budget. The tiling is
+what keeps it specific: a plain substring test accepts 80% of the `novel_motif`
+rows in the sample data, most of them spurious — `A` inside
+`CACCACAGAAAACAGAGC`, `GC` inside any GC-rich compound motif. Requiring the short
+motif to account for every base rejects those; `A` tiled across that 18-mer
+mismatches 11 of 18. Because it shares the edit budgets, it does nothing on its
+own — an exact tiling is already period reduction. Alongside
+`--max-motif-edit-fraction 0.10` it moves 2 further loci at
+`--min-subrepeat-motif 4`, 3 at `2`, and 1 at `6`.
+
+**Length limit.** Approximate comparison is an edit distance minimised over every
+rotation, and the longest UCSC consensus is 1,991 bp. `--max-fuzzy-motif` sets
+the length above which motifs must match exactly. The 200 bp default sits above
+the VNTR range the fraction budget targets: the sample data has same-length VNTR
+pairs up to 77 bp. Runtime over 4,518 rows against both catalogues is 2.5 s with
+tolerance off, 8.7 s with all three enabled.
+
+**Reading the columns.** `<p>_motif_edits` is clamped to `budget + 1`, so it is
+not a distance; with tolerance off it is binary (`0` matched, `1` did not, empty
+means nothing nearby), and once the budget varies with motif length the counts
+are not comparable between rows. Read `<p>_match`, which names the rule that
+matched. Report the tolerance settings alongside any novelty count derived from
+them.
+
+## Window: why coordinates need slack
+
+An insertion has one coordinate, the base it was placed after. A reference repeat
+has an interval. Neither is exact: the breakpoint comes from aligning noisy
+reads, and the repeat boundaries come from TRF. Requiring a strict overlap would
+classify a repeat one base past the edge as `novel_locus` because of where the
+caller placed the breakpoint.
 
 ```text
                    reference repeat  [==================]
     insertion point       x  <-4bp->
-                          |------ window 10 ------|   close enough: known
-                          |-- window 0 --|             too far: novel_locus
+                          |------ window 10 ------|   within range: known
+                          |-- window 0 --|             out of range: novel_locus
 ```
 
-`0` requires a strict overlap. Larger values are more forgiving and call more
-loci `known`. The effect is bigger than you might expect and does not level off:
-on our data, going from `0` to `50` moves 28 loci from novel to known. Quote the
-window alongside any novelty count.
+Larger values classify more loci as `known`, and the effect does not plateau: on
+the sample data, `0` to `50` reclassifies 28 loci. Report the window alongside
+any novelty count.
 
-#### `--max-fuzzy-motif`: when to stop looking for near-misses
+## Insertion purity
 
-Once `--max-motif-edits` is above `0`, deciding whether two motifs are equivalent
-means an edit distance minimised over every rotation and both strands — the cost
-grows steeply with motif length. It also stops being meaningful: motifs are
-usually a handful of bases, but the longest UCSC consensus is 1,991 bp, and "two
-1,991-mers differ by one base" says nothing useful.
+The fraction of the inserted sequence that is tandem repeat. An insertion whose
+repeats cover 5% of its length is mostly non-repetitive, and is weak evidence for
+a novel TR — in the sample data this is what separates novel TR loci from
+mobile-element insertions carrying a poly-A tail.
 
-`--max-fuzzy-motif` is the length above which that comparison is skipped and
-motifs must match exactly. At the default of 50, units up to 50 bp get the
-near-miss treatment and longer ones do not. Lowering it is faster and stricter;
-raising it is slower and more forgiving. It has no effect at all when
-`--max-motif-edits` is `0`, since nothing fuzzy happens then.
+It is the **union** of the TRF intervals over `insert_size`, not their sum. TRF
+reports overlapping calls over the same sequence (one insertion in the sample
+data has 64), so summing `rep_length` double-counts and can exceed 1.
 
-### What comes out
+## Combining platforms
 
-The input table, unchanged, plus:
+Each platform is screened independently and gets its own columns. The `novelty`
+column takes the least novel verdict across them, so a locus is `novel_locus`
+only if no catalogue found anything. Screening two catalogues mainly reclassifies
+`novel_motif` rows rather than `novel_locus` ones.
 
-- `novelty` — the combined verdict, and `canonical_motif` for the query
-- `insertion_repeat_bases`, `insertion_purity`, `filter`
-- one block per platform: `<platform>_novelty`, `_n_nearby`, `_start`, `_end`,
-  `_distance`, `_motif`, `_canonical`, `_motif_edits`, plus whatever annotations
-  that catalogue carries (UCSC adds `_period`, `_copy_num`, `_per_match`, …;
-  TRExplorer is position and motif only, so it contributes none)
+`unscreened` ranks below the other three, so a catalogue without coverage never
+overrides one that produced a verdict. This matters because a catalogue limited
+to the primary assembly carries no information about alt, random or decoy
+contigs, and reporting those as `novel_locus` would turn missing coverage into
+apparent novelty — TRExplorer v2 carries 25 contigs against UCSC's 702. It would
+also inflate the `agreement` objective, since both catalogues would return the
+same verdict there. `annotate` lists the affected contigs on stderr.
 
-Two summaries print to stderr: per row **and per locus**. Rows are
-locus × sample × TRF call, so one recurrent locus can contribute dozens of them
-and per-row percentages track recurrence more than novelty.
+`pathogenic` is annotation-only: it produces its columns but is excluded from the
+combined verdict, and `--platform pathogenic` alone is rejected. A catalogue of
+83 loci would classify everything else in the genome as novel.
 
-### Searching the settings
+## Searching the settings
 
-`sweep` is `annotate` run many times under different thresholds, writing one row
-of counts per run instead of an annotated table. It is built on
-[Optuna](https://optuna.org), which brings trial storage, resumable studies and
-its dashboard along with it.
-
-Any setting can take a list of values (`0,1,10`), a range (`0:50`), or a range
-with a step (`0:50:5`). Anything you leave alone stays at its default.
-
-```bash
-# try every combination of these values
-uv run novelty --platform ucsc,trexplorer sweep \
-    data/sv_output/survivor_multi_sample_vcf/first_500_INS.trf.tsv \
-    data/sv_output/survivor_multi_sample_vcf/first_500_INS.sweep.tsv \
-    --window 0,1,10,50 --max-motif-edits 0,1,2 \
-    --min-purity none,0.8 --min-insertion-purity none,0.5,0.8
-
-# or let Optuna explore the ranges itself, keeping the study to browse later
-uv run novelty --platform ucsc,trexplorer sweep in.tsv out.tsv \
-    --sampler tpe --trials 200 --objective agreement \
-    --window 0:50 --max-motif-edits 0:3 --min-insertion-purity 0.0:1.0 \
-    --storage sqlite:///study.db --study-name novelty
-```
+`sweep` runs `annotate` repeatedly, writing one row of counts per run. It is
+built on [Optuna](https://optuna.org), which provides trial storage, resumable
+studies and a dashboard. Any setting accepts a list (`0,1,10`), a range (`0:50`),
+or a range with a step (`0:50:5`); anything not given stays at its default.
 
 | flag | what it does |
 |---|---|
-| `--sampler {grid,tpe,random}` | `grid` (the default) runs every combination you listed. `random` picks at random. `tpe` learns as it goes, spending later trials near the settings that scored well |
-| `--trials N` | how many runs to do (default: the whole grid, or 50 when sampling) |
-| `--objective {agreement,truth,none}` | what counts as a good score — see below |
-| `--truth PATH` / `--truth-col` | a TSV of loci you already know the answer for: the chrom/pos columns plus a known/novel column |
-| `--seed N` | fix the randomness so a search can be repeated exactly |
-| `--storage URL` / `--study-name` | e.g. `sqlite:///study.db`, to keep the trials, resume the study, or point `optuna-dashboard` at it |
+| `--sampler {grid,tpe,random}` | `grid` runs every listed combination; `random` samples at random; `tpe` concentrates later trials near high-scoring regions |
+| `--trials N` | number of runs. Defaults to the full grid, or 50 when sampling |
+| `--objective {agreement,truth,none}` | the score to optimise |
+| `--truth PATH` / `--truth-col` | loci with known answers: chrom/pos plus a known/novel column |
+| `--direction {maximize,minimize}` | optimisation direction (default: `maximize`) |
+| `--seed N` | fixes the random seed so a search is reproducible |
+| `--storage URL` / `--study-name` | for example `sqlite:///study.db`, to persist and browse trials |
 
 Each row records every setting plus `n_rows`, `n_rows_pass`, `n_loci`,
-`rows_<status>`, `loci_<status>`, `frac_loci_novel`, the same locus counts per
-platform, and that trial's `objective`/`score`. `annotate --metrics PATH` writes
-the same row minus those last two and appends, so a hand-rolled loop can
-accumulate the same table.
+`rows_<status>`, `loci_<status>`, `frac_loci_novel`, the same counts per
+platform, and that trial's `objective`/`score`. `annotate --metrics PATH` appends
+the same row minus the last two.
 
-#### Comparing settings is not the same as choosing them
+The objectives are `agreement` — the Jaccard index of the novel-locus sets the
+catalogues produce independently, scored on the novel sets so that a large
+`--window` calling everything `known` cannot win, and requiring two platforms;
+`truth` — balanced accuracy against `--truth`, the only objective that measures
+correctness rather than consistency; and `none`, which just enumerates.
 
-There is normally no truth set here, so a grid `sweep` is not finding the best
-thresholds — it shows **how much a conclusion depends on them**. A finding that
-holds across the grid is solid; one that appears only at particular cutoffs is a
-property of the cutoffs. Compare `frac_loci_novel` rather than raw counts,
-because the row filters change `n_loci` and so the denominator.
+Comparing settings is not selecting them. Without a truth set a sweep measures
+how far a conclusion depends on the thresholds, not which thresholds are right. A
+result that holds across the grid is robust; one that appears only at particular
+cutoffs is a property of those cutoffs. Compare `frac_loci_novel` rather than raw
+counts, because row filters change the denominator.
 
-Optuna's optimising samplers do need something to maximise:
+## Causes of inflated novel counts
 
-- **`agreement`** (the default when several platforms are given) — how far the
-  catalogues independently flag the *same* loci as novel, scored as the Jaccard
-  index of their novel-locus sets. Where UCSC and TRExplorer, compiled
-  separately, agree, the call is a property of the data rather than of the
-  cutoff. It is deliberately scored on the novel sets rather than on overall
-  agreement, so that a huge `--window` calling everything `known` in both cannot
-  win; an empty intersection and an empty union both score `0.0`. Needs at least
-  two `--platform` entries.
-- **`truth`** — balanced accuracy against `--truth`, i.e. novel-recall and
-  known-recall averaged so the rarer class still counts. The only honest way to
-  tune if you have a labelled set.
-- **`none`** — no score, just enumerate.
-
-Treat a winning `agreement` score as a hypothesis about where the thresholds are
-stable, not as the right answer.
-
-### Reading the output
-
-Two things routinely inflate the novel counts, so check them before believing a
-number:
-
-- **Near misses.** A single substitution in the unit reads as `novel_motif`.
-  Re-run with `--max-motif-edits 1` and see what survives, or sweep the axis. On
-  our data this accounted for most of them.
-- **Sub-repeat containment.** TRF reports one compound representative unit per
-  locus, so an `ACC` query is called novel against a reference consensus of
-  `ACCATC` even though it plainly tiles it. This is a known gap — the matching
-  rule does not yet test containment.
+- **Near misses** — one substitution reads as `novel_motif` with tolerance off.
+  For long motifs this is usually a consensus disagreement; see
+  [motif tolerance](#motif-tolerance).
+- **Sub-repeat containment** — an `ACC` query against an `ACCATC` consensus. See
+  [above](#motif-tolerance).
+- **Strand** — with `--reverse-complement` off, a repeat annotated on the
+  opposite strand reads as `novel_motif`.
+- **Uncovered contigs** — reported as `unscreened`, not `novel_locus`, but check
+  the stderr line.
+- **Recurrence** — one locus can contribute dozens of rows. Read the per-locus
+  summary, not the per-row percentages.
 
 ## How it's implemented
 
-Motifs are compared by canonical form: reduced to their primitive unit
-(`ATAT` → `AT`), then to the smallest rotation of that unit or of its reverse
-complement, so `GC` and `CG` collapse together. The catalogue is held column-wise
-in numpy arrays sorted by `(chrom, start)`, and overlap search is a
-`searchsorted` plus a short walk left, bounded by a per-contig running maximum of
-the interval ends. Motif strings are interned, so hg38's 1.05M `simpleRepeat`
-rows canonicalise only their 515,928 distinct sequences.
+The catalogue is held column-wise in numpy arrays sorted by `(chrom, start)`.
+Overlap search is a `searchsorted` plus a short walk left, bounded by a per-contig
+running maximum of the interval ends. Motif strings are interned, so the 1.05M
+`simpleRepeat` rows for hg38 canonicalise only their 515,928 distinct sequences.
 
-All coordinates are 0-based half-open internally and converted once at the edges;
-VCF `POS` is 1-based, and mixing the two silently shifts every interval by a base.
+All coordinates are 0-based half-open internally, converted once at the
+boundaries. VCF `POS` is 1-based; UCSC `simpleRepeat`, plain BED and TRGT BED are
+0-based half-open. The TRGT convention was verified against the ExpansionHunter
+JSON distributed with the same catalogue upstream, whose `ReferenceRegion`
+strings are byte-identical to the BED start/end pairs.
 
 | file | what it holds |
 |---|---|
-| `src/python/novelty/motifs.py` | canonical form of a repeat unit, and fuzzy distance between two motifs |
-| `src/python/novelty/platforms.py` | where a catalogue comes from and how to read it — UCSC, TRExplorer, plain BED, TRGT BED — normalised to one schema (`chrom/start/end/motif` plus optional annotations) |
-| `src/python/novelty/catalog.py` | the interval index, the known/novel verdict, and the index cache |
-| `src/python/novelty/insertions.py` | insertion purity (a union of the TRF intervals, so overlapping calls are not double-counted) and the filter column |
-| `src/python/novelty/search.py` | the Optuna search: the axes, the samplers and the objectives |
-| `src/python/novelty/cli.py` | the four commands, and the one table declaring every tunable setting |
-| `pyproject.toml` | declares the `novelty` command and builds the package from `src/python`; `sv_trfcaller.py` stays a loose script |
-| `tests/python/novelty/` | mirrors the source tree, one test module per source module; `uv run pytest` |
+| `motifs.py` | `MotifEquivalence` and `MotifTolerance`, canonical form, fuzzy and tiling distance |
+| `platforms.py` | catalogue sources and readers — UCSC, TRExplorer, BED, TRGT BED — normalised to one schema |
+| `catalog.py` | the interval index, the verdict, the index cache |
+| `insertions.py` | insertion purity and the `filter` column |
+| `search.py` | the Optuna search: axes, samplers, objectives |
+| `cli.py` | the four commands, and the table declaring every tunable setting |
+| `tests/python/novelty/` | one test module per source module; `uv run pytest` |
 
-Adding a catalogue means adding a reader and a registry entry in `platforms.py`;
-nothing downstream knows which platform it is looking at. Adding a setting means
-adding one row to `HYPERPARAMS` in `cli.py`, which wires it into `annotate`,
-`sweep` and the metrics table at once.
+Adding a catalogue means a reader plus a registry entry in `platforms.py`. Adding
+a setting means one row in `HYPERPARAMS` in `cli.py`, which wires it into
+`annotate`, `sweep` and the metrics table at once.
+
+---
+
+## Sources
+
+### `str-analysis` (Ben Weisburd, Broad Institute)
+
+<https://github.com/broadinstitute/str-analysis> — MIT licensed, © 2021 Broad
+Institute. Not a dependency: the methods below were re-implemented and one data
+file vendored.
+
+- **The STR/VNTR boundary at 6 bp** (`utils/eh_catalog_utils.py`,
+  `compute_repeat_unit_id`) — motifs of 6 bp and under are keyed by sequence;
+  longer ones vary between callers, so their sequence is not a reliable identity.
+  Used as `STR_MAX_MOTIF = 6` in `motifs.py` to gate `--max-motif-edit-fraction`.
+  Their rule itself was not adopted: it treats any two motifs of equal length
+  above 6 bp as the same repeat with no sequence check, which reclassifies 365
+  rows of the sample data, against 382 for a proportional edit budget that still
+  compares sequences.
+- **Tiling purity** (`utils/find_motif_utils.py`, `compute_repeat_purity`) —
+  tile a motif and count matching bases rather than compare strings. Implemented
+  as `tiling_distance()` for `--min-subrepeat-motif`. Theirs tiles across the
+  reference genome; this tiles across the other catalogue's consensus, which is
+  weaker evidence but needs no FASTA.
+- **The IUPAC complement table** (`utils/misc_utils.py`) — fixed a latent bug
+  where `reverse_complement` translated only `ACGTN`, so `ACRYN` returned
+  `NYRGT` instead of `NRYGT`.
+- **83 disease-associated TR loci** (`variant_catalogs/catalog.GRCh38.TRGT.bed`)
+  — vendored unchanged as `src/python/novelty/data/pathogenic.hg38.TRGT.bed`
+  with a provenance header.
+
+Their `compute_canonical_motif` was compared and not adopted: it does not reduce
+to the primitive unit (`CAGCAG` → `AGCAGC`), folds in the reverse complement by
+default, and raises `KeyError` on lowercase input. On 5,446 primitive motifs the
+two agree exactly.
+
+### Not adopted
+
+- **Reference-sequence purity** — tiling the query motif across the reference
+  sequence at the locus rather than across another catalogue's consensus. It
+  separates real sub-repeats cleanly (at `chr1:1201778-1202830`, a 19 bp query
+  motif scores 0.944 against a `CAG` control's 0.315) but needs a FASTA, which
+  this tool does not otherwise require.
+- **Catalogue boundary extension** (`extend_str_catalog_boundaries.py`) —
+  extends loci outward through interrupted copies while purity stays above 90%,
+  addressing the same problem as `--window` at the source. Best as a
+  preprocessing pass over the catalogue file, which `--repeats` already accepts.
+  Also needs a FASTA.
+- **Overlap measured in motif copies** rather than base pairs (`merge_loci.py`)
+  — would make `--window` scale with motif length.
+- **Gene region and mappability annotations** — need a GENCODE GTF, a bigWig and
+  `pyBigWig`.
+
+### Other references
+
+- UCSC `simpleRepeat` schema —
+  <https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_track=simpleRepeat&hgta_doSchema=describe+table+schema>
+- TRExplorer catalog — <https://trexplorer.broadinstitute.org>, releases at
+  <https://github.com/broadinstitute/trexplorer-catalog>
