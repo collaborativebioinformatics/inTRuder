@@ -112,7 +112,7 @@ def report_scaling(args, embedder, torch, total, windows) -> int:
                  parameters=params or 7_000_000_000, repeats=args.repeats)
     for row in rows:
         if row["seconds"] is None:
-            print(f"  {row['length']:>7} {'OOM':>8}")
+            print(f"  {row['length']:>7} {'--':>8}   {row.get('error', 'failed')}")
             continue
         mfu = f"{100 * row['mfu']:.0f}%" if row["mfu"] else "-"
         ratio = f"{row['ratio']:.2f}x" if row["ratio"] else "-"
