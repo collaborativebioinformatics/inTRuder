@@ -91,6 +91,13 @@ def add_shared_options(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
                    help="comma-separated segment names to pool")
     g.add_argument("--pooling", default="",
                    help="override per segment, e.g. 'repeat=last,left=mean'")
+    # Vortex's Triton kernels cover the Hyena convolutions -- 27 of the 32
+    # layers, and the bandwidth-bound part of the pass. Opt-in on both sides:
+    # evo2 defaults it off and tells you to validate outputs, because vortex
+    # falls back silently when a kernel is unavailable.
+    g.add_argument("--use-kernels", action="store_true",
+                   help="Vortex Triton kernels for the Hyena convolutions; "
+                        "faster, but validate vectors before trusting a run")
 
     g = p.add_argument_group("shard")
     g.add_argument("--offset", type=int, default=0,
@@ -349,8 +356,11 @@ def main(argv: list[str] | None = None) -> int:
 
     embedder = None
     if not args.dry_run:
-        log(f"loading {args.model} on {args.device} ...")
-        embedder = Evo2Embedder(args.model, args.device)
+        kernels = " (Triton HC kernels)" if args.use_kernels else ""
+        log(f"loading {args.model} on {args.device}{kernels} ...")
+        embedder = Evo2Embedder(
+            args.model, args.device, use_kernels=args.use_kernels
+        )
 
     run_shard(
         args.out, args.vcf, reference, spec,

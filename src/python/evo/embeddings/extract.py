@@ -188,9 +188,54 @@ def segment_spans(
 
 class Evo2Embedder:
     """The real thing. Imports ``evo2`` lazily so this module stays importable
-    on machines that cannot install it (no CUDA, or Python 3.13)."""
+    on machines that cannot install it (no CUDA, or Python 3.13).
 
-    def __init__(self, model: str = "evo2_7b_base", device: str = "cuda:0"):
+    The Transformer Engine warning is expected -- do not "fix" it
+    ------------------------------------------------------------
+
+    Every 7B run prints, once, at load::
+
+        UserWarning: Transformer Engine not installed. Falling back to bf16
+        projections (use_fp8_input_projections=False).
+
+    ``evo2/configs/evo2-7b-8k.yml`` ships ``use_fp8_input_projections: True``,
+    so evo2 0.6.0 emits this whenever TE is absent. For a *7b* checkpoint it
+    then sets the flag to False and continues; for 1b/20b/40b the same branch
+    raises ImportError instead, because those need FP8 for numerical accuracy
+    (``evo2/models.py``, both load paths). bf16 on 7B is the supported
+    configuration, not a degraded one, and the warning is the model telling you
+    it took that path.
+
+    Installing TE is also the wrong lever for *speed*, which is what it looks
+    like it promises. The flag covers only the input projections, whereas 27 of
+    this checkpoint's 32 layers are Hyena convolutions (``hcl``/``hcm``/``hcs``
+    layer indices in the config) whose cost is the FFT, not the projection --
+    only 5 layers are attention. ``use_kernels`` is the flag that targets the
+    other 27.
+    """
+
+    def __init__(
+        self,
+        model: str = "evo2_7b_base",
+        device: str = "cuda:0",
+        use_kernels: bool = False,
+    ):
+        """``use_kernels`` enables Vortex's opt-in Triton HC{S,M,L} kernels.
+
+        Those are the Hyena short/medium/long convolutions -- 27 of 32 layers,
+        and the memory-bandwidth-bound half of the forward pass: on an L4 the
+        memory controller runs at 91-95% during those phases and the SM clock
+        collapses to ~870-930 MHz, because the card spends one fixed 72 W budget
+        on either DRAM traffic or clocks, never both.
+
+        Off by default, and deliberately so. evo2's own docstring says "always
+        validate outputs when enabling them", because vortex falls back to the
+        standard path silently when a kernel is unavailable -- so a run can
+        differ from the baseline, or fail to differ from it, without saying
+        which. Requires ``vtx>=1.1.0`` (the lock pins exactly 1.1.0). Check the
+        vectors with ``python -m evo.profiler`` before trusting a run made with
+        it.
+        """
         try:
             from evo2 import Evo2
         except ImportError:  # pragma: no cover - cluster-only path
@@ -204,9 +249,10 @@ class Evo2Embedder:
                 "`uv run` resyncs to the lock and uninstalls flash-attn."
             ) from None
         self._torch = __import__("torch")
-        self._model = Evo2(model)
+        self._model = Evo2(model, use_kernels=use_kernels)
         self._device = device
         self.model_name = model
+        self.use_kernels = use_kernels
 
     @property
     def width(self) -> int:

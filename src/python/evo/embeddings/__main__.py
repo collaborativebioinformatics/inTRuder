@@ -136,8 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     # Loaded here, not inside run_shard, so both halves share one model.
     embedder = None
     if not args.dry_run:
-        log(f"loading {args.model} on {args.device} ...")
-        embedder = Evo2Embedder(args.model, args.device)
+        kernels = " (Triton HC kernels)" if args.use_kernels else ""
+        log(f"loading {args.model} on {args.device}{kernels} ...")
+        embedder = Evo2Embedder(
+            args.model, args.device, use_kernels=args.use_kernels
+        )
 
     written: list[tuple[str, int]] = []
     for allele in alleles:
