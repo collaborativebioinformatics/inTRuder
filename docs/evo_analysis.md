@@ -225,6 +225,21 @@ scripts/dx-batch-gpu.sh -t 6h -o data/dx/evo2 \
         /home/dnanexus/human_GRCh38_no_alt_analysis_set.fasta '$OUT'
 ```
 
+To split a run across several machines, `scripts/dx-shard-gpu.sh` does the same
+thing once per shard and stops every box afterwards — see
+[docs/scripts/DNANexus.md](scripts/DNANexus.md#several-machines-at-once):
+
+```bash
+# ~15.6 L4-hours of work as 4 shards of ~4 h; --calls is the whole VCF's calls
+scripts/dx-shard-gpu.sh --shards 4 --calls 6127 --time 6h \
+    --setup scripts/dx-worker-setup-evo2.sh \
+    -f /Test_Inputs/first_500_INS.vcf \
+    -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta \
+    -f /merge-svs/reference/human_GRCh38_no_alt_analysis_set.fasta.fai -- \
+    python -m evo.embeddings /home/dnanexus/first_500_INS.vcf \
+        /home/dnanexus/human_GRCh38_no_alt_analysis_set.fasta '$OUT'
+```
+
 It is idempotent, but it is **not** `uv sync`, and each difference cost a
 debugging round trip:
 
