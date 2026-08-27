@@ -12,7 +12,7 @@ and each distinct sequence is canonicalised exactly once.
 Given a reference coordinate and a motif, a locus is classified as:
 
     known        a nearby reference repeat carries a matching motif -- exactly,
-                 or within the :class:`novelty.motifs.MotifTolerance` in force
+                 or within the :class:`trcore.motifs.MotifTolerance` in force
     novel_motif  reference repeats are annotated nearby, but none with this motif
     novel_locus  no reference repeat is annotated within the search window
     unscreened   this catalogue has no rows on this contig at all, so it has no
@@ -39,18 +39,19 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from .motifs import (
+from trcore.coords import interval_distance, normalize_chrom
+from trcore.motifs import (
     DEFAULT_EQUIVALENCE,
     DEFAULT_TOLERANCE,
     MATCH_NONE,
     MotifEquivalence,
     MotifTolerance,
     canonical_motif,
-    canonical_motifs,
 )
+
 from .platforms import (
     ANNOTATION_COLUMNS,
-    normalize_chrom,
+    canonical_motifs,
     normalize_chroms,
     read_catalog,
 )
@@ -74,20 +75,6 @@ RESULT_COLUMNS = (
 )
 
 _INT_ANNOTATIONS = ("period", "consensus_size", "per_match", "per_indel")
-
-
-# --------------------------------------------------------------------------- #
-# coordinates
-# --------------------------------------------------------------------------- #
-
-def to_internal(pos, coord_base: int):
-    """Input coordinate -> 0-based. A 1-based VCF POS is the base before the insert."""
-    return pos - 1 if coord_base == 1 else pos
-
-
-def to_external(start, end, coord_base: int):
-    """0-based half-open interval -> the caller's convention."""
-    return (start + 1, end) if coord_base == 1 else (start, end)
 
 
 # --------------------------------------------------------------------------- #
@@ -492,12 +479,7 @@ class RepeatCatalog:
         best_key: tuple[int, int, int, float] | None = None
         for i in indices:
             repeat = self._record(chrom, int(i))
-            if repeat.start <= point < repeat.end:
-                distance = 0
-            elif point < repeat.start:
-                distance = repeat.start - point
-            else:
-                distance = point - repeat.end + 1
+            distance = interval_distance(point, point + 1, repeat.start, repeat.end)
             found = tolerance.compare(motif, repeat.motif, self.equivalence,
                                       query_canonical=canonical,
                                       target_canonical=repeat.canonical)
