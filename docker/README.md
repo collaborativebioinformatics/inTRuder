@@ -16,6 +16,61 @@ docker compose down
 Both build from the **repository root** as context, governed by the root
 `.dockerignore`. Nothing under `data/` is copied into either image.
 
+A third image — the Nextflow pipeline runtime — is a root `Dockerfile` on the
+`nextflow-pipeline` branch, not here. The build workflow knows about all three.
+
+## Published images
+
+[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) builds the
+images and pushes them to GHCR. It is **manual only**: there is no trigger on
+push or on pull request, because the pipeline image compiles htslib and
+parasail from source and downloads ~75 MB of reference catalogs during its
+build. Run it from the repository's **Actions → Docker → Run workflow**, or:
+
+```bash
+gh workflow run docker.yml -f image=backend
+gh workflow run docker.yml -f image=pipeline -f ref=nextflow-pipeline
+gh run watch $(gh run list --workflow=docker.yml -L1 --json databaseId -q '.[0].databaseId')
+```
+
+| Input | Default | |
+|---|---|---|
+| `image` | `all` | `backend`, `frontend`, `pipeline`, or all three |
+| `ref` | the dispatched ref | branch/tag/SHA to build **from** — this is how you build a branch that has no copy of the workflow yet |
+| `push` | true | uncheck to build only, as a validation run |
+| `tag` | — | an extra tag, e.g. `v0.1.0` |
+| `platforms` | `linux/amd64` | adding `linux/arm64` builds it under emulation, which is slow |
+| `next_public_api_base` | `http://localhost:8000` | frontend only; inlined into the browser bundle at build time |
+
+`image=all` skips any image whose Dockerfile is absent on the chosen ref;
+asking for one by name and not finding it fails the run.
+
+Each build is tagged with the sanitized ref name (`nextflow-pipeline`,
+`andrewscouten-docker`), `sha-<short>`, and — only when building `main` —
+`latest`:
+
+```bash
+docker pull ghcr.io/collaborativebioinformatics/noveltrs/backend:latest
+docker pull ghcr.io/collaborativebioinformatics/noveltrs/frontend:latest
+docker pull ghcr.io/collaborativebioinformatics/noveltrs/pipeline:nextflow-pipeline
+```
+
+The repository name is lowercased in the path; GHCR rejects `novelTRs`.
+
+**A new package starts private.** The first push of each image creates it
+under the organization's Packages, visible only to people with repository
+access — `docker pull` from anywhere else fails with `denied` until someone
+with admin rights opens the package → *Package settings* → *Change visibility*
+→ **Public**. This is a one-time step per image, and it is what a Nextflow run
+on someone else's machine needs:
+
+```groovy
+docker {
+    docker.enabled = true
+    process.container = 'ghcr.io/collaborativebioinformatics/noveltrs/pipeline:latest'
+}
+```
+
 ## Your own data
 
 `./data` is bind-mounted at `/data`, and the backend is pointed at it with
