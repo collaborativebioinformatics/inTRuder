@@ -239,3 +239,70 @@ def test_kmer_satisfies_the_embedder_protocol(ref):
     w = build_window(ref, "chr1", 128, "TTTT", WindowSpec(flank=16, junction=4))
     v = extract_window(w, KmerEmbedder(k=3), ["a"])
     assert v.shape == (1, 5, 2 * 64)
+
+
+# --- the device-pooling fast path ---------------------------------------------
+
+class PooledPositionEmbedder:
+    """``PositionEmbedder``'s numbers, reached through the :class:`PooledEmbedder`
+    path instead of the per-token one.
+
+    Stands in for what :class:`Evo2Embedder.pooled` does on a GPU. The point of
+    the tests below is not that this fake is correct in isolation -- it is that
+    ``extract_window`` produces the *same array* whichever path an embedder
+    offers, since only one of them ever runs on the cluster and only the other
+    one is covered by every test above it.
+    """
+
+    width = WIDTH
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def _tokens(self, sequence):
+        idx = np.arange(len(sequence), dtype=np.float32)[:, None]
+        return np.repeat(idx, WIDTH, axis=1)
+
+    def pooled(self, sequence, layers, spans):
+        self.calls.append(sequence)
+        tokens = self._tokens(sequence)
+        return np.stack([
+            np.stack([
+                np.zeros(WIDTH, dtype=np.float32) if end <= start
+                else (tokens[start:end].mean(axis=0) if how == "mean"
+                      else tokens[end - 1])
+                for start, end, how in spans
+            ])
+            for _ in layers
+        ])
+
+
+def test_device_and_host_paths_agree(window):
+    """The path that runs on the cluster must equal the path the tests cover."""
+    host = extract_window(window, PositionEmbedder(), ["a", "b"])
+    device = extract_window(window, PooledPositionEmbedder(), ["a", "b"])
+    np.testing.assert_allclose(device, host)
+
+
+def test_device_path_still_runs_each_strand_once(window):
+    e = PooledPositionEmbedder()
+    extract_window(window, e, ["a"])
+    assert e.calls == [window.sequence, reverse_complement(window.sequence)]
+
+
+def test_device_path_is_used_when_offered(window):
+    """`pooled` must take precedence -- an embedder offering it should never be
+    called per-token, or the transfer it exists to avoid happens anyway."""
+
+    class Both(PooledPositionEmbedder):
+        def __call__(self, sequence, layers):  # pragma: no cover - must not run
+            raise AssertionError("per-token path used despite `pooled` existing")
+
+    extract_window(window, Both(), ["a"])
+
+
+def test_segment_spans_rejects_unknown_pooling(window):
+    from evo.embeddings.extract import segment_spans
+
+    with pytest.raises(ValueError, match="unknown pooling"):
+        segment_spans(window, ["left"], {"left": "median"})
