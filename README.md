@@ -68,6 +68,12 @@ just setup     # installs everything, generates the synthetic demo dataset
 just dev       # backend on :8000, frontend on :3000
 ```
 
+Or in containers, with no toolchain to install:
+
+```bash
+docker compose up --build      # same two ports
+```
+
 Add a model credential to `backend/.env` to enable chat — the data views work
 without one. Anthropic, Google, Ollama and OpenAI are all selectable via
 `LLM_PROVIDER`.
@@ -77,6 +83,7 @@ without one. Anthropic, Google, Ollama and OpenAI are all selectable via
 | [`frontend/`](./frontend) | Next.js + Tailwind + assistant-ui |
 | [`backend/`](./backend) | FastAPI + LangGraph + DuckDB (its own uv project) |
 | [`data/web/`](./data/web) | Dataset manifests — add your own data here |
+| [`docker/`](./docker) | Images for both services; `data/` is bind-mounted, not baked in |
 
 **Adding a dataset is one YAML file, no code changes.** Manifests point at paths
 on your own machine; nothing is uploaded and nothing but the small synthetic demo
