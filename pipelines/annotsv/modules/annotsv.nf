@@ -16,7 +16,8 @@ process ANNOTSV {
     def out_prefix = "${meta.id}.annotated"
     
     // Explicit docker wrapping to bypass Nextaur staging bug
-    def docker_cmd = params.use_docker ? "docker run -u root --rm -v \$(pwd):\$(pwd) -w \$(pwd) ${params.annotsv_image}" : ""
+    // Mount /home/dnanexus so Nextflow's symlinks resolve correctly inside the container
+    def docker_cmd = params.use_docker ? "docker run -u root --rm -v /home/dnanexus:/home/dnanexus -w \$(pwd) ${params.annotsv_image}" : ""
     
     // Resolve commands (with or without docker)
     def annotsv_cmd = params.use_docker ? "AnnotSV" : (params.annotsv_dir ? "${params.annotsv_dir}/bin/AnnotSV" : "AnnotSV")
@@ -32,7 +33,7 @@ process ANNOTSV {
         -outputFile     "${out_prefix}.tsv" \\
         -bedtools       "${params.bedtools_path}" \\
         -bcftools       "${params.bcftools_path}" \\
-        -annotationsDir AnnotSV \\
+        -annotationsDir "${annotations_dir}" \\
         ${cg_arg} \\
         2>&1 | tee "${meta.id}.annotsv.log"
         
