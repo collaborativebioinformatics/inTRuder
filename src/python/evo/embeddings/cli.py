@@ -11,12 +11,20 @@ VCF, :mod:`~evo.embeddings.windows` cuts the windows,
 ``--dry-run`` does everything except load Evo 2, which is how you check window
 construction, N filtering and the output shape on a laptop before queueing GPU
 time.
+
+``--offset``/``--limit`` cut the VCF into shards that each write their own
+``.npz``. A full run is long enough that an ephemeral GPU worker can lose it
+whole, and this module has no checkpointing, so a shard is the unit of restart::
+
+    evo-embed calls.vcf hg38.fa shard0.npz --offset 0    --limit 2000
+    evo-embed calls.vcf hg38.fa shard1.npz --offset 2000 --limit 2000
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterable, Iterator
 
 from evo.embeddings.extract import (
     LAYER_SETS,
@@ -24,7 +32,7 @@ from evo.embeddings.extract import (
     SEGMENT_POOLING,
     extract,
 )
-from evo.embeddings.loci import read_insertions
+from evo.embeddings.loci import InsertionCall, read_insertions
 from evo.embeddings.windows import SEGMENTS, WindowSpec, build_window
 from evo.utils.reference import FastaReference
 
@@ -59,11 +67,36 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--pooling", default="",
                    help="override per segment, e.g. 'repeat=last,left=mean'")
 
+    p.add_argument("--offset", type=int, default=0,
+                   help="skip this many insertions before starting")
     p.add_argument("--limit", type=int, help="stop after this many insertions")
     p.add_argument("--dry-run", action="store_true",
                    help="build windows and report, but do not load Evo 2")
     p.add_argument("--quiet", action="store_true")
     return p
+
+
+def select(
+    calls: Iterable[InsertionCall], offset: int = 0, limit: int | None = None
+) -> Iterator[InsertionCall]:
+    """Yield the calls in the half-open input range ``[offset, offset + limit)``.
+
+    Indexing is over the *input* stream, before the contig and N filters, which
+    is what makes a shard a partition: shard *k* covers exactly the same calls
+    however many windows shard *k-1* happened to drop. Indexing surviving
+    windows instead would make every shard boundary depend on the reference.
+    """
+    if offset < 0:
+        raise SystemExit(f"--offset {offset} must not be negative")
+    if limit is not None and limit < 0:
+        raise SystemExit(f"--limit {limit} must not be negative")
+    stop = None if limit is None else offset + limit
+    for i, call in enumerate(calls):
+        if i < offset:
+            continue
+        if stop is not None and i >= stop:
+            return
+        yield call
 
 
 def resolve_layers(spec: str) -> list[str]:
@@ -109,13 +142,11 @@ def main(argv: list[str] | None = None) -> int:
     log(f"reference: {args.reference}")
     reference = FastaReference(args.reference)
 
-    calls = read_insertions(args.vcf)
+    calls = select(read_insertions(args.vcf), args.offset, args.limit)
     windows, samples, svids = [], [], []
     skipped_contig = 0
     contigs = set(reference.contigs)
-    for i, call in enumerate(calls):
-        if args.limit is not None and i >= args.limit:
-            break
+    for call in calls:
         if call.chrom not in contigs:
             skipped_contig += 1
             continue
@@ -125,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         samples.append(call.sample)
         svids.append(call.svid)
 
+    end = "end" if args.limit is None else str(args.offset + args.limit)
+    log(f"shard: calls [{args.offset}, {end})")
     log(f"windows: {len(windows)}  (skipped, contig not in reference: {skipped_contig})")
     if windows:
         lens = [len(w.sequence) for w in windows]
@@ -165,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
             "junction": str(spec.junction),
             "repeat_crop": str(spec.repeat_crop),
             "pooling": ",".join(f"{k}={v}" for k, v in sorted(pooling.items())),
+            "offset": str(args.offset),
+            "limit": "" if args.limit is None else str(args.limit),
             "vcf": args.vcf,
             "reference": args.reference,
         },
