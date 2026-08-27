@@ -277,10 +277,15 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Reference TR catalogues downloaded from UCSC / TRExplorer, and the index
-# caches built beside them (30 MB+ blobs that `uv run novelty` re-fetches on
-# demand, so they should not land in a commit)
+# Reference TR catalogues downloaded from UCSC / TRExplorer / STRchive, and the
+# index caches built beside them (30 MB+ blobs that `uv run novelty` and
+# `python -m strchive` re-fetch on demand, so they should not land in a commit)
 data/reference/
+
+# Index caches the novelty screen builds beside a catalogue it is pointed at.
+# The downloaded catalogues live under data/reference/ above, but the in-repo
+# pathogenic BED is screened in place, so its sidecar lands in data/novelty/.
+*.idx.npz
 
 # Results fetched off a DNAnexus worker by scripts/dx-instance.sh. They are on
 # the platform too (under /Results/<you>/), which is where they belong.
