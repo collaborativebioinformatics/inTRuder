@@ -176,7 +176,35 @@ All paths are relative to the project. The same commands work on a machine.
 | `scripts/dnanexus/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
 | `scripts/dnanexus/dx-wrapper.sh` | Shared code of the four commands. |
 
-Three further options of `scripts/dnanexus/dx-instance.sh`:
+| `scripts/dx-env.sh` | Reads `.env`, authenticates the dx toolkit, and selects the project. |
+| `scripts/dx-instance.sh` | The script the four commands call. Accepts their options and more. |
+| `scripts/dx-shard-gpu.sh` | Runs one program across several GPU machines at once, each on a slice of the input, and stops all of them. |
+| `scripts/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
+| `scripts/dx-worker-setup-evo2.sh` | The `--setup` script for Evo 2 runs. The generic one cannot install evo2 or flash-attn. |
+| `scripts/dx-wrapper.sh` | Shared code of the four commands. |
+
+### Several machines at once
+
+`scripts/dx-shard-gpu.sh` runs `dx-batch-gpu.sh` once per shard, giving each an
+`--offset`/`--limit` slice of the input and its own output directory and log:
+
+```bash
+scripts/dx-shard-gpu.sh --shards 4 --calls 6127 --time 6h \
+    --setup scripts/dx-worker-setup-evo2.sh -- <program>
+```
+
+It exists for the shutdown, not the arithmetic. A machine is stopped by an EXIT
+trap in `dx-instance.sh`, but bash defers a trap until the running foreground
+command returns — and that command is a `dx ssh` that will not return for hours,
+so a Ctrl-C aimed at a hand-backgrounded job is queued behind the very run it
+was meant to stop. This script launches each shard in its own **process group**
+and signals the whole group, which makes that command return so the trap can
+run; it then harvests the job ids from the shard logs and stops any survivor.
+
+`--shell`, `--keep` and `--interactive` are refused, and `--time` must cover the
+**largest** shard, not the average.
+
+Three further options of `scripts/dx-instance.sh`:
 
 ```bash
 scripts/dnanexus/dx-instance.sh -t 2h --shell -- pytest -q
