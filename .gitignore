@@ -271,14 +271,17 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
-# pkgdown site
-docs/
-
 # translation temp files
 po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Reference TR catalogues downloaded from UCSC / TRExplorer, and the index
+# caches built beside them (30 MB+ blobs that `uv run novelty` re-fetches on
+# demand, so they should not land in a commit)
+data/reference/
+
 # Fetched reference catalogs for the web layer. Regenerate with
 # `cd backend && uv run python scripts/fetch_strchive.py`. The manifest that
 # describes this file IS committed (data/web/strchive-loci.yaml); the data is a
