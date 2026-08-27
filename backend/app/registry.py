@@ -36,6 +36,25 @@ _READERS = {
 }
 
 
+def _pid_of(path: Path) -> int | None:
+    """The pid encoded in a `registry-<pid>.duckdb` filename, if any."""
+    stem = path.stem.removeprefix("registry-")
+    return int(stem) if stem.isdigit() else None
+
+
+def _pid_alive(pid: int | None) -> bool:
+    """Whether a process still exists. A file whose owner is gone is collectable."""
+    if pid is None:
+        return True  # unrecognised name — leave it alone
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else
+    return True
+
+
 @dataclass
 class Dataset:
     name: str
@@ -131,6 +150,7 @@ class Registry:
         self.cache_dir = cache_dir or (Path(__file__).resolve().parents[1] / ".cache")
         self.datasets: dict[str, Dataset] = {}
         self._con: duckdb.DuckDBPyConnection | None = None
+        self._db_path: Path | None = None
 
     def load(self) -> None:
         self.datasets = {}
@@ -156,7 +176,22 @@ class Registry:
 
     def _materialize(self) -> None:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        db_path = self.cache_dir / "registry.duckdb"
+
+        # One database file per process. `uvicorn --reload` — which the README
+        # tells you to run — starts the new worker before the old one exits, and
+        # a shared filename means the new worker blocks forever trying to open a
+        # DuckDB file the dying worker still holds. That surfaces as the whole
+        # API hanging rather than as an error, so the filename carries the pid.
+        db_path = self.cache_dir / f"registry-{os.getpid()}.duckdb"
+        self._db_path = db_path
+        for stale in self.cache_dir.glob("registry-*.duckdb"):
+            if stale == db_path:
+                continue
+            try:
+                if not _pid_alive(_pid_of(stale)):
+                    stale.unlink()
+            except OSError:  # another process is mid-cleanup; harmless
+                pass
         if db_path.exists():
             db_path.unlink()
 
