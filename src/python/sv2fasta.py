@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
-# Usage: python sv_trfcaller.py <input.vcf> <output.tsv>
-# Usage with merged SV: python sv_trfcaller.py HPRC_SV.survivor.ins.vcf HPRC_SV.survivor.ins.fa
-# Usage with example merged SV: python sv_trfcaller.py .././data/sv_output/survivor_multisample_vcf/first_500_INS.vcf ./data/sv_output/survivor_multisample_vcf/first_500_INS.fa
+# Usage: python sv2fasta.py <input.vcf> <output.fa>
+# Usage with merged SV: python sv2fasta.py HPRC_SV.survivor.ins.vcf HPRC_SV.survivor.ins.fa
+# Usage with example merged SV: python sv2fasta.py .././data/sv_output/survivor_multisample_vcf/first_500_INS.vcf ./data/sv_output/survivor_multisample_vcf/first_500_INS.fa
 
 import sys
 import os
