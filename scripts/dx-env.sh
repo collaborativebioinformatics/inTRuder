@@ -21,6 +21,20 @@ if [[ -z "${_dx_token}" ]]; then
     return 1 2>/dev/null || exit 1
 fi
 
+# `dx` lives in the non-default `dx` dependency-group, and `uv sync` resyncs to
+# exactly the groups you name -- so a plain `uv sync` (or one naming only extras,
+# e.g. `uv sync --extra embed`) silently uninstalls it. The failure surfaces later
+# as an opaque `Failed to spawn: dx`, so check for it here, where the fix is
+# obvious.
+if ! uv run --group dx --no-sync dx --version >/dev/null 2>&1; then
+    echo "dx-env: dxpy missing from .venv (a plain 'uv sync' removes it)." >&2
+    echo "dx-env: restoring with 'uv sync --group dx' ..." >&2
+    uv sync -q --group dx || {
+        echo "dx-env: could not install dxpy; run 'uv sync --group dx'" >&2
+        return 1 2>/dev/null || exit 1
+    }
+fi
+
 # The CLI wants a JSON blob, not the bare token. Exporting DX_API_TOKEN alone
 # fails with a misleading "At least VIEW permission is required".
 export DX_SECURITY_CONTEXT="{\"auth_token_type\":\"Bearer\",\"auth_token\":\"${_dx_token}\"}"

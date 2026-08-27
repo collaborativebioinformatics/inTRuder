@@ -58,7 +58,9 @@ class FastaReference:
             import pyfaidx
         except ImportError:  # pragma: no cover - exercised only on the cluster
             raise ImportError(
-                "FastaReference needs pyfaidx; install the 'embed' extra"
+                "FastaReference needs pyfaidx, a default dependency of this "
+                "project -- run `uv sync`. (It used to live in the 'embed' "
+                "extra, which broke `evo-embed --dry-run` on a default sync.)"
             ) from None
         # as_raw returns str rather than a Sequence object, so slicing is cheap.
         self._fa = pyfaidx.Fasta(path, as_raw=True, sequence_always_upper=True)

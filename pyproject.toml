@@ -11,6 +11,14 @@ dependencies = [
     "optuna>=4.9.0",
     "pandas>=3.0.5",
     "parasail>=1.3.4",
+    # `evo-embed --dry-run` is the documented laptop workflow -- build windows and
+    # check N filtering before queueing GPU time -- and it reads the reference
+    # through pyfaidx. Keeping pyfaidx in the `embed` extra made that advertised
+    # path fail on a default `uv sync`, and made pyfaidx churn in and out of the
+    # venv as commands alternated between naming the extra and not. It is
+    # pure-Python and installs everywhere, so it belongs here; `embed` exists to
+    # gate `evo2`, which genuinely cannot install on a laptop.
+    "pyfaidx>=0.8",
     "pytrf>=1.5.0",
     "tqdm>=4.70.0",
 ]
@@ -30,15 +38,21 @@ analysis = [
     "matplotlib>=3.10",
 ]
 
-# Extraction half. Two things are deliberately absent:
+# Extraction half -- the GPU-only piece. pyfaidx is NOT here: window building and
+# `--dry-run` are the laptop half and must work after a plain `uv sync`, so it is
+# a default dependency. Two things are deliberately absent:
 #   * `evo2` is capped below this project's default 3.13 by its own metadata, so
-#     the marker lets `--extra embed` still resolve on 3.13 (giving pyfaidx and
-#     window building without a GPU) and pull evo2 only on a 3.12 cluster venv.
-#   * flash-attn is NOT listed. It needs nvcc and --no-build-isolation, so it is
-#     a manual step before `uv sync` on the cluster; putting it here would make
-#     the lock unresolvable everywhere else.
+#     the marker lets `--extra embed` still resolve on 3.13 (a no-op there) and
+#     pull evo2 only on a 3.12 cluster venv.
+#   * flash-attn is NOT listed, because putting it here would make the lock
+#     unresolvable everywhere else. It is nonetheless REQUIRED at runtime, not
+#     optional: vortex imports `flash_attn_2_cuda` at module import time, so
+#     `import evo2` raises without it. It installs AFTER `uv sync`, not before
+#     -- the wheel is specific to (python, torch, cuda, cxx11-abi), so torch has
+#     to exist first to pick it. Use a prebuilt wheel: DNAnexus GPU workers ship
+#     no nvcc, so the --no-build-isolation source build cannot run there at all.
+#     `scripts/setup-gpu-worker.sh` does the whole sequence.
 embed = [
-    "pyfaidx>=0.8",
     "evo2>=0.2 ; python_version < '3.13'",
 ]
 

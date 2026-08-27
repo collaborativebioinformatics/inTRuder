@@ -134,8 +134,12 @@ class Evo2Embedder:
         except ImportError:  # pragma: no cover - cluster-only path
             raise ImportError(
                 "Evo2Embedder needs the `evo2` package: it requires Linux, CUDA "
-                "12.1+, flash-attn, and Python <3.13. Install with "
-                "`uv sync --extra cu128 --extra embed` in a 3.12 venv."
+                "12.1+, flash-attn, and Python <3.13. Run "
+                "`scripts/setup-gpu-worker.sh`, which syncs a 3.12 venv and then "
+                "adds the matching prebuilt flash-attn wheel -- flash-attn is not "
+                "in uv.lock, and vortex imports it eagerly, so a plain `uv sync` "
+                "is not enough. Afterwards invoke `.venv/bin/evo-embed` directly; "
+                "`uv run` resyncs to the lock and uninstalls flash-attn."
             ) from None
         self._torch = __import__("torch")
         self._model = Evo2(model)

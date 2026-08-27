@@ -263,6 +263,84 @@ uv run dx describe "$JOB"     # state, instance type, billTo, runtime so far
 **Nothing on the box survives the session.** Install, run, and `dx upload` the
 results before it stops; anything not uploaded is gone.
 
+## Running Evo 2 on a worker
+
+`scripts/setup-gpu-worker.sh` does all of this. Read the rest of this section
+only when it fails; every step below is something that was measured on a
+`mem3_ssd1_gpu1_x16` worker on 2026-08-27, not something inferred.
+
+```bash
+uv run dx ssh "$JOB" -T "bash -s" < scripts/setup-gpu-worker.sh
+```
+
+The worker image is Ubuntu 24.04, system Python 3.12.3, driver 535.247.01,
+1x L4 at compute capability **8.9** — comfortably above flash-attn's sm_80
+floor. It ships `git`, `curl` and the `dx` CLI, but **no `nvcc` and no
+`/usr/local/cuda`**.
+
+**Sync on 3.12, not the repo's 3.13.** `evo2` caps itself below 3.13, so
+`uv.lock` gates it on `python_full_version < '3.13'`. A 3.13 sync *succeeds* and
+silently installs neither `evo2` nor `vortex`:
+
+```bash
+uv sync --python 3.12 --extra cu128 --extra embed
+```
+
+**flash-attn is required, and installs after the sync.** `vortex` imports
+`flash_attn_2_cuda` at module import time, so `import evo2` raises
+`ModuleNotFoundError: No module named 'flash_attn_2_cuda'` without it — it is
+not an optional fast path. It cannot be built here (no `nvcc`), so take a
+prebuilt wheel, which must match python tag, torch major.minor **and the C++11
+ABI**. Read all three off the interpreter that will run it rather than guessing:
+
+```bash
+.venv/bin/python -c "import sys,torch;print(sys.version_info[:2], torch.__version__, torch._C._GLIBCXX_USE_CXX11_ABI)"
+# (3, 12) 2.7.1+cu128 True
+uv pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post1/flash_attn-2.8.3.post1+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+```
+
+The wheel is a ~3 second download. Only the ABI is easy to get wrong: torch 2.7
+manylinux builds are `cxx11abiTRUE`, and the `FALSE` wheel installs cleanly and
+then fails at import.
+
+> **Trap, and the one that costs the most time.** Once flash-attn is in, stop
+> using `uv run`. flash-attn is not in `uv.lock`, so `uv run` resyncs the
+> environment to the lock and **uninstalls it** before running your command.
+> `uv run` without the extras is worse — it removes `torch` and `evo2` too, so
+> `uv run python -c "import evo2"` reports `No module named 'torch'` and the
+> environment you just built is gone. Call the venv directly:
+>
+> ```bash
+> cd ~/novelTRs && .venv/bin/evo-embed calls.vcf hg38.fasta out.npz
+> ```
+
+**The import name is `vortex`; the distribution is `vtx`.** `import vtx` fails
+whatever else is wrong.
+
+**Preload the inputs at launch** rather than downloading them on the box —
+`-ifids` lands them in `/home/dnanexus/` before you connect:
+
+```bash
+uv run dx run app-cloud_workstation --instance-type mem3_ssd1_gpu1_x16 \
+    -ifids=file-JB7fJKj0pzX9jkpkbbG6jyVG \
+    -ifids=file-JB7X3j00pzXJKQ7j955zvZgj \
+    -ifids=file-JB7X3kj0pzXKB5jjPbFV5180 \
+    --destination project-JB6zg5Q0pzX96qVJjz7gKg58:/Results/<yours>/ \
+    --allow-ssh --yes --brief
+```
+
+**A non-interactive `dx ssh` does not inherit the job's dx credentials.**
+`dx whoami` reports "not logged in" under `dx ssh "$JOB" -T "bash -s"`, because
+the profile is never sourced. Use a login shell (`bash -lc '...'`) for anything
+that calls `dx` on the worker, such as uploading results.
+
+Two cosmetic quirks of `dx ssh` worth knowing before you debug them: it prints
+the first line of remote output appended to its own
+`Checking connectivity to ...:22...` line with no newline in between, so a naive
+`grep -v` on that line silently eats your first line of output; and on exit it
+asks `Terminate now? [y/N]`, which defaults to N at EOF, so scripted sessions
+leave the job running.
+
 ## Stopping an instance
 
 A workstation bills for wall-clock time until `max_session_length` expires or you
