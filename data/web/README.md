@@ -55,9 +55,23 @@ it is literally what the agent sees when deciding how to answer a question.
 | `demo-loci.yaml` | `demo_loci` | 1,200 | Synthetic |
 | `demo-segments.yaml` | `demo_segments` | 132,479 | Synthetic |
 | `strchive-loci.yaml` | `strchive_loci` | 82 | Real (curated reference) |
+| `strchive-calls.yaml` | `strchive_calls` | — | Real, **not yet produced** |
 
 ```bash
 cd backend
 uv run python scripts/make_demo_data.py   # the synthetic demo tables
 uv run python scripts/fetch_strchive.py   # the disease-locus catalog
 ```
+
+## Manifests committed ahead of their data
+
+`strchive-calls.yaml` points at output the pipeline does not produce yet — the
+screened callset from the [novelty screen](../../docs/tools/NOVELTY_SCREEN.md)
+and the [STRchive comparison](../../docs/tools/STRCHIVE_COMPARE.md). Registering
+it early is deliberate, and it works because a manifest whose file is missing is
+reported as unavailable rather than crashing the backend.
+
+Doing it this way buys three things: the column documentation is reviewed
+alongside the pipeline step that will fill it, the interface can render its own
+"not run yet" state instead of an empty table that reads as a negative finding,
+and the day the file appears the whole surface lights up with no code change.
