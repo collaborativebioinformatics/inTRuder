@@ -27,7 +27,7 @@ def parse_args():
 
     pytrf_options = parser.add_argument_group("pyTRF Options")
     pytrf_options.add_argument("--min_motif", type=int, default=1, help="Minimum motif length for TRF (default: 1).")
-    pytrf_options.add_argument("--max_motif", type=int, default=500, help="Maximum motif length for TRF (default: 500).")
+    pytrf_options.add_argument("--max_motif", type=int, default=500, help="Maximum motif length for TRF (default: 100).")
     pytrf_options.add_argument("--min_identity", type=float, default=0.8, help="Minimum identity for TRF (default: 0.8).")
     pytrf_options.add_argument("--min_rep_units", type=int, default=3, help="Minimum repeat number for seed (default: 3).")
     pytrf_options.add_argument("--min_rep_length", type=int, default=10, help="Minimum length for seed (default: 10).")
@@ -84,19 +84,7 @@ def suppress_pytrf_errors():
 
 def run_trf_on_insertions(args):
     """
-    Run tandem repeat calling on insertion variants from an input VCF and write results to a TSV file.
-
-    Args:
-        args: Parsed command-line arguments with `input`, `output`, `min_sv_length`, and
-            `max_sv_length` attributes. The input VCF is expected to contain structural
-            variant records with `SVTYPE=INS`, an `SVLEN` INFO field, and `DR`/`DV`
-            sample FORMAT fields used to report read support.
-
-    Output:
-        Writes a tab-separated file at `args.output` containing one row per detected repeat
-        call, including chromosome, insertion coordinate, variant ID, depth, insertion
-        size, sample, repeat boundaries, motif, purity, motif length, repeat length,
-        and repeat unit count.
+    
     """
     vcf = VCF(args.input)
     out = open(args.output, 'w')
@@ -124,7 +112,6 @@ def run_trf_on_insertions(args):
                 genotype = variant.genotypes[s]
                 for gt in genotype[:2]:
                     if gt == 0 or gt == '.' or gt == -1: continue  # Skip reference alleles
-                    if ID[s] == 'NaN': continue
                     var_depth = DV[s][0]
                     ref_depth = DR[s][0]
 
