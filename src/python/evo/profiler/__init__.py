@@ -18,7 +18,7 @@ things and not others.
 """
 
 from evo.profiler.throughput import (
-    FINITE_LAYERS,
+    PROFILED_LAYERS,
     VARIANTS,
     Timer,
     pooled_on_device,
@@ -26,7 +26,7 @@ from evo.profiler.throughput import (
 )
 
 __all__ = [
-    "FINITE_LAYERS",
+    "PROFILED_LAYERS",
     "VARIANTS",
     "Timer",
     "pooled_on_device",

@@ -24,11 +24,11 @@ import sys
 import time
 
 from evo.embeddings.cli import build_windows, select
-from evo.embeddings.extract import LAYER_SETS, Evo2Embedder
+from evo.embeddings.extract import Evo2Embedder
 from evo.embeddings.loci import read_insertions
 from evo.embeddings.windows import WindowSpec
 from evo.profiler.scaling import DEFAULT_LENGTHS, describe_model, peak_tflops, sweep
-from evo.profiler.throughput import FINITE_LAYERS, VARIANTS, profile_variant
+from evo.profiler.throughput import PROFILED_LAYERS, VARIANTS, profile_variant
 from evo.utils.reference import FastaReference
 
 FULL_CALLSET = 8177
@@ -38,7 +38,7 @@ Hard-coded only to turn s/window into hours in the summary; nothing depends on
 it being exact.
 """
 
-LAYER_SETS_HERE = {"finite": list(FINITE_LAYERS), "default": list(LAYER_SETS["default"])}
+LAYER_SETS_HERE = {"deep": list(PROFILED_LAYERS)}
 
 
 def _mib(n: float) -> float:
@@ -105,7 +105,7 @@ def report_scaling(args, embedder, torch, total, windows) -> int:
     print(f"  device     {name}" + (f", ~{peak:.0f} TFLOPS bf16 peak" if peak else ""))
 
     lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
-    layers = LAYER_SETS_HERE["finite"]
+    layers = LAYER_SETS_HERE["deep"]
     print(f"\nforward pass, {len(layers)} layers, batch 1, best of {args.repeats}:")
     print(f"  {'tokens':>7} {'seconds':>8} {'tok/s':>8} {'TFLOP/s':>8} {'of peak':>8} {'vs prev':>8}")
     rows = sweep(embedder, torch, layers, args.device, lengths,

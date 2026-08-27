@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from evo.embeddings.store import FORMAT_VERSION, load, save
+from evo.embeddings.store import load, save
 from evo.embeddings.windows import WindowSpec, build_window
 from evo.utils import DictReference
 
@@ -67,7 +67,6 @@ def test_attrs_record_the_settings(tmp_path, windows, vectors):
     save(p, vectors, windows, LAYERS, SEGS, attrs={"model": "evo2_7b_base"})
     attrs = load(p).attrs
     assert attrs["model"] == "evo2_7b_base"
-    assert attrs["format_version"] == str(FORMAT_VERSION)
 
 
 def test_view_selects_one_layer_and_segment(tmp_path, windows, vectors):
@@ -122,7 +121,7 @@ def test_float16_overflow_is_named_per_layer_and_recorded(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "blocks.31" in err and "100.0%" in err
     assert "blocks.26" not in err
-    assert "--layers finite" in err
+    assert "re-run without blocks.31" in err
 
     back = load(str(out))
     assert back.attrs["overflowed_layers"] == "blocks.31"

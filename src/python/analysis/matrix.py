@@ -227,15 +227,15 @@ def design(emb: Embeddings) -> pd.DataFrame:
     n = len(emb.vectors)
     meta = emb.meta
     frame = pd.DataFrame({"row": np.arange(n)})
-    frame["chrom"] = _meta(meta, "chrom", n, "")
-    frame["pos"] = _meta(meta, "pos", n, -1)
+    frame["chrom"] = meta["chrom"]
+    frame["pos"] = meta["pos"]
     frame["locus"] = frame["chrom"].astype(str) + ":" + frame["pos"].astype(str)
-    frame["sample"] = _meta(meta, "sample", n, "")
-    frame["svid"] = _meta(meta, "svid", n, "")
-    frame["insert_length"] = _meta(meta, "insert_length", n, 0)
+    frame["sample"] = meta["sample"]
+    frame["svid"] = meta["svid"]
+    frame["insert_length"] = meta["insert_length"]
     frame["log_length"] = np.log10(frame["insert_length"].clip(lower=1))
-    frame["n_fraction"] = _meta(meta, "n_fraction", n, 0.0)
-    frame["cropped"] = _meta(meta, "cropped", n, False)
+    frame["n_fraction"] = meta["n_fraction"]
+    frame["cropped"] = meta["cropped"]
     return frame[list(DESIGN_COLUMNS)]
 
 
@@ -299,8 +299,3 @@ def _index(names: list[str], wanted: str, kind: str) -> int:
         raise KeyError(f"no {kind} {wanted!r}; have {names}") from None
 
 
-def _meta(meta: dict[str, np.ndarray], key: str, n: int, fill) -> np.ndarray:
-    """A metadata column, or a constant when an older run did not store it."""
-    if key in meta:
-        return meta[key]
-    return np.full(n, fill)

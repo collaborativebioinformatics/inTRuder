@@ -69,7 +69,7 @@ def _run(seed: int = 0, background: bool = False) -> Embeddings:
             "cropped": np.zeros(n, dtype=bool),
         },
         attrs={
-            "format_version": "1", "model": "fake", "flank": "3584",
+            "model": "fake", "flank": "3584",
             "junction": "64", "repeat_crop": "1024", "pooling": "x=mean",
         },
     )
