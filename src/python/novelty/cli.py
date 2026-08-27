@@ -22,8 +22,9 @@ installing anything. Paths below are relative to the repo root.
         --window 0,1,10 --max-motif-edits 0,1,2 --min-purity none,0.8
 
 Every platform gets its own block of output columns (``ucsc_novelty``,
-``trexplorer_novelty``, ...), and the leading ``novelty`` column combines them:
-a locus is only novel if no catalogue knows it.
+``trexplorer_novelty``, ..., each with a ``_match`` column naming the rule that
+accepted the motif), and the leading ``novelty`` column combines them: a locus is
+only novel if no catalogue knows it.
 """
 
 from __future__ import annotations
@@ -36,10 +37,24 @@ from pathlib import Path
 
 import pandas as pd
 
-from .catalog import STATUSES, RepeatCatalog, RepeatFilter, to_external, to_internal
+from .catalog import (
+    STATUSES,
+    UNSCREENED,
+    RepeatCatalog,
+    RepeatFilter,
+    to_external,
+    to_internal,
+)
 from .insertions import PASS, Check, add_insertion_purity, filter_reasons
-from .motifs import MAX_FUZZY_MOTIF, canonical_motif, canonical_motifs
-from .platforms import CACHE_ENV, PLATFORMS, READERS, ensure_table
+from .motifs import (
+    MAX_FUZZY_MOTIF,
+    STR_MAX_MOTIF,
+    MotifEquivalence,
+    MotifTolerance,
+    canonical_motif,
+    canonical_motifs,
+)
+from .platforms import CACHE_ENV, PLATFORMS, READERS, ensure_table, get_platform
 from .search import (
     OBJECTIVES,
     SAMPLERS,
@@ -50,8 +65,11 @@ from .search import (
     run_study,
 )
 
-# known < novel_motif < novel_locus: the most conservative verdict wins when
-# several catalogues disagree, so a locus is novel only if none of them has it.
+# known < novel_motif < novel_locus < unscreened: the most conservative verdict
+# wins when several catalogues disagree, so a locus is novel only if none of them
+# has it. `unscreened` ranks last because it is an absence of coverage rather
+# than a verdict -- any catalogue with an actual opinion outranks it, and the
+# combined verdict is only `unscreened` when every catalogue was silent.
 _PRECEDENCE = {status: rank for rank, status in enumerate(STATUSES)}
 _BY_RANK = dict(enumerate(STATUSES))
 
@@ -85,7 +103,18 @@ HYPERPARAMS: tuple[Hyper, ...] = (
           "count as the same locus (0 = must overlap it)", True),
     Hyper("max_motif_edits", int, 0, "N",
           "accept a reference motif within N edits of the query motif as a match "
-          "(0 = exact)", True),
+          "(0 = exact). A flat budget at every length, so raising it to 1 also "
+          "lets CAG match CAT", True),
+    Hyper("max_motif_edit_fraction", float, None, "FRAC",
+          f"also accept a reference motif within FRAC x its length, for motifs "
+          f"longer than {STR_MAX_MOTIF}bp only. The VNTR knob: two catalogues "
+          f"rarely agree on a long consensus but do agree to within a few "
+          f"percent of it", True),
+    Hyper("min_subrepeat_motif", int, None, "BP",
+          "also accept a reference motif that the query motif tiles (ACC against "
+          "a reference consensus of ACCATC), when the tiling motif is at least "
+          "this long. Shares the edit budgets above, so it does nothing unless "
+          "one of them is set", True),
     Hyper("max_fuzzy_motif", int, MAX_FUZZY_MOTIF, "BP",
           "longest motif near-miss matching is attempted on; above this, motifs "
           "must match exactly", True),
@@ -170,12 +199,54 @@ def _params(args: argparse.Namespace) -> dict:
     return {hyper.name: getattr(args, hyper.name) for hyper in HYPERPARAMS}
 
 
+def _equivalence(args: argparse.Namespace) -> MotifEquivalence:
+    """Build the motif-equivalence policy from the flags, warning once if inert.
+
+    Cached on the namespace: it is needed by catalogue loading, by the query
+    canonicalisation and by the report, and the warning should appear once.
+    """
+    cached = getattr(args, "_equivalence", None)
+    if cached is not None:
+        return cached
+    if args.reverse_complement_bp is not None and not args.reverse_complement:
+        print("[novelty] --reverse-complement-bp does nothing without "
+              "--reverse-complement; motifs and their reverse complements are "
+              "being kept apart at every length", file=sys.stderr)
+    equivalence = MotifEquivalence(
+        circular=args.circular,
+        reverse_complement=args.reverse_complement,
+        reverse_complement_bp=args.reverse_complement_bp,
+    )
+    args._equivalence = equivalence
+    return equivalence
+
+
 def _repeat_filter(params: dict) -> RepeatFilter:
     return RepeatFilter(
         min_identity=params.get("min_reference_identity"),
         min_copy_num=params.get("min_reference_copy_num"),
         min_length=params.get("min_reference_length"),
     )
+
+
+def _tolerance(params: dict) -> MotifTolerance:
+    """How far off a reference motif may be, from the screening hyperparameters."""
+    return MotifTolerance(
+        max_edits=params.get("max_motif_edits") or 0,
+        max_edit_fraction=params.get("max_motif_edit_fraction"),
+        min_subrepeat_motif=params.get("min_subrepeat_motif"),
+        max_fuzzy_motif=params.get("max_fuzzy_motif") or MAX_FUZZY_MOTIF,
+    )
+
+
+def _warn_inert_tolerance(tolerance: MotifTolerance) -> None:
+    """Say so when --min-subrepeat-motif was asked for but has no budget to spend."""
+    if (tolerance.min_subrepeat_motif is not None
+            and not tolerance.max_edits and not tolerance.max_edit_fraction):
+        print("[novelty] --min-subrepeat-motif has no edit budget to spend: an "
+              "exact tiling is already handled by period reduction, so this does "
+              "nothing on its own. Pair it with --max-motif-edits or "
+              "--max-motif-edit-fraction", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +263,12 @@ def _platform_list(value: str) -> list[str]:
         )
     if not names:
         raise argparse.ArgumentTypeError("--platform needs at least one name")
+    if all(PLATFORMS[name].annotation_only for name in names):
+        raise argparse.ArgumentTypeError(
+            f"{', '.join(names)} is annotation-only and cannot decide novelty on "
+            f"its own; add a genome-wide catalogue such as "
+            f"{', '.join(n for n, p in PLATFORMS.items() if not p.annotation_only)}"
+        )
     return names
 
 
@@ -214,16 +291,26 @@ def _repeat_paths(specs: list[str] | None, platforms: list[str]) -> dict[str, Pa
     return paths
 
 
+def _screening_platforms(names: list[str]) -> list[str]:
+    """The platforms whose verdict counts towards novelty, annotation ones aside."""
+    return [name for name in names if not get_platform(name).annotation_only]
+
+
 def _load_catalogs(args: argparse.Namespace) -> dict[str, RepeatCatalog]:
     overrides = _repeat_paths(args.repeats, args.platform)
     catalogs: dict[str, RepeatCatalog] = {}
     for name in args.platform:
         override = overrides.get(name)
+        platform = get_platform(name)
         table = ensure_table(name, args.db, override, cache_dir=args.cache_dir,
                              download=override is None and not args.no_download)
+        # A catalogue that ships inside the package is small by construction and
+        # lives in an installed directory that may not be writable; building its
+        # index is faster than reading a cache of it anyway.
+        bundled = table == platform.bundled_path(args.db)
         catalogs[name] = RepeatCatalog.from_file(
-            table, platform=name, fmt=args.format, stranded=args.stranded,
-            cache=not args.no_cache,
+            table, platform=name, fmt=args.format, equivalence=_equivalence(args),
+            cache=not args.no_cache and not bundled, verbose=not bundled,
         )
     return catalogs
 
@@ -236,6 +323,23 @@ def _warn_inapplicable(catalogs: dict[str, RepeatCatalog], params: dict) -> None
         if missing:
             print(f"[novelty] {name}: no column for {', '.join(missing)}; those "
                   f"thresholds do not apply to it", file=sys.stderr)
+
+
+def _warn_uncovered(catalogs: dict[str, RepeatCatalog], chroms) -> None:
+    """Name the query contigs a catalogue has no rows for, once per catalogue.
+
+    Those rows come back ``unscreened`` rather than ``novel_locus``, and saying
+    which contigs they were is the difference between a reader trusting the
+    number and wondering about it.
+    """
+    unique = sorted({str(c) for c in pd.Series(chroms, dtype=object).dropna()})
+    for name, catalog in catalogs.items():
+        missing = [c for c in unique if not catalog.covers(c)]
+        if missing:
+            shown = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
+            print(f"[novelty] {name}: no repeats on {len(missing)} of "
+                  f"{len(unique)} query contig(s) ({shown}); those rows are "
+                  f"'{UNSCREENED}', not novel", file=sys.stderr)
 
 
 def _combine(statuses: pd.DataFrame) -> pd.Series:
@@ -261,7 +365,7 @@ def _prepare(args: argparse.Namespace) -> tuple[pd.DataFrame, pd.Series, pd.Data
                          args.coord_base)
     base = pd.DataFrame(index=frame.index)
     base["canonical_motif"] = canonical_motifs(frame[args.motif_col],
-                                               stranded=args.stranded)
+                                               _equivalence(args))
     if args.insertion_purity:
         purity = add_insertion_purity(
             frame, keys=args.insertion_key, start_col=args.rep_start_col,
@@ -276,18 +380,23 @@ def _screen(frame: pd.DataFrame, points: pd.Series,
             args: argparse.Namespace) -> tuple[list[pd.DataFrame], pd.DataFrame]:
     """Screen every row against every catalogue at one set of screen parameters."""
     repeat_filter = _repeat_filter(params)
+    tolerance = _tolerance(params)
     blocks: list[pd.DataFrame] = []
     statuses = pd.DataFrame(index=frame.index)
     for name, catalog in catalogs.items():
         block = catalog.screen_frame(
             frame[args.chrom_col], points, frame[args.motif_col],
-            window=params["window"], max_motif_edits=params["max_motif_edits"],
-            max_fuzzy_motif=params["max_fuzzy_motif"], repeat_filter=repeat_filter,
-            prefix=f"{name}_",
+            window=params["window"], tolerance=tolerance,
+            repeat_filter=repeat_filter, prefix=f"{name}_",
         )
         block[f"{name}_start"], block[f"{name}_end"] = to_external(
             block[f"{name}_start"], block[f"{name}_end"], args.coord_base)
-        statuses[name] = block[f"{name}_novelty"]
+        # An annotation catalogue still gets its block of columns, but it covers
+        # a handful of loci by design, so letting it vote would call almost every
+        # row novel on the strength of a catalogue that was never a genome-wide
+        # claim in the first place.
+        if not get_platform(name).annotation_only:
+            statuses[name] = block[f"{name}_novelty"]
         blocks.append(block)
     return blocks, statuses
 
@@ -399,13 +508,31 @@ def _cmd_platforms(args: argparse.Namespace) -> int:
     print("platforms (--platform):")
     for platform in PLATFORMS.values():
         assemblies = ", ".join(platform.assemblies) if platform.assemblies else "any"
+        role = "annotation only" if platform.annotation_only else "screening"
         print(f"  {platform.name:<12} {platform.description}")
-        print(f"  {'':<12} assemblies: {assemblies}")
+        print(f"  {'':<12} assemblies: {assemblies}   role: {role}")
         if platform.url:
             print(f"  {'':<12} {platform.url}")
     print("\nfile formats (--format), auto-detected by default:")
     for name in sorted(READERS):
         print(f"  {name}")
+    print("\nmotif tolerance -- how far off a reference motif may be:")
+    print(f"  {'--max-motif-edits N':<26} default 0   flat budget at every length")
+    print(f"  {'--max-motif-edit-fraction F':<26} default off proportional budget, "
+          f">{STR_MAX_MOTIF}bp motifs only")
+    print(f"  {'--min-subrepeat-motif BP':<26} default off accept a motif that "
+          f"tiles the other")
+    print("  the last two need each other's company: a tiling with no edit "
+          "budget is\n  already handled by period reduction")
+    print("\nmotif equivalence -- what makes two motifs the same repeat:")
+    print(f"  {'period reduction':<26} always on   CAGCAG == CAG")
+    print(f"  {'--circular':<26} default on  CAG == AGC == GCA (rotation)")
+    print(f"  {'--reverse-complement':<26} default OFF CAG == CTG (opposite strand)")
+    print(f"  {'--reverse-complement-bp BP':<26} default off apply the above only to "
+          f"motifs >= BP")
+    print("  none of these is fuzzy matching; --max-motif-edits does that, "
+          "and defaults to 0")
+
     print("\nhyperparameters (see `annotate --help`, search them with `sweep`):")
     for hyper in HYPERPARAMS:
         scope = "screening" if hyper.affects_screen else "row filter"
@@ -419,29 +546,34 @@ def _cmd_query(args: argparse.Namespace) -> int:
               for hyper in HYPERPARAMS}
     _warn_inapplicable(catalogs, params)
     repeat_filter = _repeat_filter(params)
+    tolerance = _tolerance(params)
+    _warn_inert_tolerance(tolerance)
     point = to_internal(args.pos, args.coord_base)
 
-    canonical = canonical_motif(args.motif, stranded=args.stranded)
+    equivalence = _equivalence(args)
+    canonical = canonical_motif(args.motif, equivalence)
     print(f"{args.chrom}:{args.pos} ({args.coord_base}-based)  "
           f"motif={args.motif.strip().upper()}  canonical={canonical}")
+    print(f"  same repeat if it differs by: {equivalence.describe()}")
+    print(f"  motif tolerance             : {tolerance.describe()}")
 
     verdicts = {}
     for name, catalog in catalogs.items():
         verdict = catalog.screen(args.chrom, point, args.motif,
-                                 window=params["window"],
-                                 max_motif_edits=params["max_motif_edits"],
-                                 max_fuzzy_motif=params["max_fuzzy_motif"],
+                                 window=params["window"], tolerance=tolerance,
                                  repeat_filter=repeat_filter)
         verdicts[name] = verdict
         print(f"  {name}")
-        print(f"    status      : {verdict.status}")
+        print(f"    status      : {verdict.status}"
+              + ("" if catalog.covers(args.chrom)
+                 else f"  ({name} has no repeats on {verdict.chrom} at all)"))
         print(f"    nearby (+/-{params['window']}bp): {verdict.n_nearby} "
               f"reference repeat(s)")
         if verdict.best is not None:
             repeat = verdict.best.repeat
             start, end = to_external(repeat.start, repeat.end, args.coord_base)
-            label = "match" if verdict.best.motif_matches else "nearest"
-            print(f"    best {label:<7}: {repeat.chrom}:{start}-{end}  "
+            label = verdict.best.match if verdict.best.motif_matches else "nearest"
+            print(f"    best {label:<9}: {repeat.chrom}:{start}-{end}  "
                   f"motif={repeat.motif} (canonical={repeat.canonical}, "
                   f"{verdict.best.motif_edits} edit(s), "
                   f"{verdict.best.distance}bp away)")
@@ -449,8 +581,10 @@ def _cmd_query(args: argparse.Namespace) -> int:
                 print("    " + " " * 12 + " ".join(
                     f"{k}={v}" for k, v in repeat.annotations.items()))
 
-    if len(verdicts) > 1:
-        combined = min(verdicts.values(), key=lambda v: _PRECEDENCE[v.status])
+    screening = {name: verdict for name, verdict in verdicts.items()
+                 if not get_platform(name).annotation_only}
+    if len(screening) > 1:
+        combined = min(screening.values(), key=lambda v: _PRECEDENCE[v.status])
         print(f"  combined      : {combined.status}")
     return 0
 
@@ -471,6 +605,8 @@ def _cmd_annotate(args: argparse.Namespace) -> int:
 
     catalogs = _load_catalogs(args)
     _warn_inapplicable(catalogs, params)
+    _warn_inert_tolerance(_tolerance(params))
+    _warn_uncovered(catalogs, frame[args.chrom_col])
     blocks, statuses = _screen(frame, points, catalogs, params, args)
 
     extra = base.copy()
@@ -513,6 +649,7 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
         return 2
 
     catalogs = _load_catalogs(args)
+    _warn_uncovered(catalogs, frame[args.chrom_col])
     locus_cols = [args.chrom_col, args.pos_col]
     screen_names = [hyper.name for hyper in SCREEN_HYPERPARAMS]
     # Row filters do not change the screen, so trials that differ only in them
@@ -665,9 +802,32 @@ def build_parser() -> argparse.ArgumentParser:
                         help="coordinate convention of the INPUT position and of the "
                              "reported start/end; VCF POS is 1-based "
                              "(default: %(default)s)")
-    parser.add_argument("--stranded", action="store_true",
-                        help="treat a motif and its reverse complement as different; "
-                             "a catalogue-level setting, so it is not sweepable")
+    equivalence = parser.add_argument_group(
+        "motif equivalence",
+        "what makes two motif strings the same repeat. Reducing a motif to its "
+        "primitive unit (CAGCAG -> CAG) is always done. These are catalogue-level "
+        "settings -- they decide how the index is keyed, so they rebuild it and "
+        "cannot be swept. None of them is fuzzy matching: see --max-motif-edits "
+        "for that, which is off by default")
+    equivalence.add_argument(
+        "--circular", action=argparse.BooleanOptionalAction,
+        default=True,
+        help="treat every rotation of a motif as the same repeat, so CAG, AGC "
+             "and GCA agree. TRF picks the starting phase arbitrarily on both "
+             "sides of the comparison (default: enabled; --no-circular to "
+             "require the same phase)")
+    equivalence.add_argument(
+        "--reverse-complement", action="store_true",
+        help="also treat a motif's reverse complement as the same repeat, so CAG "
+             "and CTG agree. Off by default: it also merges the homopolymers A "
+             "and T. (GC and CG are rotations, not a strand pair -- they agree "
+             "either way)")
+    equivalence.add_argument(
+        "--reverse-complement-bp", type=int, default=None, metavar="BP",
+        help="only apply --reverse-complement to motifs at least this long, "
+             "keeping the strands apart for short motifs where an RC match is "
+             "most likely coincidental. Does nothing unless "
+             "--reverse-complement is given (default: every length)")
 
     sub = parser.add_subparsers(dest="command", required=True)
 

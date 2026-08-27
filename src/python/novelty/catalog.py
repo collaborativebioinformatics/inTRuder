@@ -11,9 +11,17 @@ and each distinct sequence is canonicalised exactly once.
 
 Given a reference coordinate and a motif, a locus is classified as:
 
-    known        a nearby reference repeat carries an equivalent motif
+    known        a nearby reference repeat carries a matching motif -- exactly,
+                 or within the :class:`novelty.motifs.MotifTolerance` in force
     novel_motif  reference repeats are annotated nearby, but none with this motif
     novel_locus  no reference repeat is annotated within the search window
+    unscreened   this catalogue has no rows on this contig at all, so it has no
+                 opinion either way
+
+``unscreened`` exists because the two are not the same claim. A catalogue that
+stops at the primary assembly (TRExplorer v2 carries 25 contigs; UCSC
+``simpleRepeat`` carries 702) would otherwise report every alt, random and decoy
+contig as ``novel_locus`` -- novelty manufactured out of missing coverage.
 
 The catalogue can come from any platform (see :mod:`novelty.platforms`); this
 module only assumes the normalised schema, and carries whatever optional
@@ -31,7 +39,15 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from .motifs import MAX_FUZZY_MOTIF, canonical_motif, canonical_motifs, motif_distance
+from .motifs import (
+    DEFAULT_EQUIVALENCE,
+    DEFAULT_TOLERANCE,
+    MATCH_NONE,
+    MotifEquivalence,
+    MotifTolerance,
+    canonical_motif,
+    canonical_motifs,
+)
 from .platforms import (
     ANNOTATION_COLUMNS,
     normalize_chrom,
@@ -39,14 +55,22 @@ from .platforms import (
     read_catalog,
 )
 
-_CACHE_VERSION = 4
+_CACHE_VERSION = 5
 
-STATUSES = ("known", "novel_motif", "novel_locus")
+# Ordered least to most novel, which is also the order a combined verdict
+# resolves in: the first status any catalogue reports wins. ``unscreened`` is
+# last because it is not a claim about the locus at all -- it says this
+# catalogue has no rows on this contig, so it has no opinion, and any catalogue
+# that does have one outranks it.
+STATUSES = ("known", "novel_motif", "novel_locus", "unscreened")
+
+# The status meaning "this catalogue cannot speak about this contig".
+UNSCREENED = "unscreened"
 
 # Columns :meth:`RepeatCatalog.screen_frame` produces, before the platform prefix.
 RESULT_COLUMNS = (
     "novelty", "n_nearby", "start", "end", "distance", "motif", "canonical",
-    "motif_edits",
+    "motif_edits", "match",
 )
 
 _INT_ANNOTATIONS = ("period", "consensus_size", "per_match", "per_indel")
@@ -127,10 +151,11 @@ class Hit:
     repeat: ReferenceRepeat
     distance: int      # bp from the query point to the interval; 0 when inside
     motif_edits: int   # 0 when the motifs are equivalent
+    match: str = MATCH_NONE   # which tolerance rule accepted the motif, if any
 
     @property
     def motif_matches(self) -> bool:
-        return self.motif_edits == 0
+        return self.match != MATCH_NONE
 
 
 @dataclass(frozen=True)
@@ -141,7 +166,7 @@ class Verdict:
     point: int                     # 0-based query coordinate
     motif: str
     canonical: str
-    status: str                    # known | novel_motif | novel_locus
+    status: str                    # one of STATUSES
     n_nearby: int                  # reference repeats within the window
     best: Hit | None               # best motif match, else nearest repeat
 
@@ -157,8 +182,9 @@ class Verdict:
 class RepeatCatalog:
     """Interval index over one reference tandem-repeat catalogue."""
 
-    def __init__(self, stranded: bool = False, platform: str = "bed") -> None:
-        self.stranded = stranded
+    def __init__(self, equivalence: MotifEquivalence = DEFAULT_EQUIVALENCE,
+                 platform: str = "bed") -> None:
+        self.equivalence = equivalence
         self.platform = platform
         self._bounds: dict[str, tuple[int, int]] = {}
         self._starts = np.empty(0, dtype=np.int64)
@@ -179,21 +205,24 @@ class RepeatCatalog:
 
     def __repr__(self) -> str:
         return (f"<RepeatCatalog {self.platform} {len(self):,} repeats "
-                f"{len(self._bounds):,} contigs>")
+                f"{len(self._bounds):,} contigs "
+                f"[{self.equivalence.describe()}]>")
 
     # -- construction ------------------------------------------------------- #
 
     @classmethod
-    def from_frame(cls, frame: pd.DataFrame, *, stranded: bool = False,
+    def from_frame(cls, frame: pd.DataFrame, *,
+                   equivalence: MotifEquivalence = DEFAULT_EQUIVALENCE,
                    platform: str = "bed") -> RepeatCatalog:
         """Build from a normalised catalogue frame (see :mod:`novelty.platforms`)."""
-        index = cls(stranded=stranded, platform=platform)
+        index = cls(equivalence=equivalence, platform=platform)
         index._build(frame)
         return index
 
     @classmethod
     def from_file(cls, path: str | os.PathLike[str], *, platform: str = "bed",
-                  fmt: str = "auto", stranded: bool = False,
+                  fmt: str = "auto",
+                  equivalence: MotifEquivalence = DEFAULT_EQUIVALENCE,
                   verbose: bool = True, cache: bool = True) -> RepeatCatalog:
         """Load a catalogue file, using (and refreshing) a cached index if allowed.
 
@@ -201,15 +230,19 @@ class RepeatCatalog:
         finished index is cached next to the table as ``<name>.idx.npz`` and
         reloaded in well under a second. Pass ``cache=False`` to force a rebuild
         without reading or writing it.
+
+        The canonical forms baked into the cache depend on ``equivalence``, so it
+        is part of the cache key: changing ``--reverse-complement`` rebuilds
+        rather than silently reusing keys built under the old policy.
         """
         path = Path(path)
         if cache:
-            cached = cls._cache_load(path, stranded=stranded, platform=platform,
+            cached = cls._cache_load(path, equivalence=equivalence, platform=platform,
                                      fmt=fmt, verbose=verbose)
             if cached is not None:
                 return cached
 
-        index = cls.from_frame(read_catalog(path, fmt), stranded=stranded,
+        index = cls.from_frame(read_catalog(path, fmt), equivalence=equivalence,
                                platform=platform)
         if verbose:
             print(f"[novelty] {platform}: indexed {len(index):,} repeats across "
@@ -247,7 +280,7 @@ class RepeatCatalog:
         motif = frame["motif"].to_numpy(dtype=object)[order]
         seq_id, uniques = pd.factorize(pd.Series(motif, dtype=object), sort=False)
         self._motifs = [str(m) for m in uniques]
-        self._canon = [canonical_motif(m, stranded=self.stranded) for m in self._motifs]
+        self._canon = [canonical_motif(m, self.equivalence) for m in self._motifs]
         self._seq_id = seq_id.astype(np.int32)
 
         # Contig slice boundaries, and a prefix max of ends within each slice.
@@ -296,7 +329,12 @@ class RepeatCatalog:
             "version": np.array([_CACHE_VERSION]),
             "source_mtime": np.array([int(stat.st_mtime_ns)]),
             "source_size": np.array([stat.st_size]),
-            "stranded": np.array([int(self.stranded)]),
+            "circular": np.array([int(self.equivalence.circular)]),
+            "reverse_complement": np.array([int(self.equivalence.reverse_complement)]),
+            # -1 stands in for None: "apply RC at every motif length".
+            "reverse_complement_bp": np.array(
+                [-1 if self.equivalence.reverse_complement_bp is None
+                 else int(self.equivalence.reverse_complement_bp)]),
             "platform": np.array([self.platform]),
             "fmt": np.array([fmt]),
             "annotations": np.array(self.annotations),
@@ -319,8 +357,17 @@ class RepeatCatalog:
             print(f"[novelty] cached index -> {target} "
                   f"({target.stat().st_size / 1e6:.0f} MB)", file=sys.stderr)
 
+    @staticmethod
+    def _cache_equivalence_matches(z, equivalence: MotifEquivalence) -> bool:
+        """Whether a cache file was built under this motif-equivalence policy."""
+        stored_bp = int(z["reverse_complement_bp"][0])
+        return (bool(z["circular"][0]) == equivalence.circular
+                and bool(z["reverse_complement"][0]) == equivalence.reverse_complement
+                and (None if stored_bp < 0 else stored_bp)
+                == equivalence.reverse_complement_bp)
+
     @classmethod
-    def _cache_load(cls, path: Path, *, stranded: bool, platform: str,
+    def _cache_load(cls, path: Path, *, equivalence: MotifEquivalence, platform: str,
                     fmt: str = "auto", verbose: bool = True) -> RepeatCatalog | None:
         """Return the cached index, or ``None`` if absent, stale or unreadable."""
         target = cls._cache_path(path)
@@ -332,11 +379,11 @@ class RepeatCatalog:
                 if (int(z["version"][0]) != _CACHE_VERSION
                         or int(z["source_mtime"][0]) != int(stat.st_mtime_ns)
                         or int(z["source_size"][0]) != stat.st_size
-                        or bool(z["stranded"][0]) != stranded
+                        or not cls._cache_equivalence_matches(z, equivalence)
                         or str(z["platform"][0]) != platform
                         or str(z["fmt"][0]) != fmt):
                     return None
-                index = cls(stranded=stranded, platform=platform)
+                index = cls(equivalence=equivalence, platform=platform)
                 index._starts = z["starts"]
                 index._ends = z["ends"]
                 index._max_end = z["max_end"]
@@ -439,11 +486,10 @@ class RepeatCatalog:
     # -- screening ---------------------------------------------------------- #
 
     def _best_hit(self, indices: np.ndarray, chrom: str, point: int, motif: str,
-                  canonical: str, max_motif_edits: int,
-                  max_fuzzy_motif: int = MAX_FUZZY_MOTIF) -> Hit | None:
+                  canonical: str, tolerance: MotifTolerance) -> Hit | None:
         """The nearby repeat that best explains the query, or ``None``."""
         best: Hit | None = None
-        best_key: tuple[int, int, float] | None = None
+        best_key: tuple[int, int, int, float] | None = None
         for i in indices:
             repeat = self._record(chrom, int(i))
             if repeat.start <= point < repeat.end:
@@ -452,27 +498,40 @@ class RepeatCatalog:
                 distance = repeat.start - point
             else:
                 distance = point - repeat.end + 1
-            edits = (0 if repeat.canonical == canonical
-                     else motif_distance(motif, repeat.motif, max_motif_edits,
-                                         stranded=self.stranded,
-                                         max_fuzzy_motif=max_fuzzy_motif))
-            edits = min(edits, max_motif_edits + 1)
-            # Prefer a motif match, then proximity, then the largest repeat.
-            key = (edits, distance, -repeat.annotations.get("copy_num", 0.0))
+            found = tolerance.compare(motif, repeat.motif, self.equivalence,
+                                      query_canonical=canonical,
+                                      target_canonical=repeat.canonical)
+            # Prefer any motif match over none, then the closest match, then
+            # proximity, then the largest repeat. Edit counts are not comparable
+            # across candidates of different lengths once a proportional budget
+            # is in play, so whether it matched at all is the first key.
+            key = (0 if found.matched else 1, found.edits, distance,
+                   -repeat.annotations.get("copy_num", 0.0))
             if best_key is None or key < best_key:
-                best_key, best = key, Hit(repeat, distance, edits)
+                best_key = key
+                best = Hit(repeat, distance, found.edits, found.kind)
         return best
 
-    @staticmethod
-    def _status(n_nearby: int, best: Hit | None, max_motif_edits: int) -> str:
+    def _status(self, chrom: str, n_nearby: int, best: Hit | None) -> str:
+        if chrom not in self._bounds:
+            # No rows at all on this contig, so "nothing annotated nearby" is a
+            # statement about the catalogue's coverage, not about the locus.
+            # Reporting it as novel_locus would manufacture novelty for every
+            # alt/random/decoy contig: TRExplorer v2 carries 25 contigs where
+            # UCSC simpleRepeat carries 702.
+            return UNSCREENED
         if not n_nearby:
             return "novel_locus"
-        if best is not None and best.motif_edits <= max_motif_edits:
+        if best is not None and best.motif_matches:
             return "known"
         return "novel_motif"
 
+    def covers(self, chrom: str) -> bool:
+        """Whether this catalogue has any rows on the given contig."""
+        return normalize_chrom(chrom) in self._bounds
+
     def screen(self, chrom: str, point: int, motif: str, *, window: int = 10,
-               max_motif_edits: int = 0, max_fuzzy_motif: int = MAX_FUZZY_MOTIF,
+               tolerance: MotifTolerance = DEFAULT_TOLERANCE,
                repeat_filter: RepeatFilter | None = None) -> Verdict:
         """Classify a 0-based reference coordinate + motif as known or novel.
 
@@ -481,24 +540,23 @@ class RepeatCatalog:
         counts as "here" if it comes within ``window`` bases of ``point``.
         """
         chrom = normalize_chrom(chrom)
-        canonical = canonical_motif(motif, stranded=self.stranded)
+        canonical = canonical_motif(motif, self.equivalence)
         (indices,) = self._overlap_batch(
             chrom, np.array([point - window]), np.array([point + window + 1]))
         indices = self._passing(indices, repeat_filter)
-        best = self._best_hit(indices, chrom, point, motif, canonical,
-                              max_motif_edits, max_fuzzy_motif)
+        best = self._best_hit(indices, chrom, point, motif, canonical, tolerance)
         return Verdict(
             chrom=chrom,
             point=point,
             motif=motif.strip().upper(),
             canonical=canonical,
-            status=self._status(len(indices), best, max_motif_edits),
+            status=self._status(chrom, len(indices), best),
             n_nearby=len(indices),
             best=best,
         )
 
     def screen_frame(self, chroms, points, motifs, *, window: int = 10,
-                     max_motif_edits: int = 0, max_fuzzy_motif: int = MAX_FUZZY_MOTIF,
+                     tolerance: MotifTolerance = DEFAULT_TOLERANCE,
                      repeat_filter: RepeatFilter | None = None,
                      prefix: str = "") -> pd.DataFrame:
         """Screen many loci at once; returns one row of results per query.
@@ -512,7 +570,7 @@ class RepeatCatalog:
         point_values = pd.to_numeric(pd.Series(points), errors="raise").to_numpy(np.int64)
         motif_values = (pd.Series(motifs, dtype=object).fillna("")
                         .str.strip().str.upper().to_numpy())
-        canonicals = canonical_motifs(motif_values, stranded=self.stranded)
+        canonicals = canonical_motifs(motif_values, self.equivalence)
 
         n = len(point_values)
         novelty: list[str] = [""] * n
@@ -529,10 +587,9 @@ class RepeatCatalog:
                 point = int(point_values[row])
                 indices = self._passing(indices, repeat_filter)
                 best = self._best_hit(indices, chrom, point, motif_values[row],
-                                      canonicals[row], max_motif_edits,
-                                      max_fuzzy_motif)
+                                      canonicals[row], tolerance)
                 n_nearby[row] = len(indices)
-                novelty[row] = self._status(len(indices), best, max_motif_edits)
+                novelty[row] = self._status(chrom, len(indices), best)
                 if best is None:
                     continue
                 cells["start"][row] = best.repeat.start
@@ -541,6 +598,7 @@ class RepeatCatalog:
                 cells["motif"][row] = best.repeat.motif
                 cells["canonical"][row] = best.repeat.canonical
                 cells["motif_edits"][row] = best.motif_edits
+                cells["match"][row] = best.match
                 for name, value in best.repeat.annotations.items():
                     annotation_cells[name][row] = value
 
@@ -552,6 +610,7 @@ class RepeatCatalog:
         out[f"{prefix}motif"] = cells["motif"]
         out[f"{prefix}canonical"] = cells["canonical"]
         out[f"{prefix}motif_edits"] = pd.array(cells["motif_edits"], dtype="Int64")
+        out[f"{prefix}match"] = cells["match"]
         for name in self.annotations:
             dtype = "Int64" if name in _INT_ANNOTATIONS else "Float64"
             out[f"{prefix}{name}"] = pd.array(annotation_cells[name], dtype=dtype)

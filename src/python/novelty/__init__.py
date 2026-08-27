@@ -6,7 +6,7 @@ the catalogue: UCSC's ``simpleRepeat`` track and the TRExplorer catalog disagree
 about plenty of loci, so the screen is written against a normalised schema and
 any number of catalogues can be screened at once.
 
-    novelty.motifs      strand- and phase-independent motif comparison
+    novelty.motifs      motif comparison: equivalence, and tolerance
     novelty.platforms   reading a catalogue from UCSC, TRExplorer or a BED file
     novelty.catalog     the interval index and the known/novel verdict
     novelty.insertions  purity of the insertion itself, and the filters on it
@@ -15,22 +15,33 @@ any number of catalogues can be screened at once.
 
 from .catalog import (
     STATUSES,
+    UNSCREENED,
     Hit,
     ReferenceRepeat,
     RepeatCatalog,
+    RepeatFilter,
     Verdict,
     to_external,
     to_internal,
 )
 from .insertions import Check, add_insertion_purity, filter_reasons, union_length
 from .motifs import (
+    DEFAULT_EQUIVALENCE,
+    DEFAULT_TOLERANCE,
+    MATCH_KINDS,
     MAX_FUZZY_MOTIF,
+    STR_MAX_MOTIF,
+    MotifEquivalence,
+    MotifMatch,
+    MotifTolerance,
     canonical_motif,
     canonical_motifs,
+    edit_budget,
     least_rotation,
     motif_distance,
     primitive_unit,
     reverse_complement,
+    tiling_distance,
 )
 from .platforms import (
     ANNOTATION_COLUMNS,
@@ -50,11 +61,19 @@ __all__ = [
     "ANNOTATION_COLUMNS",
     "CACHE_ENV",
     "CATALOG_COLUMNS",
+    "DEFAULT_EQUIVALENCE",
+    "DEFAULT_TOLERANCE",
+    "MATCH_KINDS",
     "MAX_FUZZY_MOTIF",
     "PLATFORMS",
     "STATUSES",
+    "STR_MAX_MOTIF",
+    "UNSCREENED",
     "Check",
     "Hit",
+    "MotifEquivalence",
+    "MotifMatch",
+    "MotifTolerance",
     "Platform",
     "ReferenceRepeat",
     "RepeatCatalog",
@@ -64,6 +83,7 @@ __all__ = [
     "canonical_motif",
     "canonical_motifs",
     "default_cache",
+    "edit_budget",
     "ensure_table",
     "filter_reasons",
     "least_rotation",
@@ -74,6 +94,7 @@ __all__ = [
     "read_catalog",
     "reverse_complement",
     "sniff_format",
+    "tiling_distance",
     "to_external",
     "to_internal",
     "union_length",
