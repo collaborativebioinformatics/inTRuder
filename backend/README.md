@@ -14,6 +14,7 @@ cd backend
 uv sync                                   # creates backend/.venv
 cp .env.example .env                      # then add a model credential
 uv run python scripts/make_demo_data.py   # writes data/web/demo/*.parquet
+uv run python scripts/fetch_strchive.py   # writes data/web/strchive/loci.parquet
 uv run uvicorn app.main:app --reload
 ```
 
@@ -49,6 +50,7 @@ The Anthropic path is the tuned one: adaptive thinking with a summarized display
 | `app/agent.py` | LangGraph graph + the UI event stream |
 | `app/main.py` | FastAPI routes |
 | `scripts/make_demo_data.py` | Generates the synthetic demo dataset |
+| `scripts/fetch_strchive.py` | Downloads + checksums the STRchive disease catalog |
 
 ## Endpoints
 
