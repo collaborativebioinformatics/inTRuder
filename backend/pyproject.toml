@@ -1,0 +1,44 @@
+[project]
+name = "noveltrs-backend"
+version = "0.1.0"
+description = "FastAPI + LangGraph service backing the novelTRs web interface"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "duckdb>=1.1",
+    "pyyaml>=6.0",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "langgraph>=0.2.60",
+    "langchain-anthropic>=0.3",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8",
+    "httpx2>=0.28",
+]
+
+[tool.uv]
+# Standalone application project. Deliberately NOT a member of any workspace:
+# the root pyproject.toml manages the research pipeline under src/python and the
+# two dependency sets are kept fully separate.
+package = false
+
+[tool.ruff]
+line-length = 100
+src = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `app` is a top-level package in this directory, not an installed one.
+pythonpath = ["."]
+
+[tool.ruff.lint.per-file-ignores]
+# The sample list and motif pool read better as wrapped blocks than as one long
+# list literal, and they are transcriptions of real callset values.
+"scripts/make_demo_data.py" = ["SIM905"]

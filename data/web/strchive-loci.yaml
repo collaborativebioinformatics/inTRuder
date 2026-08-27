@@ -1,0 +1,83 @@
+name: strchive_loci
+title: STRchive tandem-repeat disease loci
+synthetic: false
+path: strchive/loci.parquet
+format: parquet
+
+description: >
+  One row per tandem-repeat locus where a repeat is known to cause human disease,
+  curated by STRchive (strchive.org). 82 loci at the pinned release. This is
+  reference knowledge, not a result from this cohort: it is the table to query
+  when asking whether a coordinate lands on a disease locus, what motif causes
+  disease there, and how many copies it takes. Each locus carries coordinates in
+  three builds, the motifs observed at it split by class (pathogenic, reference,
+  benign, unknown, interruption), the copy-number ranges separating benign from
+  pathogenic alleles, an evidence tier, and inheritance.
+  The field to notice is novel_in_reference. It is true for 11 of the 82 loci and
+  means STRchive's own curation says the PATHOGENIC motif is absent from hg38 —
+  the disease-causing repeat is not in the reference genome at all. Those loci are
+  invisible to any genotyper working from a reference-derived catalog, which is
+  precisely the blind spot this pipeline exists to cover. Seven of the eleven are
+  the FAME family, where a pathogenic TTTCA is inserted into a reference TTTTA
+  array: an insertion carrying a novel motif, the exact shape novelTRs detects.
+  Fetched, checksummed and flattened by backend/scripts/fetch_strchive.py.
+
+columns:
+  id: STRchive locus identifier, e.g. CANVAS_RFC1. Joins to strchive_calls.strchive_id.
+  disease_id: Short disease abbreviation, e.g. CANVAS.
+  gene: Gene symbol the repeat sits in or near.
+  disease: Full disease name.
+  disease_description: One-line prose description of the disease.
+  chrom: Chromosome, UCSC-style (chr-prefixed).
+  start_hg38: Locus start in GRCh38, BED-style 0-based. Use this build unless told otherwise.
+  stop_hg38: Locus end in GRCh38, BED-style half-open.
+  start_hg19: Locus start in GRCh37/hg19.
+  stop_hg19: Locus end in GRCh37/hg19.
+  start_t2t: Locus start in CHM13-T2T.
+  stop_t2t: Locus end in CHM13-T2T.
+  gene_strand: Strand of the gene, + or -.
+  location_in_gene: Where in the gene the repeat sits, e.g. "5' UTR", "exon", "intron".
+  motif_len: Length of the repeat unit in bp. Most disease loci are trinucleotide.
+  ref_copies: Copies of the motif already present in the reference at this locus. Null for 11 loci, which is why a copy-number estimate is not always possible.
+  benign_min: Smallest copy number in the benign range. Null where STRchive records no benign range.
+  benign_max: Largest copy number still benign.
+  intermediate_min: Smallest copy number in the intermediate/premutation range, where one exists.
+  intermediate_max: Largest intermediate copy number.
+  pathogenic_min: Smallest copy number that is pathogenic. This is the threshold that matters.
+  pathogenic_max: Largest pathogenic copy number reported.
+  novel_in_reference: True when the pathogenic motif is absent from hg38 entirely. True for 11 of 82 loci. THIS IS THE HEADLINE FIELD for this project.
+  novel_flag: STRchive's raw value behind novel_in_reference - "novel", "ref", or empty when uncurated.
+  reference_motif: Motif(s) present at this locus in the reference, semicolon-separated.
+  pathogenic_motif: Motif(s) that cause disease here, semicolon-separated. May differ from the reference motif - that difference is the whole point of novel_in_reference.
+  benign_motif: Motif(s) recorded as benign here.
+  unknown_motif: Motif(s) seen here whose effect is not established.
+  interruption_motif: Motif(s) that interrupt the array, often protective.
+  evidence: Curation confidence - Definitive, Strong, Moderate, Limited, Provisional, Disputed, or Refuted. Weight conclusions by this.
+  inheritance: AD (autosomal dominant), AR (recessive), XR/XD (X-linked), semicolon-separated.
+  association_type: How the repeat relates to the disease.
+  mechanism: Disease mechanism where known, e.g. loss of function, RNA gain of function.
+  age_onset: Reported age-of-onset range as prose.
+  typ_age_onset_min: Typical earliest age of onset in years.
+  typ_age_onset_max: Typical latest age of onset in years.
+  prevalence: Reported prevalence as prose.
+  year: Year the association was first reported.
+  disease_tags: Disease groupings, semicolon-separated, e.g. spinocerebellar_ataxia.
+  locus_tags: Locus behaviour tags, semicolon-separated, e.g. anticipation, somatic_instability, length_affects_onset.
+  omim: OMIM identifiers, semicolon-separated.
+  genereviews: GeneReviews identifiers.
+  gnomad: gnomAD locus identifiers.
+  stripy: STRipy identifiers.
+  tr_atlas: TR-Atlas identifiers.
+  medgen: MedGen identifiers.
+  mondo: MONDO disease-ontology identifiers.
+  orphanet: Orphanet identifiers.
+  catalog_version: Pinned release this row came from, e.g. "STRchive v2.26.0 (hg38)". Quote it when reporting a result.
+
+provenance:
+  source: STRchive v2.26.0, https://github.com/dashnowlab/STRchive
+  citation: >
+    Hiatt L, Weisburd B, Dolzhenko E, et al. STRchive: a dynamic resource
+    detailing population-level and locus-specific insights at tandem repeat
+    disease loci. Genome Medicine 17, 2025. doi:10.1186/s13073-025-01454-4
+  license: CC-BY-4.0
+  fetched_by: backend/scripts/fetch_strchive.py
