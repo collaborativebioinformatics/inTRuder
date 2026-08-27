@@ -18,6 +18,7 @@ process ANNOTSV {
     def cloud_mode = params.use_docker ? 'true' : 'false'
     def annotsv_cmd = params.annotsv_dir ? "${params.annotsv_dir}/bin/AnnotSV" : "AnnotSV"
     def hpo_arg = params.hpo ? "-hpo \"${params.hpo}\"" : ""
+    def tx_arg = "-tx \"${params.tx ?: 'RefSeq'}\""
 
     """
     set -euo pipefail
@@ -72,6 +73,7 @@ process ANNOTSV {
             ' -- \\
                 -SVinputFile    "${sv_vcf}" \\
                 -genomeBuild    "${params.genome_build}" \\
+                ${tx_arg} \\
                 -outputDir      . \\
                 -outputFile     "${out_prefix}.tsv" \\
                 -bedtools       "${params.bedtools_path}" \\
@@ -87,6 +89,7 @@ process ANNOTSV {
         "${annotsv_cmd}" \\
             -SVinputFile    "${sv_vcf}" \\
             -genomeBuild    "${params.genome_build}" \\
+            ${tx_arg} \\
             -outputDir      . \\
             -outputFile     "${out_prefix}.tsv" \\
             -bedtools       "${params.bedtools_path}" \\

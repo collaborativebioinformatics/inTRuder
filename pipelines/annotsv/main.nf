@@ -39,6 +39,7 @@ def helpMessage() {
     Optional Parameters:
       --outdir              <dir>        Output directory                [default: results]
       --genome_build        <str>        GRCh38 or GRCh37                [default: GRCh38]
+      --tx                  <str>        RefSeq or ENSEMBL               [default: RefSeq]
       --hpo                 <str>        HPO terms (comma/space separated) [default: none]
       --candidate_genes     <file>       Candidate genes list file       [default: none]
       --annotations_dir     <dir>        AnnotSV database directory
@@ -82,6 +83,13 @@ workflow {
         log.error "ERROR: --genome_build must be one of: ${valid_builds.join(', ')}. Got: ${params.genome_build}"
         exit 1
     }
+
+    def requested_tx = params.tx?.toString()?.toUpperCase()
+    if (requested_tx && !['REFSEQ', 'ENSEMBL'].contains(requested_tx)) {
+        log.error "ERROR: --tx must be one of: RefSeq, ENSEMBL. Got: ${params.tx}"
+        exit 1
+    }
+    params.tx = requested_tx == 'ENSEMBL' ? 'ENSEMBL' : 'RefSeq'
 
     // AnnotSV expects HPO identifiers for phenotype-driven Exomiser ranking.
     // Validate early because this value is inserted into a shell command.
@@ -138,6 +146,7 @@ workflow {
       resolved pattern    : ${input_pattern}
       outdir              : ${params.outdir}
       genome_build        : ${params.genome_build ?: 'GRCh38'}
+      tx                  : ${params.tx ?: 'RefSeq'}
       hpo                 : ${params.hpo ?: 'none'}
       candidate_genes     : ${resolved_candidate_genes ?: 'none'}
       annotations_dir     : ${resolved_annot}
