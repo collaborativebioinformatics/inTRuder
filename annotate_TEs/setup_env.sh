@@ -12,8 +12,9 @@ wget https://www.dfam.org/releases/current/families/FamDB/dfam40.0.h5.gz
 wget https://www.dfam.org/releases/current/families/FamDB/dfam40.curated.hmm.0.h5.gz
 wget https://www.dfam.org/releases/current/families/FamDB/dfam40.curated.consensus.0.h5.gz
 gunzip *.gz
+cd ../../../
 
 export FAMDB_DIR=$(realpath FamDB-3.0.0)
 export TRF_PRGM=$CONDA_PREFIX/bin
 export RMBLAST_DIR=$CONDA_PREFIX/bin
-
+export REPEAT_MASKER=RepeatMasker/RepeatMasker
