@@ -97,9 +97,11 @@ def _require_loci() -> None:
         )
 
 
-#: Filters that need a column the demo fixtures do not have. Each maps to the
-#: column the screened callset supplies; until it exists the filter is reported
-#: back as ignored rather than silently matching everything.
+#: Filters that depend on a column the current table may not carry. Each maps to
+#: the column that supplies it; when that column is absent the filter is reported
+#: back as ignored rather than silently matching everything. `demo_loci` carries
+#: the reference-screen columns, so today only `sample` (it is one row per locus,
+#: not per call) and `strchive_status` actually land here.
 _SCREENED_ONLY = {
     "novelty": "novelty",
     "platform_agreement": "ucsc_novelty",
@@ -376,7 +378,7 @@ def summary() -> dict[str, Any]:
             {"stage": "Confident repeats", "count": confident,
              "note": "Mean purity ≥ 0.80"},
             {"stage": "Absent from all catalogs", "count": novel,
-             "note": "No match in TR-Explorer, gnomAD-TR or STRchive"},
+             "note": "No equivalent motif in UCSC simpleRepeat or TRExplorer"},
             {"stage": "In a disease gene", "count": novel_disease,
              "note": "Novel and overlapping a known repeat-expansion gene"},
         ],

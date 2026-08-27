@@ -9,9 +9,9 @@ export type MotifClass = "homopolymer" | "STR" | "mid" | "VNTR";
 export type NoveltyStatus = "known" | "novel_motif" | "novel_locus";
 
 /**
- * What the interface can actually display today. `novel` is the coarse legacy
- * value carried by the demo fixtures, which only record a boolean; real screened
- * data resolves it into one of the three above.
+ * What the interface can actually display today. `novel` is the coarse fallback
+ * for a table that records only a boolean; any table carrying the reference
+ * screen — the demo fixtures included — resolves it into one of the three above.
  */
 export type NoveltyDisplay = NoveltyStatus | "novel";
 
@@ -50,14 +50,16 @@ export interface Locus {
   min_len: number;
   max_len: number;
   mean_purity: number;
-  /** Coarse verdict. Present on demo fixtures; superseded by `novelty` on real data. */
+  /** Coarse verdict, true when no catalog contains this repeat. Always equal to
+      `novelty !== "known"` where the screen has been run, and superseded by it. */
   novel: boolean;
   catalogs: string;
   gene: string | null;
   disease_gene: boolean;
 
-  /* ---- Present once the novelty screen (PR #37) has been run. Optional so the
-     demo fixtures keep rendering, and so the UI can say what it does not know. */
+  /* ---- Present once the novelty screen (PR #37) has been run. Optional so a
+     table without it keeps rendering, and so the UI can say what it does not
+     know rather than implying the reference is empty. */
   novelty?: NoveltyStatus;
   /** Per-catalog verdicts. Where they agree, the call is a property of the data. */
   ucsc_novelty?: NoveltyStatus;
@@ -69,6 +71,23 @@ export interface Locus {
   trexplorer_motif?: string | null;
   /** Fraction of the insertion that is tandem repeat at all, 0-1. */
   insertion_purity?: number | null;
+
+  /* ---- What the reference actually annotates here, per catalog. These are what
+     let the locus view open with a comparison rather than with our call alone.
+     All are null when that catalog found nothing: "no repeat annotated" is not
+     "a repeat of length zero". `start`/`end` are GRCh38 coordinates, so they are
+     NOT on the same axis as a Segment's offsets inside the insertion. */
+  ucsc_n_nearby?: number | null;
+  ucsc_start?: number | null;
+  ucsc_end?: number | null;
+  ucsc_distance?: number | null;
+  ucsc_period?: number | null;
+  ucsc_copy_num?: number | null;
+  ucsc_per_match?: number | null;
+  trexplorer_n_nearby?: number | null;
+  trexplorer_start?: number | null;
+  trexplorer_end?: number | null;
+  trexplorer_distance?: number | null;
   /* ---- Present once the STRchive step (PR #42) has been run. */
   strchive_status?: StrchiveStatus;
   strchive_id?: string | null;

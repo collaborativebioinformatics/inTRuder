@@ -91,7 +91,7 @@ export function CatalogView({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-hairline bg-surface">
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto rounded-lg border border-hairline bg-surface">
         {loading && loci.length === 0 ? (
           <p className="p-6 text-sm text-ink-muted">Loading loci…</p>
         ) : loci.length === 0 ? (

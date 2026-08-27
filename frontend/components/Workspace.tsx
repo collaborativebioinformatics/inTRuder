@@ -247,7 +247,7 @@ function WorkspaceInner() {
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
-        <aside className="min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
+        <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
           {page === "strchive" ? (
             <StrchiveRail summary={strchive} />
           ) : summary ? (
@@ -260,22 +260,40 @@ function WorkspaceInner() {
           )}
         </aside>
 
-        <main className="flex min-h-0 flex-col gap-3 p-4">
+        {/* Drilled into one locus, the middle column becomes a single scroll:
+            the detail page is taller than the viewport and the reference band
+            pins itself to the top of it (see LocusView). The catalog keeps its
+            own inner scroll instead, so its header and filter row stay put
+            while only the list of loci moves.
+
+            The scrolling variant carries no top padding. Sticky offsets are
+            measured from the scrollport's *content* box, so a padded column
+            pins the band 16px down and leaves a gap for allele rows to show
+            through as they scroll past. The padding moves inside the scroll
+            content instead, where it scrolls away like everything else. */}
+        <main
+          className={
+            page === "catalog" && focused
+              ? "scroll-quiet min-h-0 overflow-y-auto px-4 pb-4"
+              : "flex min-h-0 flex-col gap-3 p-4"
+          }
+        >
           {page === "strchive" ? (
             <StrchiveView />
+          ) : focused ? (
+            <div className="space-y-3 pt-4">
+              <FilterBar ignored={data?.ignored_filters ?? []} />
+              <LocusView locusId={focused} />
+            </div>
           ) : (
             <>
               <FilterBar ignored={data?.ignored_filters ?? []} />
-              {focused ? (
-                <LocusView locusId={focused} />
-              ) : (
-                <CatalogView
-                  loci={data?.loci ?? []}
-                  strips={data?.strips ?? {}}
-                  total={data?.total ?? 0}
-                  loading={loading}
-                />
-              )}
+              <CatalogView
+                loci={data?.loci ?? []}
+                strips={data?.strips ?? {}}
+                total={data?.total ?? 0}
+                loading={loading}
+              />
             </>
           )}
         </main>

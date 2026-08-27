@@ -490,14 +490,14 @@ export function StrchiveView() {
 
   if (focused) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto pr-1">
         <LocusDetail locus={focused} onBack={() => focusStrchive(null)} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-0 flex-1 space-y-7 overflow-y-auto pr-1">
+    <div className="scroll-quiet min-h-0 flex-1 space-y-7 overflow-y-auto pr-1">
       <header className="space-y-3">
         <div>
           <h2 className="text-sm font-medium text-ink">Known repeat-expansion disease loci</h2>
