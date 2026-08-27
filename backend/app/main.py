@@ -210,14 +210,82 @@ _CHROM_ORDER = (
     "ELSE TRY_CAST(replace(chrom, 'chr', '') AS INTEGER) END"
 )
 
-_SORTS = {
+#: Sort keys, as the columns each orders by and the direction it means when
+#: nobody says otherwise. "Biggest" is what someone asking for size wants;
+#: "first on the chromosome" is what they want from position. Every sort but
+#: position falls back to genomic order, so ties never reshuffle between two
+#: requests for the same page.
+_SORTS: dict[str, tuple[tuple[str, ...], str]] = {
     # Genomic order is the domain-native default, and it interleaves novel and
     # catalogued loci so the novel fraction reads as texture down the list.
-    "position": f"{_CHROM_ORDER}, pos",
-    "novel": f"novel DESC, motif_len DESC, {_CHROM_ORDER}, pos",
-    "size": f"median_len DESC, {_CHROM_ORDER}, pos",
-    "support": f"n_samples DESC, {_CHROM_ORDER}, pos",
+    "position": ((_CHROM_ORDER, "pos"), "ASC"),
+    "novel": (("novel", "motif_len"), "DESC"),
+    "size": (("median_len",), "DESC"),
+    "support": (("n_samples",), "DESC"),
+    "motif_len": (("motif_len",), "DESC"),
+    "purity": (("mean_purity",), "DESC"),
+    # How many separate repeat arrays the drawn allele is built from — a
+    # compound locus is several tandem repeats inside one insertion. Computed
+    # from demo_segments rather than read off a column; see `_order_by`.
+    "arrays": (("n_arrays",), "DESC"),
 }
+
+#: Sorts whose column comes from the per-allele table, not from the locus row.
+_SEGMENT_SORTS = frozenset({"arrays"})
+
+
+def _order_by(sort: str, sort_dir: str | None) -> str:
+    """ORDER BY for one sort key, in the requested or its natural direction."""
+    columns, natural = _SORTS[sort]
+    direction = (sort_dir or natural).upper()
+    clause = ", ".join(f"{column} {direction} NULLS LAST" for column in columns)
+    if sort == "position":
+        return clause
+    return f"{clause}, {_CHROM_ORDER} ASC, pos ASC"
+
+
+#: The allele the catalog draws for a locus: the median-length carrier.
+#:
+#: Shared by the strip query and the `arrays` sort, so the number the list is
+#: ordered by is the number of blocks you can count on the row — sorting by
+#: something the row does not show would be a control with no visible effect.
+#: `{where}` narrows the scan to the page being returned; the sort cannot use
+#: it, because the ordering is what decides which loci that page holds.
+_REPRESENTATIVE_ALLELE = """
+    allele AS (
+        SELECT locus_id, sample, max("end") AS allele_len
+        FROM demo_segments {where}
+        GROUP BY 1, 2
+    ),
+    ranked AS (
+        -- `sample` breaks ties. Carriers routinely share an allele length, and
+        -- without a total order row_number() is free to pick a different one of
+        -- them per query — which would let the strip a row draws disagree with
+        -- the array count that row is sorted by, and change between requests.
+        SELECT locus_id, sample,
+               row_number() OVER (
+                   PARTITION BY locus_id ORDER BY allele_len, sample
+               ) AS rn,
+               count(*) OVER (PARTITION BY locus_id) AS n
+        FROM allele
+    ),
+    representative AS (
+        -- Integer division: DuckDB's `/` is float, so an even carrier count
+        -- would match no row at all.
+        SELECT locus_id, sample FROM ranked WHERE rn = (n + 1) // 2
+    )
+"""
+
+_ARRAY_COUNTS = f"""WITH {_REPRESENTATIVE_ALLELE.format(where="")},
+    arrays AS (
+        SELECT r.locus_id,
+               count(*) FILTER (WHERE s.seg_type = 'repeat') AS n_arrays
+        FROM representative r
+        JOIN demo_segments s
+          ON s.locus_id = r.locus_id AND s.sample = r.sample
+        GROUP BY 1
+    )
+"""
 
 
 @app.get("/api/loci")
@@ -240,7 +308,11 @@ def loci(
     limit: int = Query(300, le=2000),
     offset: int = 0,
     include_strips: bool = False,
-    sort: str = Query("position", pattern="^(position|novel|size|support)$"),
+    sort: str = Query(
+        "position",
+        pattern="^(position|novel|size|support|arrays|motif_len|purity)$",
+    ),
+    sort_dir: str | None = Query(None, pattern="^(asc|desc)$"),
 ) -> dict[str, Any]:
     """Filtered locus list backing the catalog view.
 
@@ -251,6 +323,10 @@ def loci(
     Filters needing a column the current table lacks come back in
     `ignored_filters` instead of being dropped on the floor — a control that
     silently matches everything reads as a result, which is worse than an error.
+    The same honesty applies to `sort`: the key actually used comes back in
+    `sort`, so a sort that needs a table this deployment has not registered
+    reports the order the list is really in rather than the one that was asked
+    for.
     """
     _require_loci()
     where, params, ignored = _filter_clause(
@@ -259,11 +335,24 @@ def loci(
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
         available=_columns("demo_loci"),
     )
+
+    needs_segments = sort in _SEGMENT_SORTS
+    if needs_segments and not _available("demo_segments"):
+        sort = "position"
+        needs_segments = False
+    prefix = _ARRAY_COUNTS if needs_segments else ""
+    source = (
+        "demo_loci l LEFT JOIN arrays a ON a.locus_id = l.locus_id"
+        if needs_segments
+        else "demo_loci l"
+    )
+
     con = registry.cursor()
     total = con.execute(f"SELECT count(*) FROM demo_loci {where}", params).fetchone()[0]
     cursor = con.execute(
-        f"""SELECT * FROM demo_loci {where}
-            ORDER BY {_SORTS[sort]}
+        f"""{prefix}
+            SELECT l.* FROM {source} {where}
+            ORDER BY {_order_by(sort, sort_dir)}
             LIMIT ? OFFSET ?""",
         [*params, limit, offset],
     )
@@ -275,22 +364,9 @@ def loci(
         locus_ids = [r["locus_id"] for r in rows]
         placeholders = ",".join("?" for _ in locus_ids)
         strip_cursor = con.execute(
-            f"""WITH allele AS (
-                    SELECT locus_id, sample, max("end") AS allele_len
-                    FROM demo_segments WHERE locus_id IN ({placeholders})
-                    GROUP BY 1, 2
-                ),
-                ranked AS (
-                    SELECT locus_id, sample,
-                           row_number() OVER (PARTITION BY locus_id ORDER BY allele_len) AS rn,
-                           count(*) OVER (PARTITION BY locus_id) AS n
-                    FROM allele
-                ),
-                representative AS (
-                    -- Integer division: DuckDB's `/` is float, so an even carrier
-                    -- count would match no row at all.
-                    SELECT locus_id, sample FROM ranked WHERE rn = (n + 1) // 2
-                )
+            f"""WITH {_REPRESENTATIVE_ALLELE.format(
+                    where=f"WHERE locus_id IN ({placeholders})"
+                )}
                 SELECT s.locus_id, s.sample, s.seg_index, s.seg_type,
                        s.start, s."end", s.motif, s.purity, s.units
                 FROM demo_segments s
@@ -310,6 +386,8 @@ def loci(
         "loci": rows,
         "strips": strips,
         "ignored_filters": ignored,
+        "sort": sort,
+        "sort_dir": (sort_dir or _SORTS[sort][1]).lower(),
     }
 
 

@@ -129,6 +129,13 @@ export interface LociResponse {
    * dropped — a control that silently matches everything reads as a result.
    */
   ignored_filters: (keyof ViewFilters)[];
+  /**
+   * The ordering actually applied. Normally the one that was asked for; it
+   * differs when the sort needs a table this deployment has not registered, and
+   * the control says so rather than showing an order the list is not in.
+   */
+  sort: SortKey;
+  sort_dir: SortDirection;
 }
 
 export interface FunnelStage {
@@ -300,6 +307,81 @@ export interface StrchiveMatchesResponse {
 /** Which surface the workspace is showing. The agent can move this too. */
 export type PageName = "catalog" | "strchive";
 
+/**
+ * How the catalog list is ordered. Ordering is not filtering — it changes which
+ * loci you meet first, not which exist — so it lives beside the filters in the
+ * view object but is deliberately kept out of the chip row.
+ *
+ * `arrays` counts the repeat blocks in the allele each row actually draws, so
+ * sorting by it produces a gradient you can see in the barcodes rather than a
+ * number you have to take on trust.
+ */
+export type SortKey =
+  | "position"
+  | "novel"
+  | "size"
+  | "support"
+  | "arrays"
+  | "motif_len"
+  | "purity";
+
+export type SortDirection = "asc" | "desc";
+
+/** Label, meaning, and the direction each sort means when nobody says. */
+export const SORTS: {
+  key: SortKey;
+  label: string;
+  note: string;
+  natural: SortDirection;
+}[] = [
+  {
+    key: "position",
+    label: "Position",
+    note: "Genomic order — chromosome, then coordinate. Novel and catalogued loci interleave, so the novel fraction reads as texture.",
+    natural: "asc",
+  },
+  {
+    key: "size",
+    label: "Allele size",
+    note: "Median inserted-allele length across carriers.",
+    natural: "desc",
+  },
+  {
+    key: "support",
+    label: "Carriers",
+    note: "How many of the 68 samples carry an insertion here.",
+    natural: "desc",
+  },
+  {
+    key: "arrays",
+    label: "Repeat arrays",
+    note: "How many separate repeat blocks the drawn allele is built from — compound loci first.",
+    natural: "desc",
+  },
+  {
+    key: "motif_len",
+    label: "Motif length",
+    note: "Length of the repeat unit in bp.",
+    natural: "desc",
+  },
+  {
+    key: "purity",
+    label: "Purity",
+    note: "Mean identity to a perfect repeat across carriers.",
+    natural: "desc",
+  },
+  {
+    key: "novel",
+    label: "Novel first",
+    note: "Loci absent from every catalog on top, longest motif first.",
+    natural: "desc",
+  },
+];
+
+export const SORT_LABELS: Record<SortKey, string> = Object.fromEntries(
+  SORTS.map((sort) => [sort.key, sort.label]),
+) as Record<SortKey, string>;
+
 /** Filter state. Mirrors the `set_view` tool arguments on the backend so the
  *  agent and the controls manipulate exactly the same object. */
 export interface ViewFilters {
@@ -321,6 +403,10 @@ export interface ViewFilters {
   strchive_status?: StrchiveStatus | null;
   /** Restrict the STRchive catalog to loci whose pathogenic motif is not in hg38. */
   strchive_novel_only?: boolean;
+  /** Ordering for the catalog list. Not a filter — see SortKey. */
+  sort?: SortKey | null;
+  /** Omit for the sort's natural direction. */
+  sort_dir?: SortDirection | null;
   focus_locus_id?: string | null;
   /** Open one STRchive disease locus, e.g. 'CANVAS_RFC1'. */
   focus_strchive_id?: string | null;

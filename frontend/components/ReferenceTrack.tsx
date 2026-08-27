@@ -1,6 +1,7 @@
 "use client";
 
-import { formatBp, shortMotif } from "@/lib/palette";
+import { MotifText } from "@/components/MotifText";
+import { formatBp } from "@/lib/palette";
 import {
   NOVELTY_LABELS,
   PLATFORM_LABELS,
@@ -124,12 +125,16 @@ function HitRow({ hit, chrom }: { hit: ReferenceHit; chrom: string }) {
       <dt className="text-[11px] text-ink-secondary">{label}</dt>
       <dd className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span
-            className="tabular text-xs break-all text-ink"
-            title={hit.motif ?? undefined}
-          >
-            {hit.motif ? shortMotif(hit.motif, 22) : "—"}
-          </span>
+          {hit.motif ? (
+            <MotifText
+              motif={hit.motif}
+              max={22}
+              className="text-xs text-ink"
+              label={`${label} motif`}
+            />
+          ) : (
+            <span className="tabular text-xs text-ink">—</span>
+          )}
           <span className="tabular text-[11px] text-ink-muted">{facts.join(" · ")}</span>
         </div>
         <div className="tabular text-[11px] text-ink-muted">
@@ -160,9 +165,12 @@ function VerdictRow({ locus, verdict }: { locus: Locus; verdict: NoveltyStatus }
       <dt className="text-[11px] font-medium text-ink">This locus</dt>
       <dd className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="tabular text-xs break-all text-ink" title={locus.motif}>
-            {shortMotif(locus.motif, 22)}
-          </span>
+          <MotifText
+            motif={locus.motif}
+            max={22}
+            className="text-xs text-ink"
+            label="locus motif"
+          />
           <span className="text-[11px] text-ink-secondary">→ {outcome[verdict]}</span>
         </div>
         {/* A near miss is the routine explanation for novel_motif, and it is a

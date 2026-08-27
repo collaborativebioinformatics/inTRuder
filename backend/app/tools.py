@@ -116,6 +116,21 @@ def set_view(
         "On the strchive page: show only the disease loci whose pathogenic motif "
         "is absent from hg38 (11 of 82).",
     ] = None,
+    sort: Annotated[
+        Literal["position", "novel", "size", "support", "arrays", "motif_len", "purity"]
+        | None,
+        "How to order the catalog list. 'position' is genomic order (the "
+        "default), 'size' is median inserted-allele length, 'support' is how "
+        "many samples carry it, 'arrays' is how many separate repeat blocks the "
+        "drawn allele is built from (compound loci first), 'novel' puts loci "
+        "absent from every catalog on top. Use this when the user asks for the "
+        "biggest, the most common, or the most complex loci.",
+    ] = None,
+    sort_dir: Annotated[
+        Literal["asc", "desc"] | None,
+        "Sort direction. Omit for the natural one — descending for every sort "
+        "except position, where ascending means the start of the chromosome.",
+    ] = None,
     focus_locus_id: Annotated[str | None, "Open one locus in the detail view, e.g. 'TRL000123'."] = None,
     focus_strchive_id: Annotated[
         str | None,
@@ -155,6 +170,8 @@ def set_view(
             "sample": sample,
             "strchive_status": strchive_status,
             "strchive_novel_only": strchive_novel_only,
+            "sort": sort,
+            "sort_dir": sort_dir,
             "focus_locus_id": focus_locus_id,
             "focus_strchive_id": focus_strchive_id,
         }.items()

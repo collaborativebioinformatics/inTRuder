@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { AlleleHistogram } from "@/components/AlleleHistogram";
+import { type Selection, segmentKey } from "@/components/Inspector";
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
+import { MotifText } from "@/components/MotifText";
 import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
 import { ReferenceComparison, referenceHits, trackScale } from "@/components/ReferenceTrack";
 import { fetchLocus } from "@/lib/api";
-import { buildMotifScale, formatBp, formatPos, motifColor, shortMotif } from "@/lib/palette";
+import { buildMotifScale, formatBp, formatPos, motifColor } from "@/lib/palette";
 import {
   NOVELTY_NOTES,
   STRCHIVE_STATUS_LABELS,
@@ -24,25 +27,48 @@ import { useView } from "@/lib/viewStore";
  * into a shape you read down the left edge rather than a column of numbers.
  */
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  wrap = false,
+}: {
+  label: string;
+  value: ReactNode;
+  /** Elide by default; a value that can unfold in place must be allowed to. */
+  wrap?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-[11px] uppercase tracking-wide text-ink-muted">{label}</dt>
-      <dd className="tabular truncate text-sm text-ink">{value}</dd>
+      <dd className={`text-sm text-ink ${wrap ? "" : "tabular truncate"}`}>{value}</dd>
     </div>
   );
 }
 
-export function LocusView({ locusId }: { locusId: string }) {
+export function LocusView({
+  locusId,
+  selection,
+  onSelect,
+}: {
+  locusId: string;
+  /** The pinned block, so the strip can show which one it is. */
+  selection: Selection | null;
+  onSelect: (selection: Selection) => void;
+}) {
   const { focusLocus } = useView();
   const [detail, setDetail] = useState<LocusDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<{ segment: Segment; x: number; y: number } | null>(null);
+  // Carriers isolated by clicking a histogram bin. The distribution and the
+  // strips are two views of one cohort, so picking a bin up there dims
+  // everything down here that is not in it.
+  const [highlighted, setHighlighted] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setDetail(null);
     setError(null);
+    setHighlighted(null);
     fetchLocus(locusId, controller.signal)
       .then(setDetail)
       .catch((err: Error) => {
@@ -151,7 +177,11 @@ export function LocusView({ locusId }: { locusId: string }) {
         </p>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-          <Stat label="Motif" value={shortMotif(locus.motif, 16)} />
+          <Stat
+            label="Motif"
+            wrap
+            value={<MotifText motif={locus.motif} max={16} label="locus motif" />}
+          />
           <Stat label="Class" value={`${locus.motif_class} · ${locus.motif_len} bp`} />
           <Stat label="Carriers" value={`${locus.n_samples} / 68`} />
           <Stat
@@ -177,9 +207,11 @@ export function LocusView({ locusId }: { locusId: string }) {
                 className="inline-block h-2.5 w-2.5 rounded-sm"
                 style={{ background: color }}
               />
-              <span className="tabular">
-                {color === "var(--motif-other)" ? "other" : shortMotif(motif, 10)}
-              </span>
+              {color === "var(--motif-other)" ? (
+                <span className="tabular">other</span>
+              ) : (
+                <MotifText motif={motif} max={10} label="motif" />
+              )}
             </span>
           ))}
           <span className="flex items-center gap-1.5 text-ink-secondary">
@@ -203,12 +235,21 @@ export function LocusView({ locusId }: { locusId: string }) {
         />
       </div>
 
-      <div className="rounded-lg border border-hairline bg-surface p-3">
+      <AlleleHistogram
+        alleles={alleles}
+        highlighted={highlighted}
+        onHighlight={setHighlighted}
+      />
+
+      <div className="mt-3 rounded-lg border border-hairline bg-surface p-3">
         <ul className="space-y-1">
           {alleles.map((allele) => (
             <li
               key={allele.sample}
-              className="grid grid-cols-[7rem_1fr_4.5rem] items-center gap-3"
+              className="grid grid-cols-[7rem_1fr_4.5rem] items-center gap-3 transition-opacity"
+              style={{
+                opacity: highlighted && !highlighted.has(allele.sample) ? 0.25 : 1,
+              }}
             >
               <span className="tabular truncate text-[11px] text-ink-secondary">
                 {allele.sample}
@@ -219,11 +260,11 @@ export function LocusView({ locusId }: { locusId: string }) {
                 height={20}
                 ariaLabel={`${allele.sample}: ${formatBp(allele.allele_len)} insertion`}
                 colorFor={(segment) => motifColor(motifScale, segment.motif)}
-                onHover={(segment, event) =>
-                  setHover(
-                    segment && event ? { segment, x: event.clientX, y: event.clientY } : null,
-                  )
+                onHover={(segment, at) => setHover(segment && at ? { segment, ...at } : null)}
+                onSelect={(segment) =>
+                  onSelect({ segment, locusLabel: formatPos(locus.chrom, locus.pos) })
                 }
+                selectedKey={selection ? segmentKey(selection.segment) : null}
               />
               <span className="tabular text-right text-[11px] text-ink-muted">
                 {formatBp(allele.allele_len)}

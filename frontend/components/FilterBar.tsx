@@ -2,8 +2,10 @@
 
 import {
   NOVELTY_LABELS,
+  SORT_LABELS,
   STRCHIVE_STATUS_LABELS,
   type NoveltyStatus,
+  type SortKey,
   type StrchiveStatus,
   type ViewFilters,
 } from "@/lib/types";
@@ -34,16 +36,25 @@ const LABELS: Record<keyof ViewFilters, (value: unknown) => string> = {
   min_samples: (v) => `≥ ${v} carriers`,
   min_purity: (v) => `purity ≥ ${v}`,
   min_insertion_purity: (v) => `insertion ≥ ${v} repeat`,
+  sort: (v) => SORT_LABELS[v as SortKey] ?? `${v}`,
+  sort_dir: (v) => `${v}`,
   focus_locus_id: (v) => `${v}`,
   focus_strchive_id: (v) => `${v}`,
 };
 
 /**
- * Keys that are navigation or drill-down rather than filters. They change what
- * you are looking at, not which subset of it, so they do not belong in a row of
- * removable chips.
+ * Keys that are navigation, ordering or drill-down rather than filters. They
+ * change what you are looking at or the order you meet it in, not which subset
+ * of it exists, so they do not belong in a row of removable chips — and a sort
+ * has its own always-visible control, which a chip would duplicate.
  */
-const NOT_A_CHIP: (keyof ViewFilters)[] = ["page", "focus_locus_id", "focus_strchive_id"];
+const NOT_A_CHIP: (keyof ViewFilters)[] = [
+  "page",
+  "sort",
+  "sort_dir",
+  "focus_locus_id",
+  "focus_strchive_id",
+];
 
 const QUICK: { label: string; patch: ViewFilters; title?: string }[] = [
   {

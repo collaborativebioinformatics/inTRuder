@@ -69,9 +69,12 @@ export function ViewProvider({
   }, []);
 
   const reset = useCallback(() => {
-    // Which surface you are on is navigation, not a filter — clearing the
-    // filters must not also throw you back to a different page.
-    setFilters((current) => (current.page ? { page: current.page } : EMPTY));
+    // Which surface you are on is navigation, and how the list is ordered is a
+    // reading preference — neither is a filter, so clearing the filters must not
+    // throw you back to a different page or silently reshuffle the rows.
+    setFilters((current) =>
+      normalize({ page: current.page, sort: current.sort, sort_dir: current.sort_dir }),
+    );
     setAgentTouched(new Set());
   }, []);
 
