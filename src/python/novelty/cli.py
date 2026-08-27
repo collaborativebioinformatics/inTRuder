@@ -37,24 +37,25 @@ from pathlib import Path
 
 import pandas as pd
 
-from .catalog import (
-    STATUSES,
-    UNSCREENED,
-    RepeatCatalog,
-    RepeatFilter,
-    to_external,
-    to_internal,
-)
-from .insertions import PASS, Check, add_insertion_purity, filter_reasons
-from .motifs import (
+from trcore.coords import to_external, to_internal
+from trcore.motifs import (
     MAX_FUZZY_MOTIF,
     STR_MAX_MOTIF,
     MotifEquivalence,
     MotifTolerance,
     canonical_motif,
-    canonical_motifs,
 )
-from .platforms import CACHE_ENV, PLATFORMS, READERS, ensure_table, get_platform
+
+from .catalog import STATUSES, UNSCREENED, RepeatCatalog, RepeatFilter
+from .insertions import PASS, Check, add_insertion_purity, filter_reasons
+from .platforms import (
+    CACHE_ENV,
+    PLATFORMS,
+    READERS,
+    canonical_motifs,
+    ensure_table,
+    get_platform,
+)
 from .search import (
     OBJECTIVES,
     SAMPLERS,

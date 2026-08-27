@@ -5,8 +5,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from novelty.catalog import STATUSES, RepeatCatalog, to_external, to_internal
-from novelty.motifs import MotifEquivalence, MotifTolerance
+from novelty.catalog import STATUSES, RepeatCatalog
+from trcore.coords import to_external, to_internal
+from trcore.motifs import MotifEquivalence, MotifTolerance
 
 # --------------------------------------------------------------------------- #
 # coordinates -- the part that silently breaks if 0/1-based is mixed up
