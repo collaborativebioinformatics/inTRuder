@@ -26,7 +26,7 @@ columns:
   pos: Insertion-site position on that chromosome.
   motif: Repeat motif, canonicalized to the smallest rotation of itself or its reverse complement.
   motif_len: Length of the motif in bp.
-  motif_class: One of homopolymer (1bp), STR (2-6bp), mid (7-20bp), VNTR (>20bp).
+  motif_class: One of homopolymer (1bp), STR (2-6bp), VNTR (>=7bp).
   n_samples: Number of the 68 cohort samples carrying an insertion at this locus.
   median_len: Median inserted-allele length in bp across carriers.
   min_len: Shortest inserted allele in bp.

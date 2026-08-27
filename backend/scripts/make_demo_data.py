@@ -73,12 +73,18 @@ def canonical_motif(motif: str) -> str:
 
 
 def motif_class(motif_len: int) -> str:
+    """The three classes a motif length falls in: 1bp, 2-6bp, >=7bp.
+
+    There is no fourth class between STR and VNTR. A 7bp unit and a 40bp one
+    behave the same way against a reference catalogue -- neither is short enough
+    for the consensus sequence to be trusted base for base -- so a middle class
+    would be drawing a line the data does not have. 6bp is the same boundary
+    `novelty.motifs.STR_MAX_MOTIF` draws.
+    """
     if motif_len == 1:
         return "homopolymer"
     if motif_len <= 6:
         return "STR"
-    if motif_len <= 20:
-        return "mid"
     return "VNTR"
 
 
@@ -95,7 +101,9 @@ def random_motif(rng: random.Random, target_len: int) -> str:
 
 def draw_motif_length(rng: random.Random) -> int:
     """Match the motif-length mix measured in the real callset: ~28% homopolymer,
-    ~58% STR, ~5% 7-20bp, ~9% VNTR."""
+    ~58% STR, ~14% VNTR -- about 5 points of that VNTR share is 7-20bp and the
+    rest is longer, which is why the draw below keeps the two ranges apart even
+    though they are one class."""
     roll = rng.random()
     if roll < 0.28:
         return 1
@@ -122,6 +130,12 @@ def draw_purity(rng: random.Random) -> float:
 # shape is reproduced, so a fresh clone renders a reference comparison whose
 # proportions are right while every individual value stays generated.
 #
+# The VNTR row of each table below is the 7-20bp and >20bp measurements pooled
+# on their class shares (5:9), from back when those were two classes. They are
+# close enough to each other that pooling them changes little, but they are one
+# arithmetic step further from the callset than the rest -- re-measure to make
+# them first-hand again.
+#
 # Re-measure with:
 #   uv run novelty --platform ucsc,trexplorer annotate IN.trf.tsv OUT.tsv
 # --------------------------------------------------------------------------- #
@@ -134,8 +148,7 @@ def draw_purity(rng: random.Random) -> float:
 NOVELTY_BY_CLASS = {
     "homopolymer": {"known": 0.058, "novel_motif": 0.149, "novel_locus": 0.792},
     "STR":         {"known": 0.546, "novel_motif": 0.285, "novel_locus": 0.168},
-    "mid":         {"known": 0.572, "novel_motif": 0.386, "novel_locus": 0.043},
-    "VNTR":        {"known": 0.509, "novel_motif": 0.478, "novel_locus": 0.013},
+    "VNTR":        {"known": 0.531, "novel_motif": 0.445, "novel_locus": 0.024},
 }
 
 #: How the two catalogs split, given the combined verdict. The combined verdict
@@ -165,8 +178,7 @@ PLATFORM_SPLIT = {
 UCSC_SPAN = {
     "homopolymer": (42, 568, 5819),
     "STR": (51, 322, 2197),
-    "mid": (83, 404, 1408),
-    "VNTR": (132, 474, 1563),
+    "VNTR": (114, 449, 1508),
 }
 TREXPLORER_SPAN = (10, 165, 1262)
 
@@ -185,8 +197,7 @@ UCSC_NOVEL_PERIOD = (3, 20, 77)
 INSERTION_PURITY = {
     "homopolymer": (0.035, 0.089, 0.197),
     "STR": (0.059, 0.560, 0.956),
-    "mid": (0.495, 0.890, 0.983),
-    "VNTR": (0.649, 0.891, 0.976),
+    "VNTR": (0.594, 0.891, 0.979),
 }
 
 #: Reference repeats within the 10 bp window, given at least one. UCSC annotates

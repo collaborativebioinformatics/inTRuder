@@ -20,13 +20,12 @@ import { useView } from "@/lib/viewStore";
  * this chart in the first place.
  */
 
-const ORDER: MotifClass[] = ["homopolymer", "STR", "mid", "VNTR"];
+const ORDER: MotifClass[] = ["homopolymer", "STR", "VNTR"];
 
 const PERIOD: Record<MotifClass, string> = {
   homopolymer: "1 bp",
   STR: "2–6 bp",
-  mid: "7–20 bp",
-  VNTR: ">20 bp",
+  VNTR: "≥7 bp",
 };
 
 export function ClassBreakdown({ summary }: { summary: Summary }) {
