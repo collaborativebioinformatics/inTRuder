@@ -77,8 +77,19 @@ def datasets() -> dict[str, Any]:
 # Visualization data
 # --------------------------------------------------------------------------- #
 
+def _available(name: str) -> bool:
+    return name in {d.name for d in registry.available_datasets()}
+
+
+def _rows(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+    """Run a query and return dict rows. Uses a private cursor — see registry."""
+    cursor = registry.cursor().execute(sql, params or [])
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
 def _require_loci() -> None:
-    if "demo_loci" not in {d.name for d in registry.available_datasets()}:
+    if not _available("demo_loci"):
         raise HTTPException(
             status_code=503,
             detail="The 'demo_loci' dataset is not available. Run: "
@@ -177,9 +188,7 @@ def loci(
     rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     strips: dict[str, list[dict[str, Any]]] = {}
-    if include_strips and rows and "demo_segments" in {
-        d.name for d in registry.available_datasets()
-    }:
+    if include_strips and rows and _available("demo_segments"):
         locus_ids = [r["locus_id"] for r in rows]
         placeholders = ",".join("?" for _ in locus_ids)
         strip_cursor = con.execute(
@@ -232,7 +241,7 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
     locus = dict(zip([d[0] for d in cursor.description], row))
 
     segments: list[dict[str, Any]] = []
-    if "demo_segments" in {d.name for d in registry.available_datasets()}:
+    if _available("demo_segments"):
         seg_cursor = con.execute(
             """SELECT sample, seg_index, seg_type, start, "end", motif, purity, units
                FROM demo_segments WHERE locus_id = ?
@@ -304,6 +313,176 @@ def summary() -> dict[str, Any]:
         ),
         "synthetic": any(d.synthetic for d in registry.available_datasets()),
     }
+
+
+# --------------------------------------------------------------------------- #
+# STRchive — the disease-locus reference, and our candidates screened against it
+# --------------------------------------------------------------------------- #
+
+def _require_strchive() -> None:
+    if not _available("strchive_loci"):
+        raise HTTPException(
+            status_code=503,
+            detail="The 'strchive_loci' dataset is not available. Run: "
+                   "cd backend && uv run python scripts/fetch_strchive.py",
+        )
+
+
+@app.get("/api/strchive/summary")
+def strchive_summary() -> dict[str, Any]:
+    """Catalog-level counts, plus how our own callset scored against it.
+
+    The `screen` block is null until the pipeline's STRchive step has been run —
+    the page is built to render the catalog alone until then.
+    """
+    _require_strchive()
+
+    totals = _rows(
+        """SELECT count(*) AS n_loci,
+                  count(*) FILTER (WHERE novel_in_reference) AS n_novel_in_reference,
+                  count(*) FILTER (WHERE pathogenic_min IS NOT NULL) AS n_with_range,
+                  count(*) FILTER (WHERE ref_copies IS NULL) AS n_without_ref_copies,
+                  max(catalog_version) AS catalog_version
+           FROM strchive_loci"""
+    )[0]
+
+    # Evidence is single-valued in practice; inheritance genuinely is not (AD;AR),
+    # so it gets split rather than grouped as a string.
+    by_evidence = _rows(
+        """SELECT evidence,
+                  count(*) AS n,
+                  count(*) FILTER (WHERE novel_in_reference) AS novel
+           FROM strchive_loci GROUP BY 1 ORDER BY n DESC"""
+    )
+    by_inheritance = _rows(
+        """SELECT trim(part) AS inheritance, count(*) AS n
+           FROM strchive_loci, unnest(string_split(inheritance, ';')) AS t(part)
+           WHERE trim(part) <> '' GROUP BY 1 ORDER BY n DESC"""
+    )
+
+    screen: dict[str, Any] | None = None
+    if _available("strchive_calls"):
+        counts = _rows(
+            """SELECT strchive_status AS status,
+                      count(*) AS rows,
+                      count(DISTINCT chrom || ':' || ins_coord) AS loci
+               FROM strchive_calls GROUP BY 1 ORDER BY rows DESC"""
+        )
+        spread = _rows(
+            """SELECT count(*) AS n_rows,
+                      count(DISTINCT chrom || ':' || ins_coord) AS n_loci,
+                      min(TRY_CAST(strchive_distance_bp AS BIGINT))
+                        FILTER (WHERE strchive_id IS NOT NULL AND strchive_id <> '')
+                        AS nearest_hit_bp
+               FROM strchive_calls"""
+        )[0]
+        screen = {"available": True, "by_status": counts, **spread}
+
+    return {**totals, "by_evidence": by_evidence, "by_inheritance": by_inheritance,
+            "screen": screen}
+
+
+@app.get("/api/strchive/loci")
+def strchive_loci(
+    novel_in_reference: bool = False,
+    evidence: str | None = None,
+    inheritance: str | None = None,
+    gene: str | None = None,
+    q: str | None = None,
+    limit: int = Query(200, le=500),
+) -> dict[str, Any]:
+    """The disease-locus catalog, filtered. Reference knowledge, not our results."""
+    _require_strchive()
+    clauses: list[str] = []
+    params: list[Any] = []
+    if novel_in_reference:
+        clauses.append("novel_in_reference")
+    if evidence:
+        clauses.append("evidence = ?")
+        params.append(evidence)
+    if inheritance:
+        clauses.append("inheritance LIKE ?")
+        params.append(f"%{inheritance}%")
+    if gene:
+        clauses.append("upper(gene) = upper(?)")
+        params.append(gene)
+    if q:
+        clauses.append(
+            "(upper(gene) LIKE upper(?) OR upper(disease) LIKE upper(?) "
+            "OR upper(id) LIKE upper(?))"
+        )
+        params.extend([f"%{q}%"] * 3)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    total = registry.cursor().execute(
+        f"SELECT count(*) FROM strchive_loci {where}", params
+    ).fetchone()[0]
+    # Novel-in-reference first: on this project's page those are the loci the
+    # argument is about, and burying them in genomic order hides the point.
+    loci = _rows(
+        f"""SELECT * FROM strchive_loci {where}
+            ORDER BY novel_in_reference DESC, gene
+            LIMIT ?""",
+        [*params, limit],
+    )
+    return {"total": total, "returned": len(loci), "loci": loci}
+
+
+@app.get("/api/strchive/matches")
+def strchive_matches(
+    status: str | None = None,
+    limit: int = Query(200, le=500),
+) -> dict[str, Any]:
+    """Our candidate repeats that landed on a known disease locus.
+
+    Returns `available: false` rather than 503 when the screened table is not
+    registered — an interface that has not been run yet is a different thing from
+    one that is broken, and the page says so.
+    """
+    if not _available("strchive_calls"):
+        return {
+            "available": False,
+            "note": "No screened callset registered. Run the novelty screen and "
+                    "`strchive annotate`, then point data/web/strchive-calls.yaml "
+                    "at the output.",
+            "total": 0,
+            "matches": [],
+        }
+
+    clauses = ["strchive_id IS NOT NULL", "strchive_id <> ''"]
+    params: list[Any] = []
+    if status:
+        clauses.append("strchive_status = ?")
+        params.append(status)
+    where = "WHERE " + " AND ".join(clauses)
+
+    total = registry.cursor().execute(
+        f"SELECT count(*) FROM strchive_calls {where}", params
+    ).fetchone()[0]
+    matches = _rows(
+        f"""SELECT chrom, ins_coord, SVID, sample, motif, canonical_motif,
+                   rep_units, purity, insertion_purity, novelty,
+                   ucsc_novelty, trexplorer_novelty,
+                   strchive_status, strchive_id, strchive_gene, strchive_disease,
+                   strchive_inheritance, strchive_evidence, strchive_distance_bp,
+                   strchive_motif_class, strchive_motif_edits, strchive_matched_motif,
+                   strchive_ref_copies, strchive_est_copies, strchive_allele_class,
+                   strchive_pathogenic_min, strchive_pathogenic_max,
+                   strchive_novel_in_ref, strchive_catalog
+            FROM strchive_calls {where}
+            -- Most interesting first: a pathogenic expansion outranks a bare
+            -- locus hit, and closer outranks further within a status.
+            ORDER BY CASE strchive_status
+                       WHEN 'pathogenic_expansion' THEN 0
+                       WHEN 'pathogenic_motif' THEN 1
+                       WHEN 'locus_novel_motif' THEN 2
+                       WHEN 'locus_known_motif' THEN 3
+                       ELSE 4 END,
+                     TRY_CAST(strchive_distance_bp AS BIGINT)
+            LIMIT ?""",
+        [*params, limit],
+    )
+    return {"available": True, "note": "", "total": total, "matches": matches}
 
 
 # --------------------------------------------------------------------------- #

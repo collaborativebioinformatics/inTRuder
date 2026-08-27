@@ -43,6 +43,32 @@ def test_a_manifest_without_its_file_degrades_rather_than_breaking(client):
 
 
 
+def test_strchive_catalog_is_served(client):
+    """The disease catalog is reference data and should be present on a clone
+    that has run scripts/fetch_strchive.py."""
+    summary = client.get("/api/strchive/summary")
+    if summary.status_code == 503:
+        pytest.skip("strchive_loci not fetched; run scripts/fetch_strchive.py")
+    body = summary.json()
+    assert body["n_loci"] == 82
+    # The headline field: STRchive's own count of loci whose pathogenic motif is
+    # absent from hg38. If this moves, the pinned release moved with it.
+    assert body["n_novel_in_reference"] == 11
+    assert body["screen"] is None or body["screen"]["available"] is True
+
+    loci = client.get("/api/strchive/loci", params={"novel_in_reference": True}).json()
+    assert loci["total"] == 11
+    assert all(locus["novel_in_reference"] for locus in loci["loci"])
+    assert {"RFC1", "SAMD12"} <= {locus["gene"] for locus in loci["loci"]}
+
+def test_strchive_matches_reports_absence_rather_than_failing(client):
+    """Not-yet-run is a state the page renders, not an error."""
+    body = client.get("/api/strchive/matches").json()
+    assert body["available"] in (True, False)
+    if not body["available"]:
+        assert body["note"]
+        assert body["matches"] == []
+
 
 def test_summary_funnel_is_monotonically_narrowing(client):
     counts = [stage["count"] for stage in client.get("/api/summary").json()["funnel"]]
