@@ -5,13 +5,13 @@ import statistics as stats
 import sys
 
 REQUIRED_COLUMNS = [
-    "chrom", "ins_coord", "SVID", "depth", "insert_size", "sample",
+    "chrom", "ins_coord", "SVID", "depth", "insert_size", "sample", "allele",
     "rep_start", "rep_end", "motif", "purity", "motif_length",
     "rep_length", "rep_units",
 ]
 
 NUMERIC_FIELDS = {
-    "depth": int,
+    "depth": lambda x: sum([(int(v)) for v in x.split(",")]) if "," in x else int(x),
     "insert_size": int,
     "rep_start": int,
     "rep_end": int,
@@ -60,8 +60,8 @@ def parse_args():
              "are removed.",
     )
     p.add_argument(
-        "--min-depth", type=int, default=10,
-        help="Minimum number of supporting reads ('depth').",
+        "--min-depth", type=int, default=30,
+        help="Minimum number of supporting reads ('depth'). Default: 30.",
     )
     return p.parse_args()
 
