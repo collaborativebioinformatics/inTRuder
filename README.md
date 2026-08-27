@@ -1,4 +1,4 @@
-# Novel Tandem Repeats
+# inTRuder
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](.python-version)
 [![uv](https://img.shields.io/badge/uv-managed-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
@@ -8,8 +8,12 @@
 [![Sniffles2](https://img.shields.io/badge/SV%20calls-Sniffles2-4C8CBF)](https://github.com/fritzsedlazeck/Sniffles)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/images/logo.png" alt="inTRuder logo" width="480">
+</p>
+
 ## Motivation 
-Tandem repeat catalogs are built from the reference genome, so TR loci the reference lacks are invisible to every genotyper that depends on them. novelTRs recovers these loci from long-read SV insertion calls — where, by construction, any reference-absent repeat expansion already sits — without whole-genome assembly.
+Tandem repeat catalogs are built from the reference genome, so TR loci the reference lacks are invisible to every genotyper that depends on them. inTRuder recovers these loci from long-read SV insertion calls — where, by construction, any reference-absent repeat expansion already sits — without whole-genome assembly.
 
 ## Table of Contents
 
