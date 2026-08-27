@@ -93,8 +93,14 @@ for variant in tqdm(vcf, ncols=80, smoothing=0.1, unit='variants'):
                     motif_length = len(motif)
 
                     rep_length = rep_end - rep_start
-                    rep_units  = rep_length // motif_length + 2
-                    query      = motif*(rep_units)
+                    # How many copies of the motif the repeat actually spans --
+                    # this is a reported column, and `novelty --min-rep-units`
+                    # thresholds on it.
+                    rep_units  = rep_length // motif_length
+                    # The alignment target is padded by two extra copies so a
+                    # semi-global alignment has somewhere to run off the end;
+                    # that padding must not leak into the reported copy number.
+                    query      = motif*(rep_units + 2)
 
                     result = parasail.sg_trace_scan_16(ALT[rep_start:rep_end], query, 5, 1, matrix)
 
