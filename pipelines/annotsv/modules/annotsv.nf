@@ -39,8 +39,8 @@ process ANNOTSV {
     path "*.log",                             emit: log
 
     script:
-    def cand_genes_flag = (candidate_genes.name != 'NO_FILE') ? "-candidateGenesFile ${candidate_genes}" : ''
-    def annot_dir_flag  = (annotations_dir.name != 'NO_DIR')  ? "-annotationsDir ${annotations_dir}"     : ''
+    def cand_genes_flag = (candidate_genes && !(candidate_genes instanceof List && candidate_genes.isEmpty()) && candidate_genes.name) ? "-candidateGenesFile ${candidate_genes}" : ''
+    def annot_dir_flag  = (annotations_dir && annotations_dir.name != 'NO_DIR')  ? "-annotationsDir ${annotations_dir}"     : ''
     def annotsv_cmd     = (params.annotsv_dir && file("${params.annotsv_dir}/bin/AnnotSV").exists()) ? "${params.annotsv_dir}/bin/AnnotSV" : 'AnnotSV'
     def bedtools_cmd    = params.bedtools_path ?: 'bedtools'
     def bcftools_cmd    = params.bcftools_path ?: 'bcftools'

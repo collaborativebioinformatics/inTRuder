@@ -134,7 +134,7 @@ workflow {
     // 5. Optional candidate-genes file channel
     ch_candidate_genes = params.candidate_genes
         ? Channel.fromPath(params.candidate_genes, checkIfExists: true)
-        : Channel.value(file('NO_FILE'))
+        : Channel.value([])
 
     // 6. Annotations directory channel
     ch_annotations = resolved_annot
