@@ -11,19 +11,23 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# Anchored to the repository root with a leading slash. Without it, a bare
+# directory name such as `lib/` matches at ANY depth and silently swallows
+# unrelated source trees — `frontend/lib/` most notably. Node build output is
+# handled by frontend/.gitignore.
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -272,7 +276,14 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
 # Reference TR catalogues downloaded from UCSC / TRExplorer, and the index
 # caches built beside them (30 MB+ blobs that `uv run novelty` re-fetches on
 # demand, so they should not land in a commit)
 data/reference/
+
+# Fetched reference catalogs for the web layer. Regenerate with
+# `cd backend && uv run python scripts/fetch_strchive.py`. The manifest that
+# describes this file IS committed (data/web/strchive-loci.yaml); the data is a
+# pinned, checksummed download, so it is not.
+data/web/strchive/
