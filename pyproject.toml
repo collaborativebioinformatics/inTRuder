@@ -41,12 +41,18 @@ compression = "intruder.pipeline.compression.annotate:main"
 # [tool.uv.build-backend] below) rather than under `intruder`, since it ships
 # its own optional dependency groups (analysis/embed/notebook/torch backends).
 evo-embed = "evo.embeddings.cli:main"
+# The analysis half. Both need `--extra analysis`; they import sklearn/umap
+# lazily, so `--help` still works without it and says what is missing.
+analysis-reduce = "analysis.dim_reduc.cli:main"
+analysis-cluster = "analysis.clustering.cli:main"
 
 [project.optional-dependencies]
 # Analysis half of the Evo 2 work: reduction, clustering, outlier scoring, plots.
 # Pure CPU -- no torch, no GPU -- so it installs anywhere and is the half you
 # iterate on locally against vectors the cluster produced.
 analysis = [
+    # >=1.3 for sklearn.cluster.HDBSCAN, which is why `hdbscan` is not a
+    # separate dependency; >=1.7 to match what the lock already resolves.
     "scikit-learn>=1.7",
     "umap-learn>=0.5.9",
     "matplotlib>=3.10",
@@ -179,20 +185,21 @@ requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# Two installed packages. `intruder` holds every pipeline module:
+# Three installed packages. `intruder` holds every pipeline module:
 #   intruder.trcore     shared primitives
 #   intruder.pipeline   the pipeline steps
 #   intruder.analysis   post-hoc analysis of their output
 # It replaces the five bare top-level packages that were installed before
 # (trcore, novelty, strchive, svpytrf, filter).
-# `evo` is a second, separate top-level package for the Evo 2 embedding work --
-# it ships its own optional dependency groups (analysis/embed/notebook/torch
+# `evo` and `analysis` are separate top-level packages for the Evo 2 embedding
+# work -- extraction and the reduce/cluster analysis half, respectively. Both
+# ship their own optional dependency groups (analysis/embed/notebook/torch
 # backends, see [project.optional-dependencies]) that don't belong on the
-# pipeline's default install, so it is kept out of `intruder` rather than
+# pipeline's default install, so they are kept out of `intruder` rather than
 # nested under it.
-# Both are installed editable, so edits take effect without re-syncing.
+# All three are installed editable, so edits take effect without re-syncing.
 module-root = "src/python"
-module-name = ["intruder", "evo"]
+module-name = ["intruder", "evo", "analysis"]
 
 [tool.ruff]
 line-length = 100
