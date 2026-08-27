@@ -124,7 +124,13 @@ def main(argv: list[str] | None = None) -> int:
                     name, embedder, torch, windows, layers, args.device,
                     warmup=args.warmup, reference=baselines.get(set_name),
                 )
-            except torch.cuda.OutOfMemoryError as exc:
+            except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                # Not every allocator failure arrives as OutOfMemoryError -- some
+                # come out of a kernel as a plain RuntimeError -- and an OOM on
+                # `batched`, the variant most likely to hit one, must not take
+                # the other five measurements down with it.
+                if "out of memory" not in str(exc).lower():
+                    raise
                 torch.cuda.empty_cache()
                 print(f"    OUT OF MEMORY -- {str(exc).splitlines()[0]}")
                 results.append((label, None))
