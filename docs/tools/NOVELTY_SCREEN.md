@@ -397,17 +397,19 @@ boundaries. VCF `POS` is 1-based; UCSC `simpleRepeat`, plain BED and TRGT BED ar
 JSON distributed with the same catalogue upstream, whose `ReferenceRegion`
 strings are byte-identical to the BED start/end pairs.
 
-The motif and coordinate primitives are not owned by this step. They live in
-`src/python/trcore/`, which the STRchive step imports too, because two steps that
-disagree by one base on what "overlapping" means — or that fold strands
-differently — produce tables that look comparable and are not. `trcore` is pure
-standard library, so importing it does not drag pandas into a step that has no
-need of it.
+The motif, coordinate and download primitives are not owned by this step. They
+live in `src/python/trcore/`, which the STRchive step imports too, because two
+steps that disagree by one base on what "overlapping" means — or that fold
+strands differently — produce tables that look comparable and are not, and a
+step that dies on a broken TLS trust store while its neighbour recovers is a
+difference nobody chose. `trcore` is pure standard library, so importing it does
+not drag pandas into a step that has no need of it.
 
 | file | what it holds |
 |---|---|
 | `trcore/motifs.py` | `MotifEquivalence` and `MotifTolerance`, canonical form, fuzzy and tiling distance |
 | `trcore/coords.py` | 0-based half-open conversion, contig naming, interval distance |
+| `trcore/fetch.py` | the cache directory, and downloading with a `curl` fallback |
 | `platforms.py` | catalogue sources and readers — UCSC, TRExplorer, BED, TRGT BED — normalised to one schema, plus the pandas-vectorised `canonical_motifs` |
 | `catalog.py` | the interval index, the verdict, the index cache |
 | `insertions.py` | insertion purity and the `filter` column |
