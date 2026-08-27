@@ -54,6 +54,7 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | Document | Contents |
 |---|---|
 | [Novelty screen](docs/tools/NOVELTY_SCREEN.md) | Is this repeat absent from the reference? Catalogues, motif equivalence and tolerance, the known/novel verdict |
+| [STRchive comparison](docs/tools/STRCHIVE_COMPARE.md) | Is it a known disease locus? Motif classes, allele-class thresholds, the annotated output table |
 
 ### Code and environments
 
