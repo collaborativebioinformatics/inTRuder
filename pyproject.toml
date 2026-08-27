@@ -16,8 +16,9 @@ dependencies = [
 ]
 
 [project.scripts]
-# `uv run novelty ...` from anywhere in the repo.
+# `uv run novelty ...` / `uv run strchive ...` from anywhere in the repo.
 novelty = "novelty.cli:main"
+strchive = "strchive.__main__:main"
 
 [dependency-groups]
 # Dev-only tooling; install with `uv sync` (included by default)
@@ -36,7 +37,7 @@ build-backend = "uv_build"
 # PATH. Loose scripts under src/python -- such as sv_trfcaller.py -- stay
 # scripts and are not part of the distribution.
 module-root = "src/python"
-module-name = ["trcore", "novelty"]
+module-name = ["trcore", "novelty", "strchive"]
 
 [tool.ruff]
 line-length = 100
@@ -44,6 +45,11 @@ src = ["src/python"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
-# `novelty` is installed editable, but keeping src/python on sys.path means the
-# tests also run against a bare checkout that has not been synced.
+# Each step keeps its own test package, so basenames repeat across them
+# (tests/python/novelty/test_catalog.py and tests/python/strchive/test_catalog.py).
+# importlib mode imports each by full path instead of by basename, which is
+# what lets the two coexist without __init__.py scaffolding.
+addopts = ["--import-mode=importlib"]
+# The step packages are installed editable, but keeping src/python on sys.path
+# means the tests also run against a bare checkout that has not been synced.
 pythonpath = ["src/python"]
