@@ -49,6 +49,12 @@ Tandem repeat catalogs are built from the reference genome, so TR loci the refer
 | [`data/aws_giab_cram.list`](data/aws_giab_cram.list) | AWS S3 locations of the processed GIAB CRAM files |
 | [`data/sv_output/`](data/sv_output/) | Per-sample raw and filtered Sniffles VCFs, plus the merged multi-sample VCF subset |
 
+### Tools
+
+| Document | Contents |
+|---|---|
+| [Novelty screen](docs/tools/NOVELTY_SCREEN.md) | Is this repeat absent from the reference? Catalogues, motif equivalence and tolerance, the known/novel verdict |
+
 ### Code and environments
 
 | Document | Contents |

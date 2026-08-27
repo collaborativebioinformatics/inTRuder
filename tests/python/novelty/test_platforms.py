@@ -8,6 +8,7 @@ from novelty.platforms import (
     ANNOTATION_COLUMNS,
     CATALOG_COLUMNS,
     PLATFORMS,
+    canonical_motifs,
     ensure_table,
     get_platform,
     normalize_chrom,
@@ -15,6 +16,7 @@ from novelty.platforms import (
     read_catalog,
     sniff_format,
 )
+from trcore.motifs import DEFAULT_EQUIVALENCE, MotifEquivalence, canonical_motif
 
 
 def test_normalize_chrom():
@@ -22,6 +24,25 @@ def test_normalize_chrom():
     assert normalize_chrom("chr1") == "chr1"
     assert normalize_chrom("MT") == "chrM"
     assert normalize_chrom(" chrX ") == "chrX"
+
+
+@pytest.mark.parametrize("equivalence", [
+    DEFAULT_EQUIVALENCE,
+    MotifEquivalence(reverse_complement=True),
+    MotifEquivalence(circular=False),
+    MotifEquivalence(circular=False, reverse_complement=True),
+    MotifEquivalence(reverse_complement=True, reverse_complement_bp=4),
+])
+def test_canonical_motifs_matches_the_scalar_version(equivalence):
+    """The vectorised path canonicalises the uniques and broadcasts them back."""
+    values = ["GC", "cg", " AT ", "ATAT", "AAT", "GC", "TAACCC", "", None]
+    got = canonical_motifs(values, equivalence)
+    want = [canonical_motif(v or "", equivalence) for v in values]
+    assert list(got) == want
+
+
+def test_canonical_motifs_handles_an_empty_input():
+    assert list(canonical_motifs([])) == []
 
 
 def test_normalize_chroms_matches_the_scalar_version():

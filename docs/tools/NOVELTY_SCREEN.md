@@ -397,15 +397,23 @@ boundaries. VCF `POS` is 1-based; UCSC `simpleRepeat`, plain BED and TRGT BED ar
 JSON distributed with the same catalogue upstream, whose `ReferenceRegion`
 strings are byte-identical to the BED start/end pairs.
 
+The motif and coordinate primitives are not owned by this step. They live in
+`src/python/trcore/`, which the STRchive step imports too, because two steps that
+disagree by one base on what "overlapping" means — or that fold strands
+differently — produce tables that look comparable and are not. `trcore` is pure
+standard library, so importing it does not drag pandas into a step that has no
+need of it.
+
 | file | what it holds |
 |---|---|
-| `motifs.py` | `MotifEquivalence` and `MotifTolerance`, canonical form, fuzzy and tiling distance |
-| `platforms.py` | catalogue sources and readers — UCSC, TRExplorer, BED, TRGT BED — normalised to one schema |
+| `trcore/motifs.py` | `MotifEquivalence` and `MotifTolerance`, canonical form, fuzzy and tiling distance |
+| `trcore/coords.py` | 0-based half-open conversion, contig naming, interval distance |
+| `platforms.py` | catalogue sources and readers — UCSC, TRExplorer, BED, TRGT BED — normalised to one schema, plus the pandas-vectorised `canonical_motifs` |
 | `catalog.py` | the interval index, the verdict, the index cache |
 | `insertions.py` | insertion purity and the `filter` column |
 | `search.py` | the Optuna search: axes, samplers, objectives |
 | `cli.py` | the four commands, and the table declaring every tunable setting |
-| `tests/python/novelty/` | one test module per source module; `uv run pytest` |
+| `tests/python/novelty/`, `tests/python/trcore/` | one test module per source module; `uv run pytest` |
 
 Adding a catalogue means a reader plus a registry entry in `platforms.py`. Adding
 a setting means one row in `HYPERPARAMS` in `cli.py`, which wires it into
@@ -424,7 +432,7 @@ file vendored.
 - **The STR/VNTR boundary at 6 bp** (`utils/eh_catalog_utils.py`,
   `compute_repeat_unit_id`) — motifs of 6 bp and under are keyed by sequence;
   longer ones vary between callers, so their sequence is not a reliable identity.
-  Used as `STR_MAX_MOTIF = 6` in `motifs.py` to gate `--max-motif-edit-fraction`.
+  Used as `STR_MAX_MOTIF = 6` in `trcore/motifs.py` to gate `--max-motif-edit-fraction`.
   Their rule itself was not adopted: it treats any two motifs of equal length
   above 6 bp as the same repeat with no sequence check, which reclassifies 365
   rows of the sample data, against 382 for a proportional edit budget that still
