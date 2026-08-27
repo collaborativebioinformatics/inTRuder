@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
+import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
 import { formatBp, formatPos, shortMotif } from "@/lib/palette";
-import type { Locus, Segment } from "@/lib/types";
+import { NOVELTY_LABELS, type Locus, type Segment } from "@/lib/types";
 import { useView } from "@/lib/viewStore";
 
 /**
@@ -15,6 +16,11 @@ import { useView } from "@/lib/viewStore";
  * already known. That makes the novel fraction readable as texture down the
  * page, before anyone touches a control. Motif identity comes back at level 2,
  * where novelty is constant and no longer needs the channel.
+ *
+ * The screen's verdict is three-valued, and the strip deliberately does not try
+ * to carry that third value: opacity is already spoken for by purity, so
+ * motif-novelty versus locus-novelty rides on the text badge instead. Colour
+ * answers "is this new"; the badge answers "new in what way".
  */
 
 export function CatalogView({
@@ -118,6 +124,15 @@ export function CatalogView({
                           </span>
                         )}
                       </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <NoveltyBadge status={noveltyOf(locus)} />
+                        <PlatformAgreement
+                          ucsc={locus.ucsc_novelty}
+                          trexplorer={locus.trexplorer_novelty}
+                          ucscEdits={locus.ucsc_motif_edits}
+                          trexplorerEdits={locus.trexplorer_motif_edits}
+                        />
+                      </div>
                       <div className="tabular truncate text-[11px] text-ink-muted">
                         {shortMotif(locus.motif)} ×{locus.motif_len}bp · {locus.motif_class}
                       </div>
@@ -132,13 +147,13 @@ export function CatalogView({
                         segments={segments}
                         maxLen={rowLength.get(locus.locus_id) ?? 1}
                         height={14}
-                        ariaLabel={`${locus.locus_id}: ${locus.novel ? "novel" : "catalogued"} ${locus.motif_class}, ${formatBp(locus.median_len)}`}
+                        ariaLabel={`${locus.locus_id}: ${NOVELTY_LABELS[noveltyOf(locus)]} ${locus.motif_class}, ${formatBp(locus.median_len)}`}
                         colorFor={(segment) =>
                           segment.seg_type === "flank"
                             ? "var(--flank)"
-                            : locus.novel
-                              ? "var(--novel)"
-                              : "var(--known)"
+                            : noveltyOf(locus) === "known"
+                              ? "var(--known)"
+                              : "var(--novel)"
                         }
                         onHover={(segment, event) =>
                           setHover(

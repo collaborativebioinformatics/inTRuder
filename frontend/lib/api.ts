@@ -22,6 +22,13 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   if (filters.min_motif_len != null) params.set("min_motif_len", String(filters.min_motif_len));
   if (filters.min_samples != null) params.set("min_samples", String(filters.min_samples));
   if (filters.min_purity != null) params.set("min_purity", String(filters.min_purity));
+  if (filters.novelty) params.set("novelty", filters.novelty);
+  if (filters.platform_agreement) params.set("platform_agreement", filters.platform_agreement);
+  if (filters.sample) params.set("sample", filters.sample);
+  if (filters.strchive_status) params.set("strchive_status", filters.strchive_status);
+  if (filters.min_insertion_purity != null) {
+    params.set("min_insertion_purity", String(filters.min_insertion_purity));
+  }
   for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
   return params.toString();
 }

@@ -1,5 +1,43 @@
 export type MotifClass = "homopolymer" | "STR" | "mid" | "VNTR";
 
+/**
+ * The novelty screen's verdict. Three-valued, not boolean: "the reference has
+ * repeats here but none with this motif" and "the reference annotates nothing
+ * here" are different findings, and collapsing them loses the distinction the
+ * pipeline exists to draw. See docs/tools/NOVELTY_SCREEN.md.
+ */
+export type NoveltyStatus = "known" | "novel_motif" | "novel_locus";
+
+/**
+ * What the interface can actually display today. `novel` is the coarse legacy
+ * value carried by the demo fixtures, which only record a boolean; real screened
+ * data resolves it into one of the three above.
+ */
+export type NoveltyDisplay = NoveltyStatus | "novel";
+
+export const NOVELTY_LABELS: Record<NoveltyDisplay, string> = {
+  known: "Catalogued",
+  novel_motif: "Novel motif",
+  novel_locus: "Novel locus",
+  novel: "Novel",
+};
+
+export const NOVELTY_NOTES: Record<NoveltyDisplay, string> = {
+  known: "A reference repeat with an equivalent motif sits at this locus.",
+  novel_motif:
+    "The reference has repeats here, but none with this motif. Check the edit distance — a single substitution reads as novel.",
+  novel_locus: "The reference annotates no repeat at all near this locus.",
+  novel: "No catalog contains this locus. Run the novelty screen to resolve motif- from locus-novelty.",
+};
+
+/** The reference catalogs a locus is screened against, each independently. */
+export type PlatformName = "ucsc" | "trexplorer";
+
+export const PLATFORM_LABELS: Record<PlatformName, string> = {
+  ucsc: "UCSC simpleRepeat",
+  trexplorer: "TRExplorer",
+};
+
 export interface Locus {
   locus_id: string;
   chrom: string;
@@ -12,10 +50,29 @@ export interface Locus {
   min_len: number;
   max_len: number;
   mean_purity: number;
+  /** Coarse verdict. Present on demo fixtures; superseded by `novelty` on real data. */
   novel: boolean;
   catalogs: string;
   gene: string | null;
   disease_gene: boolean;
+
+  /* ---- Present once the novelty screen (PR #37) has been run. Optional so the
+     demo fixtures keep rendering, and so the UI can say what it does not know. */
+  novelty?: NoveltyStatus;
+  /** Per-catalog verdicts. Where they agree, the call is a property of the data. */
+  ucsc_novelty?: NoveltyStatus;
+  trexplorer_novelty?: NoveltyStatus;
+  /** Edit distance to the nearest catalog motif. 1 on a novel_motif call is a near miss. */
+  ucsc_motif_edits?: number | null;
+  trexplorer_motif_edits?: number | null;
+  ucsc_motif?: string | null;
+  trexplorer_motif?: string | null;
+  /** Fraction of the insertion that is tandem repeat at all, 0-1. */
+  insertion_purity?: number | null;
+  /* ---- Present once the STRchive step (PR #42) has been run. */
+  strchive_status?: StrchiveStatus;
+  strchive_id?: string | null;
+  strchive_disease?: string | null;
 }
 
 export interface Segment {
@@ -47,6 +104,12 @@ export interface LociResponse {
   loci: Locus[];
   /** Segments of one representative allele per locus, keyed by locus_id. */
   strips: Record<string, Segment[]>;
+  /**
+   * Filters the current table cannot honour, because the screened callset that
+   * supplies their column is not registered. Shown as inactive rather than
+   * dropped — a control that silently matches everything reads as a result.
+   */
+  ignored_filters: (keyof ViewFilters)[];
 }
 
 export interface FunnelStage {
@@ -62,18 +125,186 @@ export interface Summary {
   synthetic: boolean;
 }
 
+/* --------------------------------------------------------------------------
+   STRchive — the curated catalog of tandem repeats known to cause disease.
+   Reference knowledge, not a result from this cohort.
+   -------------------------------------------------------------------------- */
+
+/**
+ * The rollup verdict from screening one candidate against STRchive. Ordered
+ * most to least interesting; `no_locus_match` is the expected answer for nearly
+ * every row, because 82 disease loci in 3 Gb makes the base rate ~zero.
+ */
+export type StrchiveStatus =
+  | "pathogenic_expansion"
+  | "pathogenic_motif"
+  | "locus_novel_motif"
+  | "locus_known_motif"
+  | "no_locus_match";
+
+export const STRCHIVE_STATUS_LABELS: Record<StrchiveStatus, string> = {
+  pathogenic_expansion: "Pathogenic expansion",
+  pathogenic_motif: "Pathogenic motif",
+  locus_novel_motif: "Novel motif at a disease locus",
+  locus_known_motif: "Known motif at a disease locus",
+  no_locus_match: "No disease locus nearby",
+};
+
+/** Where a copy-number estimate falls against the locus's curated ranges. */
+export type AlleleClass = "benign" | "intermediate" | "pathogenic" | "unknown";
+
+/** How a called motif classifies against the motifs STRchive records at a locus. */
+export type StrchiveMotifClass =
+  | "pathogenic"
+  | "reference"
+  | "benign"
+  | "unknown"
+  | "interruption"
+  | "none";
+
+/** One curated disease locus. Semicolon-separated strings are STRchive lists. */
+export interface StrchiveLocus {
+  id: string;
+  disease_id: string;
+  gene: string;
+  disease: string;
+  disease_description: string;
+  chrom: string;
+  start_hg38: number | null;
+  stop_hg38: number | null;
+  start_hg19: number | null;
+  stop_hg19: number | null;
+  start_t2t: number | null;
+  stop_t2t: number | null;
+  gene_strand: string;
+  location_in_gene: string;
+  motif_len: number | null;
+  ref_copies: number | null;
+  benign_min: number | null;
+  benign_max: number | null;
+  intermediate_min: number | null;
+  intermediate_max: number | null;
+  pathogenic_min: number | null;
+  pathogenic_max: number | null;
+  /** True when the PATHOGENIC motif is absent from hg38 entirely — 11 of 82 loci. */
+  novel_in_reference: boolean;
+  novel_flag: string;
+  reference_motif: string;
+  pathogenic_motif: string;
+  benign_motif: string;
+  unknown_motif: string;
+  interruption_motif: string;
+  evidence: string;
+  inheritance: string;
+  association_type: string;
+  mechanism: string;
+  age_onset: string;
+  typ_age_onset_min: number | null;
+  typ_age_onset_max: number | null;
+  prevalence: string;
+  year: string;
+  disease_tags: string;
+  locus_tags: string;
+  omim: string;
+  genereviews: string;
+  gnomad: string;
+  stripy: string;
+  catalog_version: string;
+}
+
+/** One of our candidate repeats that landed on a disease locus. */
+export interface StrchiveMatch {
+  chrom: string;
+  ins_coord: number;
+  SVID: string;
+  sample: string;
+  motif: string;
+  canonical_motif: string;
+  rep_units: number | null;
+  purity: number | null;
+  insertion_purity: number | null;
+  novelty: NoveltyStatus;
+  ucsc_novelty: NoveltyStatus | null;
+  trexplorer_novelty: NoveltyStatus | null;
+  strchive_status: StrchiveStatus;
+  strchive_id: string;
+  strchive_gene: string;
+  strchive_disease: string;
+  strchive_inheritance: string;
+  strchive_evidence: string;
+  strchive_distance_bp: number | null;
+  strchive_motif_class: StrchiveMotifClass;
+  strchive_motif_edits: number | null;
+  strchive_matched_motif: string;
+  strchive_ref_copies: number | null;
+  strchive_est_copies: number | null;
+  strchive_allele_class: AlleleClass;
+  strchive_pathogenic_min: number | null;
+  strchive_pathogenic_max: number | null;
+  strchive_novel_in_ref: boolean | null;
+  strchive_catalog: string;
+}
+
+export interface StrchiveSummary {
+  n_loci: number;
+  n_novel_in_reference: number;
+  n_with_range: number;
+  n_without_ref_copies: number;
+  catalog_version: string;
+  by_evidence: { evidence: string; n: number; novel: number }[];
+  by_inheritance: { inheritance: string; n: number }[];
+  /** Null until the pipeline's STRchive step has been run against this cohort. */
+  screen: {
+    available: boolean;
+    n_rows: number;
+    n_loci: number;
+    nearest_hit_bp: number | null;
+    by_status: { status: StrchiveStatus; rows: number; loci: number }[];
+  } | null;
+}
+
+export interface StrchiveLociResponse {
+  total: number;
+  returned: number;
+  loci: StrchiveLocus[];
+}
+
+export interface StrchiveMatchesResponse {
+  available: boolean;
+  note: string;
+  total: number;
+  matches: StrchiveMatch[];
+}
+
+/* -------------------------------------------------------------------------- */
+
+/** Which surface the workspace is showing. The agent can move this too. */
+export type PageName = "catalog" | "strchive";
+
 /** Filter state. Mirrors the `set_view` tool arguments on the backend so the
  *  agent and the controls manipulate exactly the same object. */
 export interface ViewFilters {
+  page?: PageName;
   novel_only?: boolean;
+  /** Three-valued screen verdict. Supersedes novel_only where real data exists. */
+  novelty?: NoveltyStatus | null;
+  /** Restrict to loci the named catalogs agree on. */
+  platform_agreement?: "both" | "ucsc_only" | "trexplorer_only" | "neither" | null;
   chrom?: string | null;
   motif_class?: MotifClass | null;
   min_motif_len?: number | null;
   min_samples?: number | null;
   min_purity?: number | null;
+  min_insertion_purity?: number | null;
   disease_gene_only?: boolean;
   gene?: string | null;
+  sample?: string | null;
+  strchive_status?: StrchiveStatus | null;
+  /** Restrict the STRchive catalog to loci whose pathogenic motif is not in hg38. */
+  strchive_novel_only?: boolean;
   focus_locus_id?: string | null;
+  /** Open one STRchive disease locus, e.g. 'CANVAS_RFC1'. */
+  focus_strchive_id?: string | null;
 }
 
 /** Events streamed by POST /api/chat. */
