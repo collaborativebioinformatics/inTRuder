@@ -25,6 +25,7 @@ Tab-separated, with a header row containing at least these columns:
 | `depth`       | Number of reads supporting the insertion               |
 | `insert_size` | Length of the insertion (bp)                           |
 | `sample`      | Sample ID                                               |
+| `allele`      | Allele (e.g., reference or alternate)                   |
 | `rep_start`   | TRF repeat start position within the insertion          |
 | `rep_end`     | TRF repeat end position within the insertion             |
 | `motif`       | Repeat motif sequence                                   |
@@ -32,6 +33,8 @@ Tab-separated, with a header row containing at least these columns:
 | `motif_length`| Length of the repeat motif (bp)                         |
 | `rep_length`  | Length of the repeat region covered by TRF (bp)          |
 | `rep_units`   | Number of repeat units                                   |
+
+NOTE: The input could be from the novelty script. With the additional columns from the novelty script output.
 
 A single insertion (`chrom` + `ins_coord` + `SVID` + `sample`) can have
 multiple rows if TRF found more than one repeat region inside it.
