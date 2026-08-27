@@ -17,6 +17,7 @@ process PHENOGENIUS_ENRICH {
 
     input:
     path annotated_tsv
+    path phenogenius_bundle
 
     output:
     path "*.phenogenius.tsv", emit: enriched
@@ -25,16 +26,22 @@ process PHENOGENIUS_ENRICH {
     script:
     """
     set -euo pipefail
-    export PATH="${params.phenogenius_env}/bin:\${PATH}"
-    export CONDA_PREFIX="${params.phenogenius_env}"
-    export CONDA_DEFAULT_ENV="annotsv"
+    if [[ -d "${params.phenogenius_env}/bin" ]]; then
+        export PATH="${params.phenogenius_env}/bin:\${PATH}"
+    fi
+    mkdir -p pg_runtime/site
+    tar -xzf "${phenogenius_bundle}" -C pg_runtime
+    python3 -m pip install --disable-pip-version-check --quiet --target pg_runtime/site \\
+      'pandas>=1.3' 'ujson>=5.4' 'numpy>=1.24,<2.1' 'scikit-learn>=1.5.1' \\
+      'pandarallel>=1.6.5' 'click>=8.1.7' 'pyarrow>=17,<18' 'pronto>=2.5.8'
+    export PYTHONPATH="\$(pwd)/pg_runtime/site:\${PYTHONPATH:-}"
 
     python3 "${projectDir}/scripts/enrich_phenogenius.py" \\
       --input "${annotated_tsv}" \\
       --hpo "${params.hpo}" \\
-      --phenogenius-cli "${params.phenogenius_cli}" \\
-      --resource-dir "${params.resource_dir}" \\
-      --python "${params.phenogenius_env}/bin/python" \\
+      --phenogenius-cli "\$(pwd)/pg_runtime/phenogenius_cli.py" \\
+      --resource-dir "\$(pwd)/pg_runtime/data/resources" \\
+      --python "python3" \\
       --output "${annotated_tsv.simpleName}.phenogenius.tsv" \\
       2>&1 | tee "${annotated_tsv.simpleName}.phenogenius.log"
     """
@@ -46,6 +53,10 @@ workflow {
         helpMessage()
         exit 1
     }
+    if (!params.phenogenius_bundle) {
+        log.error 'ERROR: --phenogenius_bundle is required.'
+        exit 1
+    }
     def hpos = params.hpo.toString().split(/[;,\s]+/).findAll { it }
     if (!hpos || hpos.any { !(it ==~ /HP:\d{7}/) }) {
         log.error "ERROR: --hpo must contain valid HPO identifiers. Got: ${params.hpo}"
@@ -55,6 +66,11 @@ workflow {
     if (params.dx_project && resolved_tsv.startsWith('/')) {
         resolved_tsv = "dx://${params.dx_project}:${resolved_tsv}"
     }
+    def resolved_bundle = params.phenogenius_bundle
+    if (params.dx_project && resolved_bundle.startsWith('/')) {
+        resolved_bundle = "dx://${params.dx_project}:${resolved_bundle}"
+    }
     Channel.fromPath(resolved_tsv, checkIfExists: true).set { ch_tsv }
-    PHENOGENIUS_ENRICH(ch_tsv)
+    Channel.fromPath(resolved_bundle, checkIfExists: true).set { ch_bundle }
+    PHENOGENIUS_ENRICH(ch_tsv, ch_bundle)
 }
