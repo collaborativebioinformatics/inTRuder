@@ -39,6 +39,7 @@ def helpMessage() {
     Optional Parameters:
       --outdir              <dir>        Output directory                [default: results]
       --genome_build        <str>        GRCh38 or GRCh37                [default: GRCh38]
+      --hpo                 <str>        HPO terms (comma/space separated) [default: none]
       --candidate_genes     <file>       Candidate genes list file       [default: none]
       --annotations_dir     <dir>        AnnotSV database directory
       --publish_dir_mode    <str>        Output file mode                [default: copy]
@@ -80,6 +81,16 @@ workflow {
     if (params.genome_build && !valid_builds.contains(params.genome_build)) {
         log.error "ERROR: --genome_build must be one of: ${valid_builds.join(', ')}. Got: ${params.genome_build}"
         exit 1
+    }
+
+    // AnnotSV expects HPO identifiers for phenotype-driven Exomiser ranking.
+    // Validate early because this value is inserted into a shell command.
+    if (params.hpo) {
+        def hpo_terms = params.hpo.toString().split(/[;,\s]+/).findAll { it }
+        if (!hpo_terms || hpo_terms.any { !(it ==~ /HP:\d{7}/) }) {
+            log.error "ERROR: --hpo must contain valid HPO identifiers (e.g. HP:0001250,HP:0001263). Got: ${params.hpo}"
+            exit 1
+        }
     }
 
     // 1. Resolve DNAnexus dx:// prefix automatically if running with dx_project
@@ -127,6 +138,7 @@ workflow {
       resolved pattern    : ${input_pattern}
       outdir              : ${params.outdir}
       genome_build        : ${params.genome_build ?: 'GRCh38'}
+      hpo                 : ${params.hpo ?: 'none'}
       candidate_genes     : ${resolved_candidate_genes ?: 'none'}
       annotations_dir     : ${resolved_annot}
       publish_dir_mode    : ${params.publish_dir_mode}

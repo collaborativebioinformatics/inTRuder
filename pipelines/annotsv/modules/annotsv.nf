@@ -17,6 +17,7 @@ process ANNOTSV {
     def out_prefix = "${meta.id}.annotated"
     def cloud_mode = params.use_docker ? 'true' : 'false'
     def annotsv_cmd = params.annotsv_dir ? "${params.annotsv_dir}/bin/AnnotSV" : "AnnotSV"
+    def hpo_arg = params.hpo ? "-hpo \"${params.hpo}\"" : ""
 
     """
     set -euo pipefail
@@ -57,8 +58,18 @@ process ANNOTSV {
         docker run -u root --rm \\
             -v "\$(pwd):\$(pwd)" \\
             -w "\$(pwd)" \\
+            -e "ANNOTSV_HPO=${params.hpo ?: ''}" \\
             "${params.annotsv_image}" \\
-            AnnotSV \\
+            bash -c '
+                if [[ -n "\${ANNOTSV_HPO}" ]]; then
+                    annotsv_bin="\$(command -v AnnotSV)"
+                    annotsv_root="\$(cd "\$(dirname "\${annotsv_bin}")/.." && pwd)"
+                    # AnnotSV 3.5.x writes an optional PhenoGenius warning log
+                    # even when PhenoGenius is absent; ensure that path exists.
+                    mkdir -p "\${annotsv_root}/share/python3/phenogeniuscli"
+                fi
+                exec AnnotSV "\$@"
+            ' -- \\
                 -SVinputFile    "${sv_vcf}" \\
                 -genomeBuild    "${params.genome_build}" \\
                 -outputDir      . \\
@@ -66,8 +77,13 @@ process ANNOTSV {
                 -bedtools       "${params.bedtools_path}" \\
                 -bcftools       "${params.bcftools_path}" \\
                 -annotationsDir "\${EFFECTIVE_ANNOTATIONS_DIR}" \\
-                ${cg_arg}
+                ${hpo_arg} \\
+            ${cg_arg}
     else
+        if [[ -n "${params.hpo ?: ''}" && -n "${params.annotsv_dir ?: ''}" ]]; then
+            # AnnotSV 3.5.x expects this optional directory when HPO is used.
+            mkdir -p "${params.annotsv_dir}/share/python3/phenogeniuscli"
+        fi
         "${annotsv_cmd}" \\
             -SVinputFile    "${sv_vcf}" \\
             -genomeBuild    "${params.genome_build}" \\
@@ -76,6 +92,7 @@ process ANNOTSV {
             -bedtools       "${params.bedtools_path}" \\
             -bcftools       "${params.bcftools_path}" \\
             -annotationsDir "\${EFFECTIVE_ANNOTATIONS_DIR}" \\
+            ${hpo_arg} \\
             ${cg_arg}
     fi 2>&1 | tee "${meta.id}.annotsv.log"
 
