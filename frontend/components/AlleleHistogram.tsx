@@ -351,7 +351,9 @@ export function AlleleHistogram({
             onClick={() => onHighlight(null)}
             className="text-[11px] text-ink-muted underline underline-offset-2 transition-colors hover:text-ink"
           >
-            clear bin ({highlighted.size} carriers)
+            {/* Not "clear bin": the isolated set can also have come from a row
+                in the structure list below. */}
+            clear ({highlighted.size} carriers)
           </button>
         )}
       </div>
