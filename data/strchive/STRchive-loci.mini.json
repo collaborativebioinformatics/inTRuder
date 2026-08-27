@@ -1,0 +1,226 @@
+[
+  {
+    "id": "OPDM5_ABCD3",
+    "disease_id": "OPDM5",
+    "gene": "ABCD3",
+    "evidence": [
+      "Moderate"
+    ],
+    "chrom": "chr1",
+    "start_hg38": 94418421,
+    "stop_hg38": 94418444,
+    "start_hg19": 94883977,
+    "stop_hg19": 94884000,
+    "start_t2t": 94266544,
+    "stop_t2t": 94266567,
+    "disease": "Oculopharyngodistal myopathy type 5",
+    "inheritance": [
+      "AD"
+    ],
+    "location_in_gene": "5' UTR",
+    "gene_strand": "+",
+    "reference_motif_reference_orientation": [
+      "CCG"
+    ],
+    "pathogenic_motif_reference_orientation": [
+      "CCG"
+    ],
+    "benign_motif_reference_orientation": [],
+    "unknown_motif_reference_orientation": [],
+    "interruption_reference_orientation": [],
+    "benign_min": 3,
+    "benign_max": 44,
+    "intermediate_min": null,
+    "intermediate_max": null,
+    "pathogenic_min": 118,
+    "pathogenic_max": 694,
+    "motif_len": 3,
+    "ref_copies": 7.7,
+    "novel": "ref"
+  },
+  {
+    "id": "CANVAS_RFC1",
+    "disease_id": "CANVAS",
+    "gene": "RFC1",
+    "evidence": [
+      "Definitive"
+    ],
+    "chrom": "chr4",
+    "start_hg38": 39348424,
+    "stop_hg38": 39348483,
+    "start_hg19": 39350044,
+    "stop_hg19": 39350103,
+    "start_t2t": 39318077,
+    "stop_t2t": 39318136,
+    "disease": "Cerebellar ataxia, neuropathy, and vestibular areflexia syndrome",
+    "inheritance": [
+      "AR"
+    ],
+    "location_in_gene": "Intron 2",
+    "gene_strand": "-",
+    "reference_motif_reference_orientation": [
+      "AAAAG"
+    ],
+    "pathogenic_motif_reference_orientation": [
+      "AAGGG",
+      "ACAGG",
+      "AAAGG",
+      "CAGGG"
+    ],
+    "benign_motif_reference_orientation": [
+      "AAAAG",
+      "AAAGGG"
+    ],
+    "unknown_motif_reference_orientation": [
+      "AAAAA",
+      "AAAAC",
+      "AACGG",
+      "ACAAG",
+      "AAGGT",
+      "AGGGG",
+      "AAGAG",
+      "AAAAGG",
+      "AAACG",
+      "AACAG",
+      "GAGGT",
+      "ACGGG",
+      "AAAAAG",
+      "CAAGG"
+    ],
+    "interruption_reference_orientation": [],
+    "benign_min": 0,
+    "benign_max": 11,
+    "intermediate_min": 11,
+    "intermediate_max": 200,
+    "pathogenic_min": 400,
+    "pathogenic_max": 2750,
+    "motif_len": 5,
+    "ref_copies": 11.8,
+    "novel": "novel"
+  },
+  {
+    "id": "SCA37_DAB1",
+    "disease_id": "SCA37",
+    "gene": "DAB1",
+    "evidence": [
+      "Strong"
+    ],
+    "chrom": "chr1",
+    "start_hg38": 57367043,
+    "stop_hg38": 57367121,
+    "start_hg19": 57832715,
+    "stop_hg19": 57832793,
+    "start_t2t": 57245935,
+    "stop_t2t": 57245973,
+    "disease": "Spinocerebellar ataxia type 37",
+    "inheritance": [
+      "AD"
+    ],
+    "location_in_gene": "Intron 1 (most isoforms)",
+    "gene_strand": "-",
+    "reference_motif_reference_orientation": [
+      "AAAAT"
+    ],
+    "pathogenic_motif_reference_orientation": [
+      "TGAAA"
+    ],
+    "benign_motif_reference_orientation": [],
+    "unknown_motif_reference_orientation": [
+      "AAAAA"
+    ],
+    "interruption_reference_orientation": [],
+    "benign_min": 0,
+    "benign_max": 30,
+    "intermediate_min": null,
+    "intermediate_max": null,
+    "pathogenic_min": 31,
+    "pathogenic_max": 75,
+    "motif_len": 5,
+    "ref_copies": 0.0,
+    "novel": "novel"
+  },
+  {
+    "id": "HMNR7_VWA1",
+    "disease_id": "HMNR7",
+    "gene": "VWA1",
+    "evidence": [
+      "Definitive"
+    ],
+    "chrom": "chr1",
+    "start_hg38": 1435798,
+    "stop_hg38": 1435818,
+    "start_hg19": 1371178,
+    "stop_hg19": 1371198,
+    "start_t2t": 870158,
+    "stop_t2t": 870178,
+    "disease": "Neuronopathy, distal hereditary motor, autosomal recessive 7",
+    "inheritance": [
+      "AR"
+    ],
+    "location_in_gene": "Coding Exon 1",
+    "gene_strand": "+",
+    "reference_motif_reference_orientation": [
+      "GGCGCGGAGC"
+    ],
+    "pathogenic_motif_reference_orientation": [
+      "AGCGGCGCGG"
+    ],
+    "benign_motif_reference_orientation": [],
+    "unknown_motif_reference_orientation": [],
+    "interruption_reference_orientation": [],
+    "benign_min": 2,
+    "benign_max": 2,
+    "intermediate_min": null,
+    "intermediate_max": null,
+    "pathogenic_min": 1,
+    "pathogenic_max": 3,
+    "motif_len": 10,
+    "ref_copies": null,
+    "novel": null
+  },
+  {
+    "id": "FAME1_SAMD12",
+    "disease_id": "FAME1",
+    "gene": "SAMD12",
+    "evidence": [
+      "Definitive"
+    ],
+    "chrom": "chr8",
+    "start_hg38": 118366812,
+    "stop_hg38": 118366918,
+    "start_hg19": 119379051,
+    "stop_hg19": 119379157,
+    "start_t2t": 119495247,
+    "stop_t2t": 119495353,
+    "disease": "Familial adult myoclonic epilepsy type 1",
+    "inheritance": [
+      "AD"
+    ],
+    "location_in_gene": "Intron 4/4",
+    "gene_strand": "-",
+    "reference_motif_reference_orientation": [
+      "TAAAA"
+    ],
+    "pathogenic_motif_reference_orientation": [
+      "TGAAA"
+    ],
+    "benign_motif_reference_orientation": [],
+    "unknown_motif_reference_orientation": [
+      "AAAAA",
+      "AAACT",
+      "AACAT",
+      "ACAAT",
+      "ACACT"
+    ],
+    "interruption_reference_orientation": [],
+    "benign_min": null,
+    "benign_max": null,
+    "intermediate_min": null,
+    "intermediate_max": null,
+    "pathogenic_min": 105,
+    "pathogenic_max": 3680,
+    "motif_len": 5,
+    "ref_copies": 21.6,
+    "novel": "novel"
+  }
+]
