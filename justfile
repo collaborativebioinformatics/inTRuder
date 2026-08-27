@@ -43,6 +43,14 @@ frontend:
 demo-data:
     cd backend && uv run python scripts/make_demo_data.py
 
+# Rent a DNAnexus box, work on it, terminate on exit. See docs/DNANexus.md.
+dx-terminal time="1h":
+    scripts/dx-instance.sh --time {{time}}
+
+# What this project can launch, and what each type is for. Filter: `... gpu`.
+dx-instances pattern="":
+    scripts/dx-instance.sh --list-instances {{pattern}}
+
 lint:
     cd backend && uv run ruff check app scripts
     cd frontend && npx tsc --noEmit
