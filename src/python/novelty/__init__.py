@@ -6,26 +6,16 @@ the catalogue: UCSC's ``simpleRepeat`` track and the TRExplorer catalog disagree
 about plenty of loci, so the screen is written against a normalised schema and
 any number of catalogues can be screened at once.
 
-    novelty.motifs      motif comparison: equivalence, and tolerance
+    trcore.motifs       motif comparison: equivalence, and tolerance
+    trcore.coords       the coordinate conventions both steps share
     novelty.platforms   reading a catalogue from UCSC, TRExplorer or a BED file
     novelty.catalog     the interval index and the known/novel verdict
     novelty.insertions  purity of the insertion itself, and the filters on it
     novelty.cli         the `python -m novelty` command line
 """
 
-from .catalog import (
-    STATUSES,
-    UNSCREENED,
-    Hit,
-    ReferenceRepeat,
-    RepeatCatalog,
-    RepeatFilter,
-    Verdict,
-    to_external,
-    to_internal,
-)
-from .insertions import Check, add_insertion_purity, filter_reasons, union_length
-from .motifs import (
+from trcore.coords import interval_distance, normalize_chrom, to_external, to_internal
+from trcore.motifs import (
     DEFAULT_EQUIVALENCE,
     DEFAULT_TOLERANCE,
     MATCH_KINDS,
@@ -35,7 +25,6 @@ from .motifs import (
     MotifMatch,
     MotifTolerance,
     canonical_motif,
-    canonical_motifs,
     edit_budget,
     least_rotation,
     motif_distance,
@@ -43,15 +32,26 @@ from .motifs import (
     reverse_complement,
     tiling_distance,
 )
+
+from .catalog import (
+    STATUSES,
+    UNSCREENED,
+    Hit,
+    ReferenceRepeat,
+    RepeatCatalog,
+    RepeatFilter,
+    Verdict,
+)
+from .insertions import Check, add_insertion_purity, filter_reasons, union_length
 from .platforms import (
     ANNOTATION_COLUMNS,
     CACHE_ENV,
     CATALOG_COLUMNS,
     PLATFORMS,
     Platform,
+    canonical_motifs,
     default_cache,
     ensure_table,
-    normalize_chrom,
     normalize_chroms,
     read_catalog,
     sniff_format,
@@ -86,6 +86,7 @@ __all__ = [
     "edit_budget",
     "ensure_table",
     "filter_reasons",
+    "interval_distance",
     "least_rotation",
     "motif_distance",
     "normalize_chrom",
