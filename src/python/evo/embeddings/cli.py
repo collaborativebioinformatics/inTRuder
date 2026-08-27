@@ -1,4 +1,4 @@
-"""``evo-embed`` -- run Evo 2 over the insertions in an SV VCF.
+"""``evo-embed`` -- run Evo 2 over one allele of an SV VCF and write one ``.npz``.
 
     evo-embed calls.vcf hg38.fasta out.npz --layers default
 
@@ -18,35 +18,60 @@ whole, and this module has no checkpointing, so a shard is the unit of restart::
 
     evo-embed calls.vcf hg38.fa shard0.npz --offset 0    --limit 2000
     evo-embed calls.vcf hg38.fa shard1.npz --offset 2000 --limit 2000
+
+``--background`` embeds the **reference allele** at the same breakpoints instead
+of the insertions. It is the control the analysis half needs and costs about a
+third of the alt run, since one window covers every sample called at a
+breakpoint::
+
+    evo-embed calls.vcf hg38.fa alt.npz
+    evo-embed calls.vcf hg38.fa ref.npz --background
+
+Running those two as separate commands loads Evo 2 twice and makes it possible
+to ship an alt run with no control -- which is what happened on the first full
+attempt. :mod:`evo.embeddings.__main__` (``python -m evo.embeddings``) is the
+same work as one command into one directory, and is what a GPU job should call.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 
 from evo.embeddings.extract import (
+    D_MODEL,
     LAYER_SETS,
     POOLINGS,
     SEGMENT_POOLING,
+    Embedder,
+    Evo2Embedder,
     extract,
 )
 from evo.embeddings.loci import InsertionCall, read_insertions
+from evo.embeddings.store import save
 from evo.embeddings.windows import SEGMENTS, WindowSpec, build_window
-from evo.utils.reference import FastaReference
+from evo.utils.reference import FastaReference, Reference
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="evo-embed",
-        description="Embed SV insertion loci with Evo 2.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    p.add_argument("vcf", help="SV VCF; per-sample FORMAT ID/RAL/AAL/LN/CO are read")
-    p.add_argument("reference", help="indexed reference FASTA")
-    p.add_argument("out", help="output .npz")
+def _quiet(*args: object) -> None:
+    """The ``--quiet`` logger."""
 
+
+def _stderr(*args: object) -> None:
+    """The default logger. stderr, so stdout stays free for piped output."""
+    print(*args, file=sys.stderr)
+
+
+def add_shared_options(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Add the window, model and shard flags that every entry point takes.
+
+    Declared once rather than copied because an alt run and its reference-allele
+    control are only comparable if they were cut and pooled *identically*: a
+    ``--flank`` that drifted between the two parsers would produce two files
+    that still load, still join on ``(chrom, pos)``, and quietly mean different
+    things. Sharing the declarations makes that drift impossible.
+    """
     g = p.add_argument_group("window")
     g.add_argument("--flank", type=int, default=WindowSpec().flank,
                    help="reference bases each side of the breakpoint")
@@ -67,13 +92,31 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--pooling", default="",
                    help="override per segment, e.g. 'repeat=last,left=mean'")
 
-    p.add_argument("--offset", type=int, default=0,
+    g = p.add_argument_group("shard")
+    g.add_argument("--offset", type=int, default=0,
                    help="skip this many insertions before starting")
-    p.add_argument("--limit", type=int, help="stop after this many insertions")
+    g.add_argument("--limit", type=int, help="stop after this many insertions")
+
     p.add_argument("--dry-run", action="store_true",
                    help="build windows and report, but do not load Evo 2")
     p.add_argument("--quiet", action="store_true")
     return p
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="evo-embed",
+        description="Embed one allele of an SV VCF's insertion loci with Evo 2.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument("vcf", help="SV VCF; per-sample FORMAT ID/RAL/AAL/LN/CO are read")
+    p.add_argument("reference", help="indexed reference FASTA")
+    p.add_argument("out", help="output .npz")
+    p.add_argument("--background", action="store_true",
+                   help="embed the REFERENCE allele at each breakpoint instead "
+                        "of the insertion: same flanks, no insert. One window "
+                        "per distinct breakpoint, not per call")
+    return add_shared_options(p)
 
 
 def select(
@@ -99,6 +142,62 @@ def select(
         yield call
 
 
+def build_windows(
+    calls: Iterable[InsertionCall],
+    reference,
+    spec: WindowSpec,
+    background: bool = False,
+) -> tuple[list, list[str], list[str], int]:
+    """Windows for a stream of calls, plus their sample and svid labels.
+
+    ``background=True`` builds the **reference allele** at each breakpoint --
+    identical flanks, ``insert=""`` -- which is the control the whole comparison
+    rests on: subtract it and what is left is what the insertion did, with the
+    locus cancelled out.
+
+    It emits one window per *distinct* ``(chrom, pos)`` rather than one per
+    call, because the reference allele does not depend on which sample was
+    called there. That is not just an optimisation: on the benchmark slice, 100
+    calls sit at 31 distinct breakpoints, so the background costs a third of the
+    alt run rather than the same again. Sample and svid come back empty for
+    those rows, which is what marks them as background downstream.
+
+    Breakpoints are deduplicated, *not* rounded to the record ``POS``: 59% of
+    per-sample calls sit at a non-zero offset from it (median 34 bp), and a
+    junction span is only 128 bp wide, so collapsing them would misplace the
+    control by half its width.
+
+    Deduplication is *within the shard*, so a breakpoint spanning an ``--offset``
+    boundary is embedded twice. Harmless -- the two windows are identical and
+    the analysis side joins on the first match -- but it means the background
+    shards are not quite a partition the way the alt shards are.
+    """
+    contigs = set(reference.contigs)
+    windows, samples, svids = [], [], []
+    skipped_contig = 0
+    seen: set[tuple[str, int]] = set()
+
+    for call in calls:
+        if call.chrom not in contigs:
+            skipped_contig += 1
+            continue
+        if background:
+            key = (call.chrom, call.pos)
+            if key in seen:
+                continue
+            seen.add(key)
+            windows.append(build_window(reference, call.chrom, call.pos, "", spec))
+            samples.append("")
+            svids.append("")
+        else:
+            windows.append(
+                build_window(reference, call.chrom, call.pos, call.insert, spec)
+            )
+            samples.append(call.sample)
+            svids.append(call.svid)
+    return windows, samples, svids, skipped_contig
+
+
 def resolve_layers(spec: str) -> list[str]:
     if spec in LAYER_SETS:
         return list(LAYER_SETS[spec])
@@ -122,89 +221,146 @@ def resolve_pooling(spec: str) -> dict[str, str]:
     return pooling
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr))
-
-    layers = resolve_layers(args.layers)
-    segments = [s.strip() for s in args.segments.split(",") if s.strip()]
+def resolve_segments(spec: str) -> list[str]:
+    segments = [s.strip() for s in spec.split(",") if s.strip()]
     unknown = set(segments) - set(SEGMENTS)
     if unknown:
         raise SystemExit(f"--segments: unknown {sorted(unknown)}; have {list(SEGMENTS)}")
-    pooling = resolve_pooling(args.pooling)
+    if not segments:
+        raise SystemExit(f"--segments {spec!r} names no segments")
+    return segments
 
-    spec = WindowSpec(
-        flank=args.flank,
-        junction=args.junction,
-        repeat_crop=args.repeat_crop or None,
+
+def resolve_settings(
+    args: argparse.Namespace,
+) -> tuple[list[str], list[str], dict[str, str], WindowSpec]:
+    """Turn the shared flags into the four things extraction actually needs.
+
+    Shared by both entry points for the same reason :func:`add_shared_options`
+    is: declaring the flags once is only half of it, since two parsers could
+    still interpret ``--repeat-crop 0`` differently.
+    """
+    return (
+        resolve_layers(args.layers),
+        resolve_segments(args.segments),
+        resolve_pooling(args.pooling),
+        WindowSpec(
+            flank=args.flank,
+            junction=args.junction,
+            repeat_crop=args.repeat_crop or None,
+        ),
     )
 
-    log(f"reference: {args.reference}")
-    reference = FastaReference(args.reference)
 
-    calls = select(read_insertions(args.vcf), args.offset, args.limit)
-    windows, samples, svids = [], [], []
-    skipped_contig = 0
-    contigs = set(reference.contigs)
-    for call in calls:
-        if call.chrom not in contigs:
-            skipped_contig += 1
-            continue
-        windows.append(
-            build_window(reference, call.chrom, call.pos, call.insert, spec)
-        )
-        samples.append(call.sample)
-        svids.append(call.svid)
+def run_shard(
+    out: str,
+    vcf: str,
+    reference: Reference,
+    spec: WindowSpec,
+    *,
+    layers: Sequence[str],
+    segments: Sequence[str],
+    pooling: dict[str, str],
+    background: bool = False,
+    max_n_fraction: float = 0.1,
+    offset: int = 0,
+    limit: int | None = None,
+    embedder: Embedder | None = None,
+    model: str = "",
+    reference_path: str = "",
+    progress: bool = False,
+    log: Callable[..., None] = _quiet,
+) -> int:
+    """Embed one allele of one shard and write it to ``out``. Returns rows written.
 
-    end = "end" if args.limit is None else str(args.offset + args.limit)
-    log(f"shard: calls [{args.offset}, {end})")
-    log(f"windows: {len(windows)}  (skipped, contig not in reference: {skipped_contig})")
+    Both entry points funnel through here, and that is what keeps a two-allele
+    run honest: the ``alt.npz`` and ``reference.npz`` it produces went through
+    the same window spec, the same layer list and the same pooling because there
+    is only one piece of code that can apply them.
+
+    ``embedder=None`` is the dry run -- windows are built and reported, Evo 2 is
+    never loaded and nothing is written; the return value is then the number of
+    rows that *would* be written. The caller constructs the embedder rather than
+    this function, so a two-allele run pays the model load once.
+    """
+    calls = select(read_insertions(vcf), offset, limit)
+    windows, samples, svids, skipped_contig = build_windows(
+        calls, reference, spec, background=background
+    )
+
+    allele = "reference" if background else "alt"
+    end = "end" if limit is None else str(offset + limit)
+    log(f"[{allele}] calls [{offset}, {end}): {len(windows)} windows "
+        f"(skipped, contig not in reference: {skipped_contig})")
+    if background:
+        log(f"[{allele}] one window per distinct breakpoint, not per call")
     if windows:
         lens = [len(w.sequence) for w in windows]
-        dirty = sum(w.n_fraction > args.max_n_fraction for w in windows)
-        log(f"  length min {min(lens)} max {max(lens)} (spec max {spec.max_length})")
-        log(f"  above --max-n-fraction {args.max_n_fraction}: {dirty} (will be skipped)")
-    log(f"layers ({len(layers)}): {', '.join(layers)}")
-    log(f"segments ({len(segments)}): {', '.join(segments)}")
+        dirty = sum(w.n_fraction > max_n_fraction for w in windows)
+        log(f"[{allele}]   length min {min(lens)} max {max(lens)} "
+            f"(spec max {spec.max_length})")
+        log(f"[{allele}]   above --max-n-fraction {max_n_fraction}: {dirty} (skipped)")
 
-    if args.dry_run:
-        n = sum(w.n_fraction <= args.max_n_fraction for w in windows)
-        log(f"\ndry run: would write {n} x {len(layers)} x {len(segments)} x 8192 "
-            f"to {args.out}")
-        return 0
+    if embedder is None:
+        n = sum(w.n_fraction <= max_n_fraction for w in windows)
+        log(f"[{allele}] dry run: would write {n} x {len(layers)} x "
+            f"{len(segments)} x {2 * D_MODEL} to {out}")
+        return n
 
-    from evo.embeddings.extract import Evo2Embedder
-    from evo.embeddings.store import save
-
-    log(f"loading {args.model} on {args.device} ...")
-    embedder = Evo2Embedder(args.model, args.device)
-
-    keep = {id(w): (s, v) for w, s, v in zip(windows, samples, svids)}
+    labels = {id(w): (s, v) for w, s, v in zip(windows, samples, svids)}
     vectors, kept = extract(
         windows, embedder,
         layers=layers, segments=segments, pooling=pooling,
-        max_n_fraction=args.max_n_fraction if args.max_n_fraction < 1 else None,
-        progress=not args.quiet,
+        max_n_fraction=max_n_fraction if max_n_fraction < 1 else None,
+        progress=progress,
     )
-    kept_samples = [keep[id(w)][0] for w in kept]
-    kept_svids = [keep[id(w)][1] for w in kept]
 
     save(
-        args.out, vectors, kept, layers, segments,
-        samples=kept_samples, svids=kept_svids,
+        out, vectors, kept, list(layers), list(segments),
+        samples=[labels[id(w)][0] for w in kept],
+        svids=[labels[id(w)][1] for w in kept],
         attrs={
-            "model": args.model,
+            "model": model,
             "flank": str(spec.flank),
             "junction": str(spec.junction),
             "repeat_crop": str(spec.repeat_crop),
             "pooling": ",".join(f"{k}={v}" for k, v in sorted(pooling.items())),
-            "offset": str(args.offset),
-            "limit": "" if args.limit is None else str(args.limit),
-            "vcf": args.vcf,
-            "reference": args.reference,
+            "allele": allele,
+            "offset": str(offset),
+            "limit": "" if limit is None else str(limit),
+            "vcf": vcf,
+            "reference": reference_path,
         },
     )
-    log(f"wrote {args.out}: {vectors.shape}")
+    log(f"[{allele}] wrote {out}: {vectors.shape}")
+    return len(vectors)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    log = _quiet if args.quiet else _stderr
+
+    layers, segments, pooling, spec = resolve_settings(args)
+
+    log(f"reference: {args.reference}")
+    reference = FastaReference(args.reference)
+    log(f"layers ({len(layers)}): {', '.join(layers)}")
+    log(f"segments ({len(segments)}): {', '.join(segments)}")
+
+    embedder = None
+    if not args.dry_run:
+        log(f"loading {args.model} on {args.device} ...")
+        embedder = Evo2Embedder(args.model, args.device)
+
+    run_shard(
+        args.out, args.vcf, reference, spec,
+        layers=layers, segments=segments, pooling=pooling,
+        background=args.background,
+        max_n_fraction=args.max_n_fraction,
+        offset=args.offset, limit=args.limit,
+        embedder=embedder, model=args.model, reference_path=args.reference,
+        progress=not args.quiet, log=log,
+    )
     return 0
 
 

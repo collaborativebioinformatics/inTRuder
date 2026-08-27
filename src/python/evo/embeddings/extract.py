@@ -281,15 +281,22 @@ def extract(
     kept: list[Window] = []
     blocks: list[np.ndarray] = []
 
-    it = windows
+    # Filter BEFORE the bar, so it counts only windows that are actually
+    # embedded. Wrapping the unfiltered list made skipped windows tick
+    # instantly: the first benchmark reported 0.97 s/window for a run that
+    # embedded 3 of 40, a 10x error, and on a 16-hour run the ETA is wrong for
+    # the whole of it. The generator keeps the no-progress path lazy; `list` is
+    # only forced when a total has to be known.
+    todo = (
+        w for w in windows
+        if max_n_fraction is None or w.n_fraction <= max_n_fraction
+    )
     if progress:
         from tqdm import tqdm
 
-        it = tqdm(list(windows), unit="window", ncols=80)
+        todo = tqdm(list(todo), unit="window", ncols=80)
 
-    for window in it:
-        if max_n_fraction is not None and window.n_fraction > max_n_fraction:
-            continue
+    for window in todo:
         blocks.append(extract_window(window, embedder, layers, segments, pooling))
         kept.append(window)
 
