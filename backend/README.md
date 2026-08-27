@@ -61,6 +61,9 @@ The Anthropic path is the tuned one: adaptive thinking with a summarized display
 | `GET /api/summary` | Cohort funnel, novel fraction by class and chromosome |
 | `GET /api/loci` | Filtered locus list; `include_strips=true` adds barcode segments |
 | `GET /api/loci/{id}` | One locus plus every carrier's segment structure |
+| `GET /api/strchive/summary` | Disease-catalog counts, plus this cohort's screen if run |
+| `GET /api/strchive/loci` | The 82 curated disease loci, filtered |
+| `GET /api/strchive/matches` | Our candidates that landed on a disease locus |
 | `POST /api/chat` | SSE stream of one agent turn |
 
 ## The agent
