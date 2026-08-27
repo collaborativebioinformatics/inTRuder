@@ -5,8 +5,8 @@ that stays true: nothing here knows about a catalogue, a caller, or a file
 format. What lives in this package is the small set of definitions that were
 provably identical across steps and that are wrong in the same way when they
 are wrong -- how a motif is reduced to a comparable key, how far off two motifs
-may be and still be the same repeat, and how a coordinate is converted and
-measured.
+may be and still be the same repeat, how a coordinate is converted and measured,
+and where a downloaded catalogue is cached.
 
 Duplicating those is not a harmless copy. Two steps that disagree by one base
 on what "overlapping" means, or that fold strands differently, produce tables
@@ -23,6 +23,7 @@ data live with the step that needs them (see ``novelty.platforms``).
 """
 
 from .coords import interval_distance, normalize_chrom, to_external, to_internal
+from .fetch import cache_root, download_bytes, download_file
 from .motifs import (
     DEFAULT_EQUIVALENCE,
     DEFAULT_TOLERANCE,
@@ -60,7 +61,10 @@ __all__ = [
     "MotifEquivalence",
     "MotifMatch",
     "MotifTolerance",
+    "cache_root",
     "canonical_motif",
+    "download_bytes",
+    "download_file",
     "edit_budget",
     "interval_distance",
     "least_rotation",

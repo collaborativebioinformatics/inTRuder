@@ -48,8 +48,6 @@ from __future__ import annotations
 import gzip
 import os
 import sys
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +56,7 @@ import numpy as np
 import pandas as pd
 
 from trcore.coords import normalize_chrom
+from trcore.fetch import cache_root, download_file
 from trcore.motifs import (
     DEFAULT_EQUIVALENCE,
     MotifEquivalence,
@@ -79,21 +78,12 @@ CACHE_ENV = "NOVELTY_CACHE"
 
 
 def default_cache() -> Path:
-    """Where downloaded catalogues live, resolved at call time.
+    """Where downloaded catalogues live -- see :func:`trcore.fetch.cache_root`.
 
-    Inside a checkout (including the editable install ``uv sync`` makes) that is
-    the repo's own ``data/reference/``, so the files sit with the rest of the
-    data. Installed anywhere else there is no repo to write into, so it falls
-    back to the user cache directory. ``NOVELTY_CACHE`` overrides both.
+    ``NOVELTY_CACHE`` overrides it; each platform gets its own subdirectory
+    below, so the STRchive step can share ``data/reference/`` without collision.
     """
-    override = os.environ.get(CACHE_ENV)
-    if override:
-        return Path(override).expanduser()
-    here = Path(__file__).resolve()
-    if len(here.parents) > 3 and (here.parents[3] / "data").is_dir():
-        return here.parents[3] / "data" / "reference"
-    fallback = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(fallback) / "novelty"
+    return cache_root("novelty", env_var=CACHE_ENV)
 
 
 # --------------------------------------------------------------------------- #
@@ -438,21 +428,4 @@ def ensure_table(platform: str | Platform = "ucsc", db: str = "hg38",
             f"{', or drop --no-download to fetch it' if platform.url else ''})"
         )
 
-    url = platform.url_for(db)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".part")
-    print(f"[novelty] downloading {url} -> {target}", file=sys.stderr)
-    try:
-        urllib.request.urlretrieve(url, tmp)
-    except (urllib.error.URLError, OSError) as exc:
-        tmp.unlink(missing_ok=True)
-        # A stock macOS framework Python has no CA bundle, so https fails here
-        # even though the network is fine. curl is the shortest way out.
-        raise RuntimeError(
-            f"could not download {url}: {exc}\n"
-            f"fetch it by hand and re-run, e.g.:\n"
-            f"    mkdir -p {target.parent}\n"
-            f"    curl -L -o {target} {url}"
-        ) from exc
-    tmp.replace(target)
-    return target
+    return download_file(platform.url_for(db), target, label="novelty")

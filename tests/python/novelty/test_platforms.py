@@ -226,13 +226,19 @@ def test_the_cache_env_var_wins(monkeypatch, tmp_path):
     assert default_cache() == tmp_path
 
 
-def test_default_cache_falls_back_when_there_is_no_repo(monkeypatch, tmp_path):
-    """Installed outside a checkout there is no data/ to write into."""
+def test_default_cache_falls_back_under_the_step_name(monkeypatch, tmp_path):
+    """Installed outside a checkout there is no data/ to write into.
+
+    The rule itself is :func:`trcore.fetch.cache_root` and is tested there; what
+    this pins is the name *this* step falls back to, which is part of its own
+    contract.
+    """
     from novelty import platforms
+    from trcore import fetch
 
     monkeypatch.delenv(platforms.CACHE_ENV, raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    monkeypatch.setattr(platforms, "__file__", str(tmp_path / "a/b/c/platforms.py"))
+    monkeypatch.setattr(fetch, "__file__", str(tmp_path / "a/b/c/fetch.py"))
     assert platforms.default_cache() == tmp_path / "novelty"
 
 
