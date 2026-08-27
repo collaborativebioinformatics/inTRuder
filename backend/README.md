@@ -80,7 +80,9 @@ A prebuilt LangGraph ReAct graph over four tools:
 - `describe_dataset` — per-column docs from the manifest
 - `run_sql` — read-only DuckDB over the registered tables
 - `set_view` — **moves the frontend**, which is what makes chat and the charts
-  two views of one state rather than two panels
+  two views of one state rather than two panels. It also switches surface
+  (`page="catalog" | "strchive"`), so a question about disease can land the user
+  on the disease-locus view.
 
 The tool count does not grow with the number of datasets. Contributors add a
 manifest; the agent surface is unchanged. See `data/web/README.md`.
