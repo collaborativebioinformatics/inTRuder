@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from langchain_core.messages import SystemMessage
 
-from app import uploads
+from app import switches, uploads
 from app.util.registry import registry
 
 SYSTEM_PROMPT = """\
-You are the analysis assistant for novelTRs, a tool that discovers tandem repeat
+You are the analysis assistant for inTRuder, a tool that discovers tandem repeat
 (TR) loci from structural-variant insertion calls in long-read genomes.
 
 The scientific point of this project: most TR genotypers only look at loci in a
@@ -142,12 +142,18 @@ def _uploads_prompt() -> str:
 
 
 def system_text() -> str:
-    """The prompt with this process's registered datasets rendered into it.
+    """The prompt for one turn, describing the data *this caller* can see.
+
+    Built per turn rather than once, because the schema block depends on which
+    datasets the person asking has switched off — see `app.switches`.
 
     Both providers render it here: the LangGraph path wraps it in a
     `SystemMessage`, the Claude Code path passes the string to the SDK.
     """
-    return SYSTEM_PROMPT.format(schema=registry.schema_prompt(), uploads=_uploads_prompt())
+    return SYSTEM_PROMPT.format(
+        schema=registry.schema_prompt(registry.switched_off(switches.current())),
+        uploads=_uploads_prompt(),
+    )
 
 
 def system_message() -> SystemMessage:

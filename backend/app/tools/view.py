@@ -57,7 +57,34 @@ def set_view(
         "Minimum fraction of the insertion that is tandem repeat at all, 0-1. "
         "Low values mean the insertion is mostly something else.",
     ] = None,
-    disease_gene_only: Annotated[bool | None, "Show only loci in known disease genes."] = None,
+    disease_gene_only: Annotated[
+        bool | None,
+        "Show only loci in a gene carrying an OMIM disease entry (2,201 of "
+        "17,270). Weaker than strchive_status: 'in a gene linked to some "
+        "disease', not 'at a known repeat-expansion locus'.",
+    ] = None,
+    genic_only: Annotated[
+        bool | None,
+        "Show only loci inside an annotated gene (9,043 of 17,270). The other "
+        "half are intergenic, which is a real finding and not missing data.",
+    ] = None,
+    exonic_only: Annotated[
+        bool | None,
+        "Show only loci where a breakpoint lands inside an exon (265). This is "
+        "the strong claim about coding impact — NOT gene_region='CDS', which "
+        "merely means the insertion sits between the start and stop codons and "
+        "is true of thousands of intronic loci.",
+    ] = None,
+    constrained_only: Annotated[
+        bool | None,
+        "Show only loci in a gene with gnomAD pLI >= 0.9 — intolerant of loss "
+        "of function (1,867 loci).",
+    ] = None,
+    gene_region: Annotated[
+        Literal["CDS", "UTR", "5'UTR", "3'UTR"] | None,
+        "Which transcript region the insertion sits WITHIN. Read the caveat on "
+        "exonic_only before using 'CDS' to mean coding impact.",
+    ] = None,
     gene: Annotated[str | None, "Restrict to one gene symbol, e.g. 'XYLT1'."] = None,
     gene_query: Annotated[
         str | None,
@@ -130,6 +157,10 @@ def set_view(
             "min_purity": min_purity,
             "min_insertion_purity": min_insertion_purity,
             "disease_gene_only": disease_gene_only,
+            "genic_only": genic_only,
+            "exonic_only": exonic_only,
+            "constrained_only": constrained_only,
+            "gene_region": gene_region,
             "gene": gene,
             "gene_query": gene_query,
             "sample": sample,
