@@ -103,6 +103,13 @@ rm -f "$DONE"
     if [ -n "$DEST" ]; then
         cat <<'WATCH'
 mkdir -p "$OUT/.uploaded"
+# The destination FOLDER must exist first: `dx upload --destination` to a
+# missing folder fails with ResourceNotFound, and since upload errors are
+# swallowed here (they must never fail a good run) that would lose everything
+# silently. The original dx-gpu-instance.sh did this mkdir and dropping it was
+# an oversight -- caught live at 01:16 on the second smoke test, where the
+# folder had to be created by hand mid-run to rescue the uploads.
+dx mkdir -p "$DX_DEST" >/dev/null 2>&1 || true
 # Ship each .npz the moment the program announces it, rather than at exit. The
 # program names the file itself -- "[reference] wrote /path/x.npz: (220, ...)"
 # -- which is exact; watching for a stable file size would race numpy's write.
