@@ -32,11 +32,12 @@ dev = [
     "ipykernel>=7.3.0",
 ]
 
-# The DNAnexus toolkit, for `scripts/dx-*.sh` and anything else that talks to the
-# platform. A group rather than a runtime dependency because nothing under `src/`
-# imports it and DNAnexus workers already ship the `dx` CLI; not in `dev` because
-# `uv sync` installs `dev` by default and this is only useful with a token in
-# `.env`. Install it with `uv sync --group dx`; see docs/scripts/DNANexus.md.
+# The DNAnexus toolkit, for `scripts/dnanexus/dx-*.sh` and anything else that
+# talks to the platform. A group rather than a runtime dependency because
+# nothing under `src/` imports it and DNAnexus workers already ship the `dx`
+# CLI; not in `dev` because `uv sync` installs `dev` by default and this is only
+# useful with a token in `.env`. Install it with `uv sync --group dx`; see
+# docs/scripts/DNANexus.md.
 dx = [
     "dxpy>=0.412.0",
 ]

@@ -2,13 +2,14 @@
 # Build this project's environment on a fresh DNAnexus worker (or any bare
 # Ubuntu box). Idempotent -- safe to re-run.
 #
-#     uv run dx ssh "$JOB" -T "bash -s" < scripts/dx-worker-setup.sh
-#     BRANCH=main REPO_DIR=. bash scripts/dx-worker-setup.sh   # a checkout you have
+#     uv run dx ssh "$JOB" -T "bash -s" < scripts/dnanexus/dx-worker-setup.sh
+#     BRANCH=main REPO_DIR=. bash scripts/dnanexus/dx-worker-setup.sh
+#         # ... against a checkout you already have
 #
-# `scripts/dx-instance.sh` runs this for you, over stdin, before your command.
-# It installs uv, clones the branch from GitHub -- nothing on a workstation
-# survives the session, and the box has no copy of your laptop -- and syncs the
-# locked environment into .venv.
+# `scripts/dnanexus/dx-instance.sh` runs this for you, over stdin, before your
+# command. It installs uv, clones the branch from GitHub -- nothing on a
+# workstation survives the session, and the box has no copy of your laptop --
+# and syncs the locked environment into .venv.
 #
 # Everything is configured by environment variable, because that is all that
 # survives `dx ssh JOB -T "... bash -s" < this-file`: there is no argv on the

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Authenticate the dx CLI from .env and pin the project everything bills to.
 #
-#     source scripts/dx-env.sh
+#     source scripts/dnanexus/dx-env.sh
 #
 # Must be sourced, not executed -- it only exports variables. See
 # docs/scripts/DNANexus.md for what each one does and why.
@@ -10,7 +10,7 @@
 # running this file instead of sourcing it; shellcheck cannot see that path and
 # reads those as dead code.
 # shellcheck disable=SC2317
-_dx_env_repo="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+_dx_env_repo="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 _dx_env_file="${_dx_env_repo}/.env"
 
 _dx_env_say() { echo "dx-env: $*" >&2; }
