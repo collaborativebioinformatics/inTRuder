@@ -17,6 +17,7 @@ from scipy import stats
 mpl.use("Agg")
 
 CARRIERS = Path("results/locus_carriers.tsv")
+CARRIERS_FULL = Path("results/locus_carriers_full.tsv")
 METADATA = Path("data/metadata/sample_population.tsv")
 OUTDIR = Path("results/figures")
 
@@ -42,6 +43,14 @@ mpl.rcParams.update({
     "axes.spines.top": False, "axes.spines.right": False,
     "legend.frameon": False, "legend.fontsize": 8,
 })
+
+
+def load_full():
+    """The genome-wide table: 43,379 loci from 106,844 insertions."""
+    d = pd.read_csv(CARRIERS_FULL, sep="\t")
+    if "chm13" not in d.columns:
+        d["chm13"] = ""
+    return d
 
 
 def load():
@@ -89,8 +98,8 @@ def fig1_sharing(d):
     ax.set_xticklabels(names)
     ax.set_xlabel("Number of carriers (of 67 genomes)", fontsize=8.5)
     style(ax, "Novel tandem-repeat loci are carried by fewer genomes",
-          "Carrier-count distribution per novelty class. Novel loci are "
-          "singleton-enriched (OR 2.4, Fisher p = 0.0065).",
+          f"Carrier-count distribution per novelty class, {len(d):,} loci genome-wide. "
+          f"Novel loci are singleton-enriched (OR 1.60, Fisher p = 4.6e-109).",
           "% of loci in class")
     ax.legend(loc="upper right")
     fig.tight_layout()
@@ -158,10 +167,10 @@ def fig3_private(d):
     ax.xaxis.grid(True, color="#e6e5e0", linewidth=0.7)
     ax.yaxis.grid(False)
     ax.set_axisbelow(True)
-    ax.set_title("Novel loci trend toward being confined to one superpopulation",
+    ax.set_title("Novel loci are more often confined to one superpopulation",
                  loc="left", fontsize=11, color=INK, fontweight="bold", pad=14)
-    ax.text(0, 1.015, "Superpopulations among each locus's carriers. Private vs "
-            f"shared, chi2 = {chi2:.2f}, p = {p:.3f} (n.s.).",
+    ax.text(0, 1.015, "Superpopulations among each locus's carriers, genome-wide. "
+            f"Private vs shared, chi2 = {chi2:,.0f}, p = {p:.0e}.",
             transform=ax.transAxes, fontsize=8, color=INK2, va="bottom")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.20), ncol=3,
               handlelength=1.4, handleheight=0.9, columnspacing=2.2)
@@ -212,8 +221,8 @@ def fig4_fixed_frequency(d):
     ax.set_xlabel("Number of carriers (of 67 genomes)", fontsize=8.5)
     ax.set_ylim(0, max(pct) + 26)
     style(ax, "Half of the loci present in every genome are still called novel",
-          f"Novelty falls as loci become common (Spearman rho = {rho:.2f}, p = {p:.4f}), "
-          "then rebounds at 67/67.",
+          f"Novelty falls as loci become common (Spearman rho = {rho:.2f}, p = {p:.1e}), "
+          f"then rebounds. {len(d):,} loci genome-wide.",
           "% of loci in bin called novel")
     ax.margins(x=0.04)
     fig.tight_layout()
@@ -311,10 +320,11 @@ def fig6_rarity_gradient():
 def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     d, cohort = load()
-    for name, fig in [("fig1_sharing_spectrum", fig1_sharing(d)),
+    dfull = load_full()
+    for name, fig in [("fig1_sharing_spectrum", fig1_sharing(dfull)),
                       ("fig2_ancestry_burden", fig2_ancestry(cohort)),
-                      ("fig3_private_loci", fig3_private(d)),
-                      ("fig4_fixed_frequency", fig4_fixed_frequency(d)),
+                      ("fig3_private_loci", fig3_private(dfull)),
+                      ("fig4_fixed_frequency", fig4_fixed_frequency(dfull)),
                       ("fig5_burden_by_ancestry", fig5_burden_by_ancestry()),
                       ("fig6_rarity_gradient", fig6_rarity_gradient())]:
         for ext in ("png", "pdf"):

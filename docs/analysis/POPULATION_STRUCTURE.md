@@ -204,6 +204,66 @@ fields as a per-sample depth proxy:
 If anything the depth difference means the effect above is slightly understated.
 
 
+### 7. Genome-wide replication, and what filtering does
+
+Running the detection and novelty screen over the full call set (106,844
+insertions, 1,044,405 repeat calls, 43,379 loci with a verdict) replicates the
+chromosome 1 results at scale and resolves the two that were underpowered.
+
+| | chr1 subset (221 loci) | genome-wide (43,379 loci) |
+|---|---|---|
+| singleton enrichment, novel vs known | OR 2.4, p = 0.0065 | OR 1.60, **p = 4.6e-109** |
+| private to one superpopulation | p = 0.059 (n.s.) | chi2 = 1,048, **p = 2.8e-228** |
+| novelty vs carrier frequency | rho = -0.20 | rho = -0.090, **p = 2.6e-79** |
+| fraction of loci called novel | 48.4% | 51.0% |
+
+The overall novelty rate held, but its composition did not: `novel_locus` rose
+from 11.8% of loci on chromosome 1 to 30.9% genome-wide while `novel_motif`
+roughly halved. Chromosome 1 is not representative, and any composition claim
+made from the subset should be restated.
+
+**Quality filtering matters far more than the reference catalogue.** An
+independently produced, filtered version of the same call set (A. Avvaru,
+`hprc_multisample.trf.noveltyFiltered.tsv`, all rows `PASS`) contains 17,270
+loci, an exact subset of the 43,379 above, with none absent from our own run.
+Its novelty rate is **20.2%** against our unfiltered **51.0%**, and
+`novel_locus` falls from 13,386 loci to 145, a 99% reduction.
+
+For comparison, rebuilding the reference catalogue with matched TRF parameters
+moved the rate by about 1.4 points (Section 4 of
+[the catalogue notes](../tools/HG38_TRF_CATALOGUE.md)). Filtering moves it by
+roughly 31. Low-confidence calls, not catalogue mismatch, are the dominant
+source of apparent novelty, and any headline figure should be quoted from the
+filtered call set.
+
+### 8. Mendelian consistency in the GIAB trio
+
+`src/python/popstruct/trio_validation.py`
+
+A repeat called in the child should normally appear in a parent. Using the
+HG002/HG003/HG004 call set, 2,444 loci are carried by the child and 759 (31.1%)
+are absent from both parents.
+
+That figure alone is not a false-positive rate. **Known loci violate at 29.7%**
+(95% CI 27.7-31.8), and those are loci the reference already annotates. Their
+rate is the floor set by parental dropout at 30x coverage and by SV-calling
+inconsistency, and it applies to every class equally. The interpretable quantity
+is the excess above it.
+
+| class | n | violations | rate | 95% CI | excess over known |
+|---|---:|---:|---:|---|---|
+| known (control) | 1,877 | 558 | 29.7% | [27.7, 31.8] | reference |
+| novel_motif | 541 | 197 | 36.4% | [32.4, 40.5] | **+6.7 pts** (OR 1.35, p = 0.0038) |
+| novel_locus | 26 | 4 | 15.4% | [5.4, 32.5] | -14.3 pts (p = 0.13, n.s.) |
+
+Novel-motif calls therefore carry roughly a 7 percentage point excess error rate
+over known calls. `novel_locus` shows no excess, but with 26 loci after
+filtering that row is not informative. A violation may equally be a false
+negative in a parent as a false positive in the child; the known-locus control
+is what makes the comparison meaningful, since dropout affects all classes
+alike.
+
+
 ## Limitations
 
 - **Results 1 to 4 use a subset.** 500 records from chr1 only, yielding 221 loci.

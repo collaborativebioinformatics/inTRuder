@@ -339,6 +339,7 @@ results/*
 results/figures/*
 !results/figures/*.pdf
 !results/locus_carriers.tsv
+!results/locus_carriers_full.tsv
 !results/per_sample_insertion_burden.tsv
 
 # Nextflow run artifacts - logs, work directory, session cache
@@ -359,3 +360,8 @@ reports/
 
 # Generated figure rasters (PDFs are tracked)
 results/figures/*.png
+
+# Akshay's filtered call set (55 MB) lives on DNAnexus under
+# Results/NoveltyFiltering_OUTPUT and is not duplicated here. The trio file
+# beside it is small and is tracked, since trio_validation.py reads it.
+data/sv_output/novelty_filtered/hprc_multisample.trf.noveltyFiltered.tsv
