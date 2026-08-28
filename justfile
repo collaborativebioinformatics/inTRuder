@@ -54,6 +54,11 @@ strchive-data:
 hprc-data:
     cd backend && uv run python scripts/build_hprc_web.py
 
+# Download the shared Drive tables (750 MiB) into data/plots. `--list` first to
+# see what is missing; `--only 02_` for just the novelty-filtered pair.
+plot-data *args:
+    scripts/fetch_plot_data.sh {{args}}
+
 # Rent a DNAnexus box, work on it, terminate on exit. See docs/scripts/DNANexus.md.
 dx-terminal time="1h":
     scripts/dnanexus/dx-instance-cpu.sh --time {{time}}
