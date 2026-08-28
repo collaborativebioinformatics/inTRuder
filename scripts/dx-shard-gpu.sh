@@ -69,6 +69,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 BACKEND="${DX_SHARD_BACKEND:-$REPO/scripts/dx-batch-gpu.sh}"
 
 log()  { echo "[$(date +%H:%M:%S)] $*" >&2; }
+
+# Never let a notification affect the run: short timeout, errors swallowed.
+notify() {
+    [ -n "${NTFY_TOPIC:-}" ] || return 0
+    [ "$DRY" = 1 ] && return 0
+    curl -fsS -m 10 -H "Title: $1" -H "Priority: ${3:-default}" \
+        -H "Tags: ${4:-satellite}" -d "$2" \
+        "$NTFY_URL/$NTFY_TOPIC" >/dev/null 2>&1 || true
+}
 warn() { echo "[$(date +%H:%M:%S)] WARNING: $*" >&2; }
 die()  { echo "[$(date +%H:%M:%S)] FATAL: $*" >&2; exit 1; }
 
@@ -81,6 +90,12 @@ RUN="dx-shard-$(date +%Y%m%d-%H%M%S)"
 OUTPUT_DIR=""
 LOG_DIR=""
 POLL="${POLL:-60}"
+# ntfy.sh push, so a run that outlives your attention still reports. The worker
+# notifies too (scripts/dx-worker-run.sh) and that one is the authoritative
+# outcome -- it is sent from the box, so it arrives even if this laptop is
+# asleep or offline. This side reports the fan-out as a whole.
+NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+NTFY_TOPIC="${NTFY_TOPIC-inTRuder-tandem-repeats}"
 DETACH=1
 DRY=0
 PASS=()
@@ -101,6 +116,9 @@ Options:
       --log-dir DIR       per-shard logs                    [<output-dir>/logs]
       --no-detach         run the program in the ssh session, the old way. A
                           dropped connection then kills the run; see below
+      --ntfy-topic TOPIC  ntfy.sh topic for push updates
+                                                 [inTRuder-tandem-repeats]
+      --no-notify         do not push anything
   -n, --dry-run           print what each shard would do, launch nothing
   -h, --help              this
 
@@ -140,6 +158,8 @@ while [ $# -gt 0 ]; do
         --log-dir)         LOG_DIR="${2:?}"; shift 2 ;;
         -n|--dry-run)      DRY=1; PASS+=("--dry-run"); shift ;;
         --no-detach)       DETACH=0; shift ;;
+        --ntfy-topic)      NTFY_TOPIC="${2:?}"; shift 2 ;;
+        --no-notify)       NTFY_TOPIC=""; shift ;;
         -h|--help)         usage; exit 0 ;;
         # dx-batch-gpu.sh refuses these anyway; saying so here names the reason
         # instead of surfacing it N times from N children at once.
@@ -232,6 +252,10 @@ log "run          $RUN"
 log "shards       $SHARDS over calls [$START, $offset), $PARALLEL at a time"
 log "output       $OUTPUT_DIR/shard<k>/"
 log "logs         $LOG_DIR/shard<k>.log"
+[ -n "$NTFY_TOPIC" ] && log "notify       $NTFY_URL/$NTFY_TOPIC"
+notify "$RUN launching" \
+    "$SHARDS shard(s) over calls [$START, $offset), $PARALLEL at a time
+each box stops itself when its work ends" "default" "rocket"
 
 # --- shutdown -----------------------------------------------------------------
 # Two independent mechanisms, because they fail in different ways. Signalling the
@@ -333,9 +357,17 @@ launch() {
     # GPU-hours on 2026-08-27. dx-instance.sh still uploads and terminates too;
     # both doing it is the point, since either side can die.
     local dest=""
+    local -a cmd_inner
+    cmd_inner=("${cmd[@]}")
     if [ "$DETACH" = 1 ]; then
         dest="/Results/$USER_NAME/$RUN-$k/"
-        cmd=(scripts/dx-worker-run.sh --destination "$PROJECT:$dest" -- "${cmd[@]}")
+        cmd=(scripts/dx-worker-run.sh --destination "$PROJECT:$dest")
+        if [ -n "$NTFY_TOPIC" ]; then
+            cmd+=(--ntfy-topic "$NTFY_TOPIC")
+        else
+            cmd+=(--no-notify)
+        fi
+        cmd+=(-- "${cmd_inner[@]}")
     fi
 
     log "shard $k: calls [$off, $((off + lim))) -> $out"
@@ -458,6 +490,14 @@ done
 
 log "--- $RUN ---"
 for line in "${STATES[@]}"; do log "$line"; done
+
+if [ "$failed" = 0 ]; then
+    notify "$RUN: all $SHARDS shard(s) ok" \
+        "results in $OUTPUT_DIR/shard*/" "default" "white_check_mark"
+else
+    notify "$RUN: $failed of $SHARDS shard(s) FAILED" \
+        "$(printf '%s\n' "${STATES[@]}")" "high" "rotating_light"
+fi
 
 if [ "$failed" = 0 ] && [ "$DRY" = 0 ]; then
     log "results in $OUTPUT_DIR/shard*/"

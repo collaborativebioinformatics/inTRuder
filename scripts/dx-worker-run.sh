@@ -37,9 +37,11 @@
 #   3. **Results only left the worker at the very end.** dx-instance.sh uploads
 #      after the command returns, so an interruption at 99% loses everything --
 #      and it did: four complete reference-allele halves existed on disk and
-#      died with the boxes. So the payload uploads to the PROJECT itself, as
-#      soon as each file is written, and does it even when the program fails.
-#      Results then no longer depend on any local process surviving.
+#      died with the boxes. So the payload uploads to the PROJECT itself as each
+#      file appears -- not when the program exits, which would still lose a
+#      finished reference half to an OOM in the alt half -- and sweeps again at
+#      the end so a failed run still ships what it managed. Results no longer
+#      depend on any local process surviving, nor on a clean exit.
 #
 # The foreground half mirrors the log so a launcher that IS still attached sees
 # progress as before, and exits with the program's status. If the connection
@@ -51,6 +53,12 @@ set -uo pipefail
 
 DEST=""
 POLL="${POLL:-5}"
+# Push notification, so the outcome reaches you even when the laptop that
+# launched the run is asleep -- which is the case that left the last failure
+# invisible for two hours. Sent from the WORKER for that reason. Set
+# NTFY_TOPIC= (empty) to turn it off.
+NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+NTFY_TOPIC="${NTFY_TOPIC-inTRuder-tandem-repeats}"
 COMMAND=()
 
 log() { echo "[worker] $*" >&2; }
@@ -59,6 +67,8 @@ die() { echo "[worker] FATAL: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
         -d|--destination) DEST="${2:?}"; shift 2 ;;
+        --ntfy-topic)     NTFY_TOPIC="${2:?}"; shift 2 ;;
+        --no-notify)      NTFY_TOPIC=""; shift ;;
         -o|--out)         OUT="${2:?}"; shift 2 ;;
         --)               shift; COMMAND=("$@"); break ;;
         -h|--help)
@@ -88,26 +98,66 @@ rm -f "$DONE"
     echo 'set -uo pipefail'
     printf 'cd %q || exit 1\n' "$PWD"
     printf 'export OUT=%q\n' "$OUT"
+    printf 'export RUN_LOG=%q\n' "$LOG"
     echo
+    if [ -n "$DEST" ]; then
+        cat <<'WATCH'
+mkdir -p "$OUT/.uploaded"
+# Ship each .npz the moment the program announces it, rather than at exit. The
+# program names the file itself -- "[reference] wrote /path/x.npz: (220, ...)"
+# -- which is exact; watching for a stable file size would race numpy's write.
+upload_one() {
+    local f="$1" tag="$OUT/.uploaded/$(basename "$1")"
+    [ -f "$f" ] && [ ! -e "$tag" ] || return 0
+    echo "[worker] uploading $(basename "$f") ($(du -h "$f" | cut -f1))" >&2
+    if dx upload "$f" --destination "$DX_DEST" --wait --brief >/dev/null 2>&1; then
+        : > "$tag"
+    else
+        echo "[worker] WARNING: upload failed for $f (will retry)" >&2
+    fi
+}
+(
+    while [ ! -f "$OUT/.exit-status" ]; do
+        sed -e 's/.*wrote \([^ ]*\.npz\).*/\1/' -e 't' -e 'd' "$RUN_LOG" 2>/dev/null \
+            | sort -u | while read -r f; do upload_one "$f"; done
+        sleep 20
+    done
+) &
+WATCH
+    fi
     printf '%q ' "${COMMAND[@]}"; echo
     echo 'rc=$?'
     echo 'echo "[worker] program exited $rc" >&2'
     if [ -n "$DEST" ]; then
         cat <<'UPLOAD'
-# Upload whatever exists, INCLUDING on failure: a shard that got through its
-# reference half is worth more than nothing, which is what waiting for a clean
-# exit produced last time. --wait so the upload is durable before we say it is.
+# Final sweep: anything the watcher has not already shipped, INCLUDING on
+# failure. A shard that got through its reference half is worth more than
+# nothing, which is exactly what waiting for a clean exit produced last time.
 shopt -s nullglob
 for f in "$OUT"/*; do
-    case "$f" in *.payload.sh|*.exit-status) continue ;; esac
+    case "$f" in *.payload.sh|*.exit-status|*/run.log) continue ;; esac
     [ -f "$f" ] || continue
-    echo "[worker] uploading $(basename "$f") ($(du -h "$f" | cut -f1))" >&2
-    dx upload "$f" --destination "$DX_DEST" --wait --brief >/dev/null \
-        || echo "[worker] WARNING: upload failed for $f" >&2
+    upload_one "$f"
 done
 UPLOAD
     fi
     echo 'echo "$rc" > "$OUT/.exit-status"'
+    cat <<'NOTIFY'
+# Tell someone, from the worker, before the box goes away. `|| true` and a short
+# timeout throughout: a notification service being down must never turn a
+# successful run into a failed one.
+if [ -n "${NTFY_TOPIC:-}" ]; then
+    if [ "$rc" = 0 ]; then _t="white_check_mark"; _p="default"; _s="finished"
+    else _t="rotating_light"; _p="high"; _s="FAILED (status $rc)"; fi
+    _n=$(ls "$OUT"/*.npz 2>/dev/null | wc -l | tr -d ' ')
+    curl -fsS -m 10 \
+        -H "Title: ${DX_JOB_ID:-worker} $_s" \
+        -H "Priority: $_p" -H "Tags: $_t" \
+        -d "$(hostname): $_s
+${_n} .npz uploaded to ${DX_DEST:-<no destination>}" \
+        "$NTFY_URL/$NTFY_TOPIC" >/dev/null 2>&1 || true
+fi
+NOTIFY
     cat <<'STOP'
 # Stop the machine. This is the last thing that runs, and it runs whether the
 # program succeeded or raised: an error must release the box, not leave it
@@ -124,6 +174,7 @@ STOP
 chmod +x "$PAYLOAD"
 
 export DX_DEST="$DEST"
+export NTFY_URL NTFY_TOPIC
 
 # `bash -l`: the login profile is what puts the job's dx credentials in the
 # environment. A non-login shell here means `dx upload` fails with "not logged
