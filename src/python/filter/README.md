@@ -1,4 +1,8 @@
-# filter_ins_trf.py
+# `filter/`
+
+Two steps that narrow a callset before an expensive stage runs on it.
+
+## `filter_ins_trf.py`
 
 Filter a TSV of structural-variant insertions annotated with TRF (Tandem
 Repeats Finder) output, and generate a companion summary-stats TSV.
@@ -166,3 +170,50 @@ filtering logic. The per-`motif_length` summary lives in
 `summarize_by_motif_length()`; group by a different column (e.g.
 `motif`, `chrom`, or `sample`) by changing the `groups.setdefault(...)`
 key.
+
+# `subset_vcf_by_novelty.py`
+
+Cut an SV VCF down to the loci a novelty screen called novel, so that Evo 2 is
+only asked to embed the loci the project is actually about.
+
+```bash
+uv run python src/python/filter/subset_vcf_by_novelty.py \
+    data/sv_output/survivor_multi_sample_vcf/first_500_INS.vcf \
+    data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.filtered.tsv \
+    data/sv_output/survivor_multi_sample_vcf/novel_INS.vcf
+```
+
+VCF in, VCF out, so `python -m evo.embeddings` runs on the result unchanged and
+neither program has to import the other.
+
+| Flag | | Default |
+|---|---|---|
+| `--novelty` | verdicts that count as novel | `novel_motif,novel_locus` |
+| `--keep-filtered` | also use rows the purity filters rejected | off |
+
+Measured on `first_500_INS` — the filter choice moves the cost by 2×:
+
+| input table | novel loci | records | windows | L4-hours |
+|---|---:|---:|---:|---:|
+| `novelty.filtered.tsv` (PASS only) | 73 | 99 | 2,128 | ~4.1 |
+| `novelty.tsv` + `--keep-filtered` | 183 | 221 | 4,536 | ~8.7 |
+| *(no subsetting — the whole VCF)* | 221 | 500 | 8,177 | ~15.6 |
+
+## Joining is by coordinate, and this is not a detail
+
+Selection uses `(chrom, ins_coord)` against the VCF's `(CHROM, POS)`, which
+matched 105 of 105 loci. The obvious key — `SVID` — is wrong twice over, and
+both errors produce a plausible VCF rather than an error:
+
+- **The table's `SVID` is the per-sample Sniffles ID** from FORMAT, not the
+  record's ID column. Only 160 of 208 novel SVIDs appear in that column at all.
+- **The VCF's ID column is not unique.** 500 records carry 227 distinct IDs,
+  because a SURVIVOR merge reuses the first sample's ID, so matching the string
+  also selects unrelated loci.
+
+Together they turned 73 novel loci into 360 kept records. `tests/python/filter/`
+pins both.
+
+A record is kept when **any** of its rows is novel, so every sample at a novel
+locus is embedded — including the ones called `known`. Keeping only the novel
+rows would leave a locus whose embedded alleles are exactly the unusual ones.
