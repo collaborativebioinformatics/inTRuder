@@ -43,6 +43,17 @@ frontend:
 demo-data:
     cd backend && uv run python scripts/make_demo_data.py
 
+# Fetch the STRchive disease-locus catalog into data/web/strchive.
+strchive-data:
+    cd backend && uv run python scripts/fetch_strchive.py
+
+# Needs data/web/hprc_multisample.trf.noveltyFiltered.tsv (see
+# data/web/README.md for how to fetch it), and strchive-data run first, or
+# gene/disease_gene come out empty.
+# Rebuild the real HPRC tables in data/hprc from the screened callset.
+hprc-data:
+    cd backend && uv run python scripts/build_hprc_web.py
+
 # Rent a DNAnexus box, work on it, terminate on exit. See docs/scripts/DNANexus.md.
 dx-terminal time="1h":
     scripts/dx-instance-cpu.sh --time {{time}}

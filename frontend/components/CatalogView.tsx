@@ -31,6 +31,7 @@ export function CatalogView({
   total,
   loading,
   sort,
+  cohortSize,
 }: {
   loci: Locus[];
   strips: Record<string, Segment[]>;
@@ -38,9 +39,14 @@ export function CatalogView({
   loading: boolean;
   /** The ordering the API actually applied — see LociResponse.sort. */
   sort?: SortKey;
+  /** Genomes in the cohort, from /api/summary. Undefined until it lands; the
+      carrier bar has to draw before then, so it falls back to the busiest
+      locus on the page rather than to a number baked into the build. */
+  cohortSize?: number;
 }) {
   const { focusLocus } = useView();
   const [hover, setHover] = useState<{ segment: Segment; x: number; y: number } | null>(null);
+  const cohort = cohortSize ?? Math.max(...loci.map((l) => l.n_samples), 1);
 
   // Row lengths span two orders of magnitude here (tens of bp to several kb), so
   // a shared linear scale renders most rows as a 1px sliver. Each row's overall
@@ -194,7 +200,7 @@ export function CatalogView({
                       <span className="text-ink-secondary">{formatBp(locus.median_len)}</span>
                       <span
                         className="flex items-center gap-1 text-ink-muted"
-                        title={`${locus.n_samples} of 68 samples carry this insertion`}
+                        title={`${locus.n_samples} of ${cohort} samples carry this insertion`}
                       >
                         <span
                           className="inline-block h-1.5 w-8 overflow-hidden rounded-full"
@@ -203,7 +209,7 @@ export function CatalogView({
                           <span
                             className="block h-full rounded-full"
                             style={{
-                              width: `${(locus.n_samples / 68) * 100}%`,
+                              width: `${(locus.n_samples / cohort) * 100}%`,
                               background: "var(--baseline)",
                             }}
                           />

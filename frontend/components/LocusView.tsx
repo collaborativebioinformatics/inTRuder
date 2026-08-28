@@ -115,11 +115,15 @@ export function LocusView({
   locusId,
   selection,
   onSelect,
+  cohortSize,
 }: {
   locusId: string;
   /** The pinned block, so the strip can show which one it is. */
   selection: Selection | null;
   onSelect: (selection: Selection) => void;
+  /** Genomes in the cohort, from /api/summary. The denominator of "carriers",
+      served rather than assumed — it changes with the registered callset. */
+  cohortSize?: number;
 }) {
   const { focusLocus } = useView();
   const [detail, setDetail] = useState<LocusDetail | null>(null);
@@ -264,7 +268,14 @@ export function LocusView({
             value={<MotifText motif={locus.motif} max={16} label="locus motif" />}
           />
           <Stat label="Class" value={`${locus.motif_class} · ${locus.motif_len} bp`} />
-          <Stat label="Carriers" value={`${locus.n_samples} / 68`} />
+          <Stat
+            label="Carriers"
+            value={
+              cohortSize
+                ? `${locus.n_samples} / ${cohortSize}`
+                : String(locus.n_samples)
+            }
+          />
           <Stat
             label="Allele range"
             value={`${formatBp(locus.min_len)} – ${formatBp(locus.max_len)}`}
@@ -360,7 +371,9 @@ export function LocusView({
           <ul className="space-y-1">
             {alleles.map((allele) => (
               <li
-                key={allele.sample}
+                // (sample, allele), because a carrier of two co-located
+                // insertions is diploid here and appears on two rows.
+                key={`${allele.sample}:${allele.allele}`}
                 className="grid grid-cols-[7rem_1fr_4.5rem] items-center gap-3 transition-opacity"
                 style={{
                   opacity: highlighted && !highlighted.has(allele.sample) ? 0.25 : 1,
@@ -368,12 +381,22 @@ export function LocusView({
               >
                 <span className="tabular truncate text-[11px] text-ink-secondary">
                   {allele.sample}
+                  {allele.allele > 1 && (
+                    // Only on the second row and beyond: a suffix on every
+                    // sample would imply the cohort is phased, which it is not.
+                    // This says "the same genome, its other haplotype".
+                    <span className="text-ink-muted"> ·{allele.allele}</span>
+                  )}
                 </span>
                 <MotifBarcode
                   segments={allele.segments}
                   maxLen={maxLen}
                   height={20}
-                  ariaLabel={`${allele.sample}: ${formatBp(allele.allele_len)} insertion`}
+                  ariaLabel={
+                    allele.allele > 1
+                      ? `${allele.sample} allele ${allele.allele}: ${formatBp(allele.allele_len)} insertion`
+                      : `${allele.sample}: ${formatBp(allele.allele_len)} insertion`
+                  }
                   colorFor={(segment) => motifColor(motifScale, segment.motif)}
                   onHover={(segment, at) =>
                     setHover(segment && at ? { segment, ...at } : null)
