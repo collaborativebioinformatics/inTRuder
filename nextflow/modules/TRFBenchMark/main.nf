@@ -98,8 +98,7 @@ process INTERSECT_REPEAT_CATALOG {
     path ground_truth
 
     output:
-    path "HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz", emit: catalog_tsv
-    path "intersections.bed.gz"                     , emit: intersections_bed
+    path "intersections.bed.gz", emit: intersections_bed
 
     script:
     """
@@ -116,11 +115,37 @@ process INTERSECT_REPEAT_CATALOG {
         -wb \\
         | cut -f5- \\
         | gzip > intersections.bed.gz
+    """
 
-    # Join original file with hits
-    uv run ${projecctDir}/scripts/check_repeat_catalog/join-hits.py \\
+    stub:
+    """
+    intersections.bed.gz
+    """
+
+}
+
+process JOIN_REPEAT_CATALOG_HITS {
+    tag "${tr_results.name}"
+    // Container containing python and uv, or a custom python environment
+    container "ghcr.io/astral-sh/uv:python3.11-bookworm" 
+
+    input:
+    path tr_results
+    path intersections_bed
+
+    output:
+    path "HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz", emit: catalog_tsv
+
+    script:
+    """
+    uv run join-hits.py \\
         --query "${tr_results}" \\
-        --hits intersections.bed.gz \\
+        --hits "${intersections_bed}" \\
         --output HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz
+    """
+
+    stub:
+    """
+    touch HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz
     """
 }
