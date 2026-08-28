@@ -208,6 +208,31 @@ designed so a bad result is loud:
 : all 45 views scored at once, so `--layer` and `--segment` are chosen on
   evidence rather than on the block-type argument in `extract.py`.
 
+## Choosing which loci to embed
+
+Embedding is priced per window, so the callset is narrowed first. The project's
+question is about *novel* tandem repeats, and
+[`subset_vcf_by_novelty.py`](../src/python/filter/README.md) cuts the VCF down to
+the loci a novelty screen called novel — VCF in, VCF out, so nothing downstream
+changes:
+
+```bash
+uv run python src/python/filter/subset_vcf_by_novelty.py \
+    data/sv_output/survivor_multi_sample_vcf/first_500_INS.vcf \
+    data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.filtered.tsv \
+    data/sv_output/survivor_multi_sample_vcf/novel_INS.vcf
+```
+
+`python -m evo.embeddings` then produces both halves of the comparison at those
+loci: `reference.npz`, the reference allele at each distinct breakpoint, and
+`alt.npz`, each sample's insertion allele.
+
+| input | novel loci | reference windows | alt windows | L4-hours |
+|---|---:|---:|---:|---:|
+| PASS-filtered novel | 73 | 505 | 1,623 | ~4.1 |
+| all novel | 183 | 1,094 | 3,442 | ~8.7 |
+| the whole VCF | 221 | 2,094 | 6,083 | ~15.6 |
+
 ## Running the extraction on a GPU worker
 
 `scripts/dx-worker-setup-evo2.sh` builds the environment. Pass it to any of the
