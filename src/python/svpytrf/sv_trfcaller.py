@@ -156,7 +156,7 @@ def run_trf_on_insertions(args):
     out.close()
 
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
     input_vcf = args.input
     output_tsv = args.output
@@ -166,3 +166,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     run_trf_on_insertions(args)
+
+if __name__ == "__main__":
+    main()
