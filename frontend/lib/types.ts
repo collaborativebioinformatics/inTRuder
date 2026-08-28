@@ -429,8 +429,12 @@ export interface Dataset {
 
 /* -------------------------------------------------------------------------- */
 
-/** Which surface the workspace is showing. The agent can move this too. */
-export type PageName = "catalog" | "strchive" | "datasets";
+/**
+ * Which surface the workspace is showing. The agent can move this too — except
+ * to `presentation`, which is a document rather than a view of the data and so
+ * is not one of the pages `set_view` offers.
+ */
+export type PageName = "catalog" | "strchive" | "datasets" | "presentation";
 
 /**
  * How the catalog list is ordered. Ordering is not filtering — it changes which
