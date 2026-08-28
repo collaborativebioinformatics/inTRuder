@@ -25,6 +25,17 @@ options:
   --output, -o OUTPUT  Output annotated VCF file
 ```
 
+### Example usage:
+
+Input is 106844 variants, 243Mb uncompressed
+```
+time python3 add_compresion.py -i hprc_multisample.INS.vcf -o hprc_multisample.INS_comp.vcf
+
+real    0m10.150s
+user    0m7.397s
+sys     0m1.366s
+```
+
 ## Output
 
 Adds "SV_COMP" field to the VCF, eg. the highly repetitive string below has a high compression ratio, so we can be confident it is repetitive
