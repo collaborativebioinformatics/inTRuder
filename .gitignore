@@ -297,6 +297,15 @@ data/dx/
 # pinned, checksummed download, so it is not.
 data/web/strchive/
 
+# The real HPRC callset and the two tables built from it. The manifests that
+# describe all three ARE committed (data/web/hprc-*.yaml); the data is 57 MB of
+# somebody else's cohort. Fetch and rebuild with:
+#   dx download file-JB8Xg900pzXPjXvpYXg29fYB \
+#     -o data/web/hprc_multisample.trf.noveltyFiltered.tsv
+#   cd backend && uv run python scripts/build_hprc_web.py
+data/web/hprc_multisample.trf.noveltyFiltered.tsv
+data/hprc/
+
 # Files handed to the web interface through the Upload button, plus the
 # manifests generated for them. Somebody else's callset is exactly the thing
 # that should not ride along in a clone; the directory itself is kept so the

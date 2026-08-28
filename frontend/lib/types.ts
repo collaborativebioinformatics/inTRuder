@@ -107,6 +107,10 @@ export interface Segment {
 
 export interface Allele {
   sample: string;
+  /** Which allele of this sample at this locus, 1-based. A carrier of two
+      co-located insertions is diploid here and appears twice, so (sample,
+      allele) is the identity — `sample` alone is not unique. */
+  allele: number;
   allele_len: number;
   segments: Segment[];
 }
@@ -145,6 +149,9 @@ export interface FunnelStage {
 }
 
 export interface Summary {
+  /** Genomes behind these numbers. Served, not assumed — the cohort changes
+      when a different callset is registered. */
+  cohort_size: number;
   funnel: FunnelStage[];
   by_class: { motif_class: MotifClass; n: number; novel: number }[];
   by_chrom: { chrom: string; n: number; novel: number }[];
@@ -454,7 +461,7 @@ export const SORTS: {
   {
     key: "support",
     label: "Carriers",
-    note: "How many of the 68 samples carry an insertion here.",
+    note: "How many cohort samples carry an insertion here.",
     natural: "desc",
   },
   {

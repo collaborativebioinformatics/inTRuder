@@ -325,18 +325,20 @@ def _order_by(sort: str, sort_dir: str | None) -> str:
 #: it, because the ordering is what decides which loci that page holds.
 _REPRESENTATIVE_ALLELE = """
     allele AS (
-        SELECT locus_id, sample, max("end") AS allele_len
+        SELECT locus_id, sample, {allele} AS allele, max("end") AS allele_len
         FROM {segments} {where}
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3
     ),
     ranked AS (
         -- `sample` breaks ties. Carriers routinely share an allele length, and
         -- without a total order row_number() is free to pick a different one of
         -- them per query — which would let the strip a row draws disagree with
         -- the array count that row is sorted by, and change between requests.
-        SELECT locus_id, sample,
+        -- `allele` joins that tiebreak so a diploid carrier's two haplotypes
+        -- stay separable from each other.
+        SELECT locus_id, sample, allele,
                row_number() OVER (
-                   PARTITION BY locus_id ORDER BY allele_len, sample
+                   PARTITION BY locus_id ORDER BY allele_len, sample, allele
                ) AS rn,
                count(*) OVER (PARTITION BY locus_id) AS n
         FROM allele
@@ -344,15 +346,44 @@ _REPRESENTATIVE_ALLELE = """
     representative AS (
         -- Integer division: DuckDB's `/` is float, so an even carrier count
         -- would match no row at all.
-        SELECT locus_id, sample FROM ranked WHERE rn = (n + 1) // 2
+        SELECT locus_id, sample, allele FROM ranked WHERE rn = (n + 1) // 2
     )
 """
 
+
+#: How to address one allele in a segments table.
+#:
+#: A carrier is not always one allele. In the real HPRC callset 4,110 (locus,
+#: sample) pairs hold two or three co-located insertion records — a diploid
+#: sample whose haplotypes differ in length — and folding those onto the sample
+#: would concatenate two haplotypes into one strip and draw it as though it were
+#: a compound repeat, which is a different biological claim.
+#:
+#: A table that carries an `allele` column is therefore keyed on (sample,
+#: allele); one that does not is keyed on the sample with a constant, which is
+#: what the demo fixtures and any one-allele-per-carrier upload need. Resolving
+#: it per table rather than requiring the column keeps `SEGMENTS_REQUIRED` as it
+#: was, so a segments table written before this existed still registers.
+def _allele_key(segments: str, alias: str = "") -> str:
+    """The expression addressing one allele, `alias`-qualified where needed.
+
+    Qualification is for the queries that join the segments table to
+    `representative`, where a bare `allele` is ambiguous. It applies only to the
+    real column — qualifying the constant would produce `s.1`.
+    """
+    if "allele" not in _columns(segments):
+        return "1"
+    return f"{alias}.allele" if alias else "allele"
+
+
 def _representative_allele(segments: str, where: str = "") -> str:
-    return _REPRESENTATIVE_ALLELE.format(segments=segments, where=where)
+    return _REPRESENTATIVE_ALLELE.format(
+        segments=segments, where=where, allele=_allele_key(segments)
+    )
 
 
 def _array_counts(segments: str) -> str:
+    allele = _allele_key(segments, "s")
     return f"""WITH {_representative_allele(segments)},
     arrays AS (
         SELECT r.locus_id,
@@ -360,6 +391,7 @@ def _array_counts(segments: str) -> str:
         FROM representative r
         JOIN {segments} s
           ON s.locus_id = r.locus_id AND s.sample = r.sample
+         AND {allele} = r.allele
         GROUP BY 1
     )
 """
@@ -457,7 +489,9 @@ def loci(
                 SELECT s.locus_id, s.sample, s.seg_index, s.seg_type,
                        s.start, s."end", s.motif, s.purity, s.units
                 FROM {segments_table} s
-                JOIN representative r ON r.locus_id = s.locus_id AND r.sample = s.sample
+                JOIN representative r
+                  ON r.locus_id = s.locus_id AND r.sample = s.sample
+                 AND {_allele_key(segments_table, "s")} = r.allele
                 ORDER BY s.locus_id, s.seg_index""",
             locus_ids,
         )
@@ -493,23 +527,31 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
     segments: list[dict[str, Any]] = []
     if segments_table:
         seg_cursor = con.execute(
-            f"""SELECT sample, seg_index, seg_type, start, "end", motif, purity, units
+            f"""SELECT sample, {_allele_key(segments_table)} AS allele,
+                       seg_index, seg_type, start, "end", motif, purity, units
                 FROM {segments_table} WHERE locus_id = ?
-                ORDER BY sample, seg_index""",
+                ORDER BY sample, allele, seg_index""",
             [locus_id],
         )
         seg_columns = [d[0] for d in seg_cursor.description]
         segments = [dict(zip(seg_columns, r)) for r in seg_cursor.fetchall()]
 
-    by_sample: dict[str, dict[str, Any]] = {}
+    # Keyed on (sample, allele), not sample: a diploid carrier of two co-located
+    # insertions has two alleles here, and merging them would splice two
+    # haplotypes into one strip. `sample` stays on each entry unchanged, so
+    # highlighting a carrier still lights up both of its alleles.
+    by_allele: dict[tuple[str, int], dict[str, Any]] = {}
     for segment in segments:
-        entry = by_sample.setdefault(
-            segment["sample"], {"sample": segment["sample"], "segments": [], "allele_len": 0}
+        key = (segment["sample"], segment["allele"])
+        entry = by_allele.setdefault(
+            key,
+            {"sample": segment["sample"], "allele": segment["allele"],
+             "segments": [], "allele_len": 0},
         )
         entry["segments"].append(segment)
         entry["allele_len"] = max(entry["allele_len"], segment["end"])
 
-    alleles = sorted(by_sample.values(), key=lambda a: a["allele_len"], reverse=True)
+    alleles = sorted(by_allele.values(), key=lambda a: a["allele_len"], reverse=True)
     return {"locus": locus, "alleles": alleles}
 
 
@@ -517,9 +559,10 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
 def summary() -> dict[str, Any]:
     """Cohort funnel plus the breakdowns the landing page renders."""
     loci_table = _loci_table()
+    segments_table = _segments_table()
     synthetic_tables = [
         table
-        for table in (loci_table, _segments_table())
+        for table in (loci_table, segments_table)
         if table is not None and registry.datasets[table].synthetic
     ]
     con = registry.cursor()
@@ -540,7 +583,20 @@ def summary() -> dict[str, Any]:
         columns = [d[0] for d in cursor.description]
         return [dict(zip(columns, r)) for r in cursor.fetchall()]
 
+    # How many genomes are behind these numbers. Sent rather than hardcoded in
+    # the interface, because "3 / 68" printed over a 67-genome cohort is simply
+    # wrong, and which cohort is loaded is exactly the thing a registered dataset
+    # is allowed to change. Counted off the per-allele table where there is one,
+    # since that is the only place every sample appears; otherwise the busiest
+    # locus is the best lower bound available.
+    cohort_size = con.execute(
+        f"SELECT count(DISTINCT sample) FROM {segments_table}"
+        if segments_table
+        else f"SELECT max(n_samples) FROM {loci_table}"
+    ).fetchone()[0]
+
     return {
+        "cohort_size": cohort_size,
         "funnel": [
             {"stage": "Candidate insertion loci", "count": total,
              "note": "Merged INS calls carrying a detected repeat"},

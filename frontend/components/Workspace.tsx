@@ -408,6 +408,7 @@ function WorkspaceInner() {
                 locusId={focused}
                 selection={selection}
                 onSelect={setSelection}
+                cohortSize={summary?.cohort_size}
               />
             </div>
           ) : (
@@ -419,6 +420,7 @@ function WorkspaceInner() {
                 total={data?.total ?? 0}
                 loading={loading}
                 sort={data?.sort}
+                cohortSize={summary?.cohort_size}
               />
             </>
           )}
