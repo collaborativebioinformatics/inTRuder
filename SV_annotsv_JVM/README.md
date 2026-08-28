@@ -1,7 +1,7 @@
 # AnnotSV examples
 
-This directory contains small example input/output artifacts and links to the
-annotation instructions. The maintained workflow is documented in
+This directory contains example input/output artifacts and links to the
+annotation instructions. The complete workflow is documented in
 [workflow.md](workflow.md); it covers local execution, DNAnexus CLI, and the
 DNAnexus Web UI.
 
