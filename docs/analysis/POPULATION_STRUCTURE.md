@@ -148,6 +148,11 @@ Results 1 and 2 are unaffected, as they count insertions from the merged VCF
 rather than tandem-repeat verdicts, so the tandem-repeat filters do not apply
 to them.
 
+The three withdrawn figures are retained under
+[`results/figures/withdrawn/`](../../results/figures/withdrawn/) with a README
+recording what each claimed and what it became, so the withdrawal is auditable
+rather than a silent deletion. They should not be cited.
+
 ### 4. Mendelian consistency in the GIAB trio
 
 `src/python/popstruct/trio_validation.py`
