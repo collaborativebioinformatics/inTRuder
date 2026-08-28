@@ -321,12 +321,15 @@ def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     d, cohort = load()
     dfull = load_full()
-    for name, fig in [("fig1_sharing_spectrum", fig1_sharing(dfull)),
-                      ("fig2_ancestry_burden", fig2_ancestry(cohort)),
-                      ("fig3_private_loci", fig3_private(dfull)),
-                      ("fig4_fixed_frequency", fig4_fixed_frequency(dfull)),
-                      ("fig5_burden_by_ancestry", fig5_burden_by_ancestry()),
-                      ("fig6_rarity_gradient", fig6_rarity_gradient())]:
+    # Figures 1, 3 and 4 are retired. They were computed on the unfiltered call
+    # set and did not survive the quality filters the pipeline actually applies:
+    # singleton enrichment reversed (OR 1.60 -> 0.90), the population-private
+    # gradient collapsed (p 2.8e-228 -> 0.032) and the novelty/frequency
+    # relationship went flat (rho -0.090 -> +0.014). The apparent signal came
+    # from low-confidence calls, which concentrate among singletons. The
+    # functions are kept for reference; see docs/analysis/POPULATION_STRUCTURE.md.
+    for name, fig in [("fig1_burden_by_ancestry", fig5_burden_by_ancestry()),
+                      ("fig2_rarity_gradient", fig6_rarity_gradient())]:
         for ext in ("png", "pdf"):
             fig.savefig(OUTDIR / f"{name}.{ext}", dpi=200, bbox_inches="tight")
         plt.close(fig)
