@@ -226,6 +226,27 @@ The launcher still mirrors the log, so an attached terminal sees progress as
 before — but that half is now expendable. If the connection drops, collect with
 `uv run dx download -r <destination>`. `--no-detach` restores the old behaviour.
 
+### Push notifications
+
+Both scripts post to [ntfy.sh](https://ntfy.sh) on the topic
+**`inTRuder-tandem-repeats`**. Subscribe in the ntfy app or at
+<https://ntfy.sh/inTRuder-tandem-repeats>.
+
+The one that matters is sent **from the worker**, not from your laptop, so the
+outcome reaches you even if the machine that launched the run is asleep or
+offline — the exact case that left the 2026-08-27 failure invisible for two
+hours. It carries the job id, the exit status and how many `.npz` were uploaded,
+and is sent just before the box terminates itself.
+
+| Flag | | Default |
+|---|---|---|
+| `--ntfy-topic TOPIC` | topic to post to | `inTRuder-tandem-repeats` |
+| `--no-notify` | post nothing | off |
+
+`NTFY_TOPIC` and `NTFY_URL` override the defaults from the environment. Every
+call has a 10 s timeout and swallows its errors: ntfy being down must never turn
+a good run into a failed one.
+
 A shard that raises also **stops the queue**: the remaining shards are not
 launched, because a systematic fault would otherwise cost one GPU box each to
 rediscover.
