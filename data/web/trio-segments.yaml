@@ -1,0 +1,49 @@
+name: trio_segments
+title: GIAB trio per-allele repeat structure (HG002/03/04)
+synthetic: false
+path: ${NOVELTRS_DATA_DIR}/trio/segments.parquet
+format: parquet
+role: segments
+
+description: >
+  One row per structural segment within one sample's inserted allele at one locus,
+  in left-to-right order. REAL DATA: 10,287 segments over the 7,276
+  carrier-alleles of trio_loci. An allele is a run of segments - a repeat block
+  carrying a motif and copy number, with non-repetitive flank on either side where
+  the block does not fill the insertion. This is the table that drives the motif
+  barcodes, and the table for allele-level questions: how much of an insertion is
+  actually repetitive, and how allele length varies between carriers.
+  An allele here has AT MOST THREE segments, and that is a property of the
+  upstream call, not a simplification made here: the TR caller reports exactly one
+  repeat block per insertion per sample, so the structure is [flank] repeat
+  [flank]. 62% of alleles are pure repeat with no flank at all. This table
+  therefore cannot answer questions about compound or nested repeat architecture -
+  a locus whose alleles carry different motifs shows that in trio_loci.n_motifs,
+  not here.
+  Note the allele column. A carrier is not always one allele: 239 (locus,
+  sample) pairs hold two or three co-located insertions, a diploid sample whose
+  haplotypes differ in length. Join on (locus_id, sample, allele), never on
+  (locus_id, sample) alone, or two haplotypes merge into one allele.
+  Built by backend/scripts/build_web_tables.py.
+
+columns:
+  locus_id: Locus identifier, "chrom:pos". Joins to trio_loci.locus_id.
+  sample: One of HG002.30x.haplotagged (son), HG003 (father), HG004 (mother). 3 samples.
+  allele: >
+    Which allele of this sample at this locus, 1-based, numbered by decreasing
+    length. 1 for all but 239 (locus, sample) pairs. Part of the key - see the
+    description.
+  seg_index: Zero-based position of this segment within the allele, left to right.
+  seg_type: Either "repeat" (a tandem array) or "flank" (non-repetitive sequence).
+  start: Segment start offset in bp within the inserted allele, 0-based.
+  end: Segment end offset in bp within the inserted allele. max(end) per allele is the allele length.
+  motif: Canonical repeat motif for this block. Null for flank segments.
+  purity: TRF identity to a perfect repeat for this block, 0-1. Null for flank segments.
+  units: Motif copy number in this block. Null for flank segments.
+
+provenance:
+  source: Sniffles multisample INS calls across the GIAB HG002/HG003/HG004 trio, 30x haplotagged
+  pipeline: pyTRF identification | novelty annotate | novelty filter
+  build: GRCh38
+  derivation: backend/scripts/build_web_tables.py
+  license: GIAB public data

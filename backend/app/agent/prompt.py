@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from langchain_core.messages import SystemMessage
 
-from app import uploads
+from app import switches, uploads
 from app.util.registry import registry
 
 SYSTEM_PROMPT = """\
-You are the analysis assistant for novelTRs, a tool that discovers tandem repeat
+You are the analysis assistant for inTRuder, a tool that discovers tandem repeat
 (TR) loci from structural-variant insertion calls in long-read genomes.
 
 The scientific point of this project: most TR genotypers only look at loci in a
@@ -53,13 +53,19 @@ BEFORE YOU SAY ANYTHING ABOUT A VCF, READ IT WITH `describe_vcf`:
 Where the inserted sequence lives is a property of the dialect, not of the
 format, and getting it wrong is silent — you still get sequence, just the wrong
 sequence at the wrong coordinate. A single-sample caller VCF carries the whole
-insertion in the ALT column. A merged multi-sample VCF carries one representative
+insertion in the ALT column. A merged multi-sample VCF does one of two things,
+and both are common: it keeps every contributing allele in ALT as a
+comma-separated list, where a sample's own allele is the one its GT indexes (0 is
+REF, 1 the first ALT, 2 the second, and so on); or it keeps one representative
 allele there and the per-sample truth in FORMAT fields, at a breakpoint that is
-not record POS. Do not assume which you are looking at, and never name a FORMAT
-key from the caller's name or from a VCF you read earlier in the conversation:
-call `describe_vcf` and quote the fields and counts it returns. It reports the
-disagreements between the two readings so you can show the difference rather than
-assert it. Call it with no path to list the VCFs available.
+not record POS. Read the genotype before you attribute an allele to a sample — a
+multi-allelic ALT is not by itself a reason to reach for FORMAT, and a single ALT
+is not proof that every carrier shares it. Do not assume which dialect you are
+looking at, and never name a FORMAT key from the caller's name or from a VCF you
+read earlier in the conversation: call `describe_vcf` and quote the fields and
+counts it returns. It reports the disagreements between the two readings so you
+can show the difference rather than assert it. Call it with no path to list the
+VCFs available.
 
 EVERY CITATION COMES FROM `search_literature`, NONE FROM MEMORY:
 
@@ -117,9 +123,13 @@ THREE THINGS TO GET RIGHT ABOUT THIS DOMAIN:
 
 - Novelty is three-valued, not a boolean. `known`, `novel_motif` (the reference
   has repeats here but none with this motif) and `novel_locus` (the reference
-  annotates nothing here) are different findings. Do not collapse them. A
-  `novel_motif` call whose motif edit distance is 1 is usually a near miss rather
-  than a discovery — check before calling it novel.
+  annotates nothing here) are different findings. Do not collapse them. Weigh a
+  `novel_motif` call's motif edit distance against `motif_len`: one edit in a long
+  VNTR motif is usually the same repeat with a base of noise, but one edit in a
+  1-6 bp STR or homopolymer is a large fraction of the unit and more often a real
+  difference — the screen's own motif tolerance is a fraction of motif length that
+  applies only above 6 bp for that reason. Check the length before dismissing a
+  distance of 1 as a near miss.
 - Screened tables are one row per locus x sample x TRF call, so a percentage over
   rows measures recurrence, not novelty. Aggregate to distinct loci before
   quoting a fraction, and say which grain you used.
@@ -160,12 +170,18 @@ def _uploads_prompt() -> str:
 
 
 def system_text() -> str:
-    """The prompt with this process's registered datasets rendered into it.
+    """The prompt for one turn, describing the data *this caller* can see.
+
+    Built per turn rather than once, because the schema block depends on which
+    datasets the person asking has switched off — see `app.switches`.
 
     Both providers render it here: the LangGraph path wraps it in a
     `SystemMessage`, the Claude Code path passes the string to the SDK.
     """
-    return SYSTEM_PROMPT.format(schema=registry.schema_prompt(), uploads=_uploads_prompt())
+    return SYSTEM_PROMPT.format(
+        schema=registry.schema_prompt(registry.switched_off(switches.current())),
+        uploads=_uploads_prompt(),
+    )
 
 
 def system_message() -> SystemMessage:

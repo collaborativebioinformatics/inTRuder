@@ -16,7 +16,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool
 
-from app import uploads
+from app import switches, uploads
 from app.tools.payload import dump
 from app.util.registry import RegistryError, registry
 
@@ -29,7 +29,11 @@ def list_datasets() -> str:
     whether its underlying file is present. Call this first when you are unsure
     what data exists. Datasets flagged synthetic are demo fixtures, not results.
     """
-    datasets = [d.summary() for d in registry.datasets.values()]
+    # Datasets the caller has switched off are omitted rather than listed as
+    # unusable: a table the model can see in the list is one it will eventually
+    # reach for, and the point of the switch is that it stops being an answer.
+    off = registry.switched_off(switches.current())
+    datasets = [d.summary() for d in registry.datasets.values() if d.name not in off]
     if not datasets:
         return dump({"datasets": [], "note": "No manifests found in the registry directory."})
     return dump({"datasets": datasets})
@@ -43,10 +47,21 @@ def describe_dataset(name: Annotated[str, "The dataset name, as returned by list
     Use this before writing SQL against a table you have not queried yet, so that
     column names and meanings come from the manifest rather than a guess.
     """
+    off = registry.switched_off(switches.current())
     dataset = registry.datasets.get(name)
+    known = sorted(d.name for d in registry.datasets.values() if d.name not in off)
     if dataset is None:
-        known = sorted(registry.datasets)
         return dump({"error": f"No dataset named {name!r}.", "available": known})
+    if name in off:
+        # Say what happened rather than "no such table". Somebody asking about
+        # the demo data by name deserves to hear that it was switched off, and
+        # `run_sql` refuses it too, so this is the truthful version of the same
+        # refusal rather than a softer one.
+        return dump({
+            "error": f"{name!r} is switched off in this interface, so it cannot "
+                     "be queried. Say so rather than working around it.",
+            "available": known,
+        })
     return dump(dataset.detail())
 
 
@@ -62,7 +77,7 @@ def run_sql(
     "how many novel loci are in disease genes", return a count, not 400 records.
     """
     try:
-        result = registry.query(query)
+        result = registry.query(query, off=registry.switched_off(switches.current()))
     except RegistryError as exc:
         return dump({"error": str(exc), "query": query})
     return dump(result)

@@ -1,0 +1,213 @@
+name: hprc_loci
+title: HPRC candidate TR loci (67 genomes, screened)
+synthetic: false
+path: ${NOVELTRS_DATA_DIR}/hprc/loci.parquet
+format: parquet
+role: loci
+
+description: >
+  One row per candidate tandem-repeat locus discovered in insertion calls across
+  67 HPRC long-read genomes. THIS IS REAL DATA, not a demo fixture: 17,270 loci
+  aggregated from the 162,441 screened carrier-alleles in hprc_calls. This is the
+  table for cohort-level questions - how many loci are novel, how novelty varies
+  by motif class or chromosome, which loci land in genes and which of those are disease genes.
+  A locus is an insertion SITE, keyed on (chrom, pos), not an SV record. Sniffles
+  emits several co-located records at one site when carriers have alleles of
+  different length, and those records are alleles of one locus, not separate loci.
+  n_alleles says how many a locus holds. Do not aggregate this table by SVID.
+  Each locus carries the reference screen: a combined novelty verdict plus an
+  independent block per catalog (ucsc_, trexplorer_), recording what hg38
+  annotates at that position. Where the two agree the call is a property of the
+  data rather than of one catalog's coverage.
+  The upstream file is already filtered - every carrier-allele in it passed purity
+  >= 0.80, insertion purity >= 0.80, repeat coverage >= 0.80 and depth >= 30. So a
+  purity threshold applied here selects within an already-clean set and will barely
+  move a count; it is not the filter that decides these numbers.
+  Built by backend/scripts/build_web_tables.py from the AnnotSV-annotated callset.
+
+columns:
+  locus_id: Stable locus identifier, "chrom:pos" e.g. chr1:10454. Joins to hprc_segments.locus_id.
+  chrom: Chromosome of the insertion site (GRCh38).
+  pos: Insertion-site position on that chromosome, 1-based as VCF POS.
+  motif: >
+    Repeat motif of the locus, canonicalized to the smallest rotation of itself or
+    its reverse complement. Read off the DOMINANT allele - the co-located record
+    with the most carriers - so on a locus with n_motifs > 1 it is the common
+    motif, not the only one.
+  motif_len: Length of that motif in bp, 1-392.
+  motif_class: One of homopolymer (1bp), STR (2-6bp), VNTR (>=7bp).
+  n_samples: Number of the 67 cohort samples carrying an insertion here, 1-67.
+  n_carrier_alleles: Carrier-alleles at this locus. Exceeds n_samples where a sample carries two haplotypes.
+  n_alleles: >
+    Distinct co-located SV records at this site. 1 for most loci; more means
+    carriers differ in allele length, and this is the only place cohort allele-size
+    variation shows up - see median_len.
+  n_motifs: Distinct canonical motifs across those alleles. > 1 means the site is not motif-uniform.
+  n_novel_alleles: >
+    Alleles at this site whose own verdict is not 'known'. Non-zero on a locus
+    whose rollup says 'known' is the interesting case: a catalogued site that also
+    carries an uncatalogued allele.
+  median_len: >
+    Median inserted-allele length in bp across carrier-alleles. Constant within an
+    SV record - the multisample VCF stores one ALT sequence per record, so all its
+    carriers share a length - so this only varies at loci with n_alleles > 1.
+  min_len: Shortest inserted allele in bp.
+  max_len: Longest inserted allele in bp.
+  mean_purity: Mean TRF identity to a perfect repeat across carrier-alleles, 0-1. Floored at 0.80 upstream.
+  median_units: Median motif copy number across carrier-alleles.
+  median_depth: Median read depth across carrier-alleles. 30 or above by construction.
+  insertion_purity: >
+    Mean fraction of the inserted sequence that is tandem repeat at all, 0-1. The
+    column that separates a real novel TR from a mobile element carrying a poly-A
+    tail. Floored at 0.80 upstream, so it no longer discriminates in this table.
+  repeat_coverage: Mean fraction of the insertion covered by the called repeat block, 0-1.
+  novel: >
+    True when no catalog contains this repeat. Equivalent to novelty <> 'known',
+    and - on this table, by construction rather than by coincidence - to
+    "both catalogs call it novel". novelty is defined as the least novel verdict
+    across catalogs, so it is 'known' exactly when at least one catalog knows the
+    locus. Treat the two as one fact, not as two agreeing lines of evidence. The
+    filter that does discriminate is which catalog is the one that knows it:
+    UCSC-only novel is 4,140 loci, TRExplorer-only 328 - TRExplorer's 5.6M
+    entries cover a great deal that UCSC simpleRepeat's 1.05M do not.
+  catalogs: Semicolon-separated catalogs containing this repeat; null when novel.
+
+  # The reference screen. Three-valued, not boolean - "the reference has repeats
+  # here but none with this motif" and "the reference annotates nothing here" are
+  # different findings. See docs/tools/NOVELTY_SCREEN.md.
+  novelty: >
+    Combined verdict. 'known' = a reference repeat with an equivalent motif sits
+    here; 'novel_motif' = the reference has repeats here but none with this motif;
+    'novel_locus' = the reference annotates no repeat at all within 10 bp. This is
+    the headline field. Rolled up LEAST-NOVEL-FIRST across both catalogs and all
+    alleles at the site: a locus is 'known' if any catalog knows any of its
+    alleles. That is the conservative direction for a discovery claim, and
+    n_novel_alleles is how you find what it hides.
+  ucsc_novelty: The same three-valued verdict from the UCSC simpleRepeat track alone (1.05M entries).
+  ucsc_n_nearby: UCSC repeats within 10 bp of the insertion point. 0 means novel_locus.
+  ucsc_start: Start of the best-matching UCSC repeat, GRCh38. Null when none.
+  ucsc_end: End of that repeat. end - start is how much reference sequence it covers.
+  ucsc_distance: bp from the insertion point to that repeat; 0 means the point is inside it.
+  ucsc_motif: Motif of that repeat, at whatever rotation TRF reported it.
+  ucsc_canonical: Canonical form of that motif. This is the form the comparison used.
+  ucsc_motif_edits: 0 when the motifs are equivalent, 1 when not. Binary, not a distance.
+  ucsc_period: TRF period of that repeat. Equals motif_len on most 'known' calls.
+  ucsc_copy_num: TRF copy number of that repeat.
+  ucsc_consensus_size: TRF consensus size of that repeat.
+  ucsc_per_match: TRF percent identity of that repeat, 0-100. A percentage, unlike mean_purity.
+  ucsc_per_indel: TRF percent indel of that repeat, 0-100.
+
+  trexplorer_novelty: The same verdict from the TRExplorer catalog alone (5.6M entries, position and motif only).
+  trexplorer_n_nearby: TRExplorer repeats within 10 bp.
+  trexplorer_start: Start of the best-matching TRExplorer repeat, GRCh38. Null when none.
+  trexplorer_end: End of that repeat.
+  trexplorer_distance: bp to that repeat; 0 means overlapping.
+  trexplorer_motif: Motif of that repeat.
+  trexplorer_canonical: Canonical form of that motif.
+  trexplorer_motif_edits: 0 when equivalent to ours, 1 when not.
+
+  representative_svid: >
+    The Sniffles ID of the dominant allele, e.g. Sniffles2.INS.0M1. Joins to
+    hprc_calls.SVID, which is where the per-carrier rows for it live.
+
+  # Gene context, from AnnotSV. A real gene annotation: `gene` is NULL only where
+  # the insertion is genuinely intergenic.
+  gene: >
+    Symbol of the gene this insertion falls in, NULL when intergenic. 9,043 of
+    17,270 loci are genic. On the 678 loci spanning more than one gene this is the
+    FIRST of them - see all_genes and gene_count before quoting it.
+  all_genes: Every gene at this site, semicolon-separated, e.g. WDFY4;LRRC18. Equals `gene` when gene_count is 1.
+  gene_count: How many genes overlap this insertion. 0 when intergenic, 1 for 8,365 loci, up to 7.
+  genic: True when the insertion falls in at least one gene. Exactly `gene_count > 0`.
+  exonic: >
+    True when a breakpoint lands inside an exon - 265 loci. Agrees exactly with
+    `location`, and this is the column to use for "does it hit an exon", NOT `region`.
+  intronic: >
+    True when the insertion is in a gene but not in an exon. DERIVED here, not read
+    from AnnotSV: AnnotSV's own Intronic column is computed as NOT Exonic and so is
+    true at every intergenic site as well, which makes it useless.
+  location: Which feature both breakpoints land in, as AnnotSV writes it, e.g. intron12-intron12.
+  feature: The feature kind parsed off `location` - intron or exon.
+  feature_index: >
+    Its 1-based ordinal, e.g. 12 for intron12-intron12. With exon_count this places
+    the insertion in the transcript, which is what the gene track draws.
+  region: >
+    Which transcript region the insertion sits WITHIN - CDS, UTR, 5'UTR or 3'UTR.
+    Not the same as hitting coding sequence: 45,594 rows are intron4-intron4 with
+    region CDS, meaning an intron between the start and stop codons. Use `exonic`
+    for the stronger claim.
+  exon_count: Exons in the annotated transcript, 1-313. A property of `tx`, not of the gene.
+  tx: >
+    RefSeq accession of the transcript AnnotSV annotated against, e.g. XM_017012475.
+    AnnotSV picks one transcript per SV and its pick is NOT stable within a gene -
+    929 genes get more than one across their loci, and 1,859 of the 3,408
+    transcripts used are XM_ predicted models rather than curated NM_ ones. So
+    exon_count and feature_index are only meaningful read together with this.
+  tx_version: Version suffix of that accession, e.g. 1 for XM_017012475.1.
+  dist_nearest_ss: bp from the insertion point to the nearest splice site of `tx`.
+  nearest_ss_type: Which end that splice site is - 5' or 3'.
+  cytoband: Cytogenetic band including the chromosome, e.g. 7q36.3.
+  closest_left: Nearest gene to the left. Populated at intergenic loci, where `gene` is NULL.
+  closest_right: Nearest gene to the right, likewise.
+  disease_gene: >
+    True when a gene at this site has an OMIM disease entry - 2,201 loci. This is
+    AnnotSV's DISEASE_GENES flag and is computed across every gene at the site, so
+    it stays valid on multi-gene loci where the per-gene text columns are NULL.
+    A much weaker claim than strchive_locus: "in a gene linked to some disease",
+    not "at a known repeat-expansion locus".
+  plof: AnnotSV's predicted loss-of-function flag.
+  pli: >
+    Highest gnomAD/ExAC pLI across the genes here, 0-1. Above 0.9 means the gene is
+    intolerant of loss of function. 1,867 loci are above that.
+  loeuf_bin: gnomAD LOEUF decile of the first gene, 0 (most constrained) to 9.
+  omim_id: OMIM entry number of the first gene, NULL when it has none.
+  omim_phenotype: >
+    OMIM phenotype text for the gene, e.g. "Myopia 23, AR, 615431 (3) AR". NULL on
+    every multi-gene locus by design - AnnotSV joins the genes' values with ", "
+    and the values contain ", " themselves, so on a multi-gene site they cannot be
+    told apart and captioning `gene` with one of them would be a mis-attribution.
+    2,001 loci carry it.
+  omim_inheritance: Inheritance for that entry - AR, AD, XL, semicolon-separated.
+  omim_morbid: True when OMIM marks the gene morbid.
+  gencc_disease: GenCC disease association for the gene. NULL on multi-gene loci, as omim_phenotype.
+  gencc_classification: GenCC evidence strength, e.g. Definitive;Strong;Supportive.
+  gencc_moi: GenCC mode of inheritance.
+  gencc_pmid: Semicolon-separated PubMed IDs behind the GenCC entry.
+  ncbi_gene_id: NCBI Gene ID of the first gene, e.g. 5799.
+  hgnc_id: HGNC ID of the first gene, e.g. HGNC:9677.
+  pop_ins_af: >
+    Highest allele frequency of a KNOWN BENIGN insertion overlapping this site,
+    across dbVar, gnomAD-SV and PacBioCoLoRS. NULL means no benign insertion is
+    catalogued here, which is not the same as rare.
+  pop_ins_source: Which of those catalogs pop_ins_af came from.
+  annotsv_id: AnnotSV's own identifier for the annotated SV.
+
+  # STRchive overlap. A separate, much stronger claim than disease_gene.
+  strchive_gene: >
+    Gene symbol of the STRchive disease locus this insertion falls within 10 bp of,
+    NULL otherwise. 39 of 17,270 loci. Distinct from `gene`, which is the real gene
+    annotation; this one is non-NULL only at a curated repeat-expansion locus.
+  strchive_locus: True when this locus is within 10 bp of a STRchive disease locus. Exactly `strchive_id IS NOT NULL`.
+  strchive_id: Matched STRchive locus identifier, e.g. CANVAS_RFC1. Joins to strchive_loci.id.
+  strchive_disease: Disease name for the matched locus.
+  strchive_inheritance: Inheritance pattern - AD, AR, XR, XD - semicolon-separated.
+  strchive_evidence: STRchive curation confidence for the matched locus.
+  strchive_novel_in_ref: >
+    STRchive's flag that the PATHOGENIC motif at the matched locus is absent from
+    hg38 entirely. True for 11 of the 82 disease loci, and the blind spot this
+    pipeline exists to cover.
+  strchive_distance_bp: bp from the insertion point to the disease locus; 0 means inside it.
+
+provenance:
+  source: Sniffles multisample INS calls across 67 HPRC long-read genomes (hprc_multisample.vcf)
+  pipeline: pyTRF identification | novelty annotate --platform ucsc,trexplorer | novelty filter | AnnotSV
+  build: GRCh38
+  upstream_file: data/plots/05_hprc_multisample.tsv (Drive folder Data_final; see scripts/fetch_plot_data.sh)
+  derivation: backend/scripts/build_web_tables.py
+  license: HPRC data use terms
+  caveats: >
+    The input TSV carries 58,964 exact duplicate rows (221,405 total, 162,441
+    distinct); the build de-duplicates before aggregating. Allele length is
+    constant within an SV record because the multisample VCF stores one ALT
+    sequence per record, so per-carrier length variation is only visible at the
+    2,966 sites holding more than one record.

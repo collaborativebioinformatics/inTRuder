@@ -31,12 +31,55 @@ interface ToolEvent {
   args: Record<string, unknown>;
 }
 
-const SUGGESTIONS = [
-  "How many loci are absent from every catalog?",
-  "Show me novel VNTRs in disease genes",
-  "Which motif class has the highest novel fraction, and why?",
-  "What's in the merged SV VCF, and where does it keep the insertion?",
-  "Find genes related to this patient description: patient presents with a curved spine noted on physical exam.",
+/**
+ * The empty state, and the only place the agent's range is written down for the
+ * person using it. A text box advertises nothing, so somebody who has not read
+ * `app/tools/` will type one cohort-level question and conclude that is all
+ * there is. The groups here are the tool surface: query the registered tables,
+ * move the view, cross to the disease locus reference — including from a
+ * free-text phenotype, via `resolve_phenotype` — and account for what data is
+ * loaded, including files they dropped in themselves.
+ *
+ * Every prompt but the phenotype one is answerable against the HPRC callset this
+ * interface ships pointed at; that one resolves against the HPO release.
+ * `chr4:39,348,3xx` is the CANVAS/RFC1 site, where five of the six candidates
+ * carry a motif hg38 does not have there — which is the finding, not a
+ * coordinate picked to have something in it.
+ */
+const SUGGESTIONS: { label: string; prompts: string[] }[] = [
+  {
+    label: "Ask the callset",
+    prompts: [
+      "How many loci are absent from every catalog?",
+      "Which motif class has the highest novel fraction, and why?",
+      "Where do UCSC and TRExplorer disagree about novelty?",
+      "Which sample carries the most novel loci?",
+    ],
+  },
+  {
+    label: "Move the view",
+    prompts: [
+      "Show me novel VNTRs in disease genes",
+      "Biggest insertions first, and open the top one",
+      "Zoom to chr4:39,348,300-39,348,600",
+    ],
+  },
+  {
+    label: "Disease loci",
+    prompts: [
+      "Which disease loci is hg38 missing the pathogenic motif for?",
+      "Open CANVAS_RFC1 — did we find anything there?",
+      "Find genes related to this patient description: patient presents with a curved spine noted on physical exam.",
+    ],
+  },
+  {
+    label: "The data itself",
+    prompts: [
+      "What tables are you querying, and is any of it synthetic?",
+      "What have I uploaded, and can you query it?",
+      "What's in the merged SV VCF, and where does it keep the insertion?",
+    ],
+  },
 ];
 
 function TextPart({ text }: { text: string }) {
@@ -211,7 +254,8 @@ export function Chat({ agentEnabled }: { agentEnabled: boolean }) {
             <div className="space-y-3">
               <p className="text-xs leading-relaxed text-ink-secondary">
                 Ask about the callset. The assistant queries the same data the
-                charts read, and can move the view for you.
+                charts read, moves the view for you, and knows which tables — and
+                which of your uploads — are loaded.
               </p>
               {!agentEnabled && (
                 <p
@@ -223,17 +267,24 @@ export function Chat({ agentEnabled }: { agentEnabled: boolean }) {
                   <span className="tabular">backend/.env</span> and set a key to enable chat.
                 </p>
               )}
-              <div className="space-y-1.5">
-                {SUGGESTIONS.map((prompt) => (
-                  <ThreadPrimitive.Suggestion
-                    key={prompt}
-                    prompt={prompt}
-                    method="replace"
-                    autoSend
-                    className="block w-full rounded-md border border-hairline px-2.5 py-1.5 text-left text-xs text-ink-secondary transition-colors hover:border-baseline hover:text-ink"
-                  >
-                    {prompt}
-                  </ThreadPrimitive.Suggestion>
+              <div className="space-y-2.5">
+                {SUGGESTIONS.map((group) => (
+                  <div key={group.label} className="space-y-1.5">
+                    <p className="text-[10px] uppercase tracking-wide text-ink-muted">
+                      {group.label}
+                    </p>
+                    {group.prompts.map((prompt) => (
+                      <ThreadPrimitive.Suggestion
+                        key={prompt}
+                        prompt={prompt}
+                        method="replace"
+                        autoSend
+                        className="block w-full rounded-md border border-hairline px-2.5 py-1.5 text-left text-xs text-ink-secondary transition-colors hover:border-baseline hover:text-ink"
+                      >
+                        {prompt}
+                      </ThreadPrimitive.Suggestion>
+                    ))}
+                  </div>
                 ))}
               </div>
             </div>

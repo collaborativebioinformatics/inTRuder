@@ -111,7 +111,7 @@ a missing CLI says where to get it, and a signed-out CLI says to run `claude`.
 | `app/agent/prompt.py` | System prompt + the generated schema block |
 | `app/agent/graph.py` | LangGraph graph + the UI event stream |
 | `app/tools/` | What the agent can do |
-| `app/tools/data.py` | `list_datasets`, `describe_dataset`, `run_sql` |
+| `app/tools/data.py` | `list_datasets`, `describe_dataset`, `run_sql`, `list_uploads` |
 | `app/tools/view.py` | `set_view` — moves the frontend |
 | `app/tools/vcf.py` | `describe_vcf` — reads a file, not a table |
 | `app/tools/literature.py` | `search_literature` — reads Europe PMC, not us |
@@ -166,6 +166,9 @@ A prebuilt LangGraph ReAct graph over seven tools:
 - `list_datasets` — what data exists
 - `describe_dataset` — per-column docs from the manifest
 - `run_sql` — read-only DuckDB over the registered tables
+- `list_uploads` — the files someone has handed the interface, and whether each
+  one is queryable yet. A VCF is not a table until the pipeline has run on it,
+  and the tool says so rather than implying the data is available.
 - `set_view` — **moves the frontend**, which is what makes chat and the charts
   two views of one state rather than two panels. It also switches surface
   (`page="catalog" | "strchive"`), so a question about disease can land the user

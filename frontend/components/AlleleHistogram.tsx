@@ -220,6 +220,13 @@ export function AlleleHistogram({
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
   const spec = METRICS.find((m) => m.key === metric) ?? METRICS[0];
+  // Not `alleles.length`: a diploid carrier of two co-located insertions
+  // contributes two alleles here, so counting rows would report more carriers
+  // than the cohort has samples.
+  const nCarriers = useMemo(
+    () => new Set(alleles.map((allele) => allele.sample)).size,
+    [alleles],
+  );
   const { order, color } = useMemo(() => motifSeries(alleles), [alleles]);
   const top = useMemo(() => new Set(order.filter((s) => s !== OTHER)), [order]);
 
@@ -283,7 +290,7 @@ export function AlleleHistogram({
             Across the cohort
           </h3>
           <p className="tabular text-[11px] text-ink-muted">
-            {alleles.length} carriers · {alleles.length} alleles
+            {nCarriers} carriers · {alleles.length} alleles
           </p>
         </div>
 

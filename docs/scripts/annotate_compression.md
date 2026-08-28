@@ -6,18 +6,26 @@ Simply tests how compressible the insertion sequences are - the more they are co
 
 ## Usage
 
-Replies on the following: python3 pysam zlib argparse pandas
-
-`mamba env create -f tr_annotation_env.yml`
-
-`mamba activate tr_annotation`
+The code is `src/python/intruder/pipeline/compression/annotate.py`, installed as the
+`compression` console script. Everything it imports — python3, pysam, zlib, argparse,
+pandas — is already in the project's runtime dependencies, so `uv sync` is the whole
+setup:
 
 ```
-$ python3 add_compresion.py -h`
+uv sync
+```
 
-usage: add_compresion.py [-h] --input INPUT --output OUTPUT
+`tr_annotation_env.yml` in this directory is the author's original conda environment.
+It is kept as a record of the *non-Python* toolchain used alongside the annotator —
+`bcftools` and `htslib` for wrangling the VCFs — which uv does not manage. It is not
+needed to run this step, and its pinned build strings are macOS-arm64 only.
 
-Annotate VCF with INFO fields eg. python add_compresion.py -i HG00320.merged.sniffles.vcf -o HG00320.merged.sniffles_annotated.vcf
+```
+$ uv run compression -h
+
+usage: compression [-h] --input INPUT --output OUTPUT
+
+Annotate VCF with INFO fields eg. uv run compression -i HG00320.merged.sniffles.vcf -o HG00320.merged.sniffles_annotated.vcf
 
 options:
   -h, --help           show this help message and exit
@@ -29,7 +37,7 @@ options:
 
 Input is 106844 variants, 243Mb uncompressed
 ```
-time python3 add_compresion.py -i hprc_multisample.INS.vcf -o hprc_multisample.INS_comp.vcf
+time uv run compression -i hprc_multisample.INS.vcf -o hprc_multisample.INS_comp.vcf
 
 real    0m10.150s
 user    0m7.397s
@@ -46,7 +54,9 @@ chr1    876001  Sniffles2.INS.65S0      C       CACTCCCCACGCTTCCACCCCCACACTCCCCA
 
 ## Thresholds
 
-Histograms made with comp_histograms.ipynb
+Histograms made with [notebooks/comp_histograms.ipynb](../../notebooks/comp_histograms.ipynb);
+the method is worked through in
+[notebooks/compression-method.ipynb](../../notebooks/compression-method.ipynb).
 
 1. Histogram of compression ratios from the above hprc merged file:
 

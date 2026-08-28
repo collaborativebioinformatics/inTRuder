@@ -392,3 +392,92 @@ def test_stale_database_files_are_still_recognised_after_the_reload_counter(
     unrecognised — and unrecognised files are deliberately never collected, so
     they would accumulate for the life of the machine."""
     assert _pid_of(Path(name)) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Diploid carriers
+# --------------------------------------------------------------------------- #
+
+def _parquet(rows: list[dict], columns: list[str]) -> bytes:
+    """A parquet file in memory from literal rows, for shapes the demo lacks."""
+    values = ", ".join(
+        "(" + ", ".join(repr(row[column]) for column in columns) + ")" for row in rows
+    )
+    # Quoted: `end` and `start` are reserved words.
+    names = ", ".join(f'"{column}"' for column in columns)
+    with duckdb.connect() as con:
+        table = con.execute(
+            f"SELECT * FROM (VALUES {values}) AS t({names})"
+        ).to_arrow_table()
+    sink = io.BytesIO()
+    pq.write_table(table, sink)
+    return sink.getvalue()
+
+
+_ONE_LOCUS = [
+    {"locus_id": "chr1:100", "chrom": "chr1", "pos": 100, "motif": "AT",
+     "motif_len": 2, "motif_class": "STR", "n_samples": 2, "median_len": 30,
+     "mean_purity": 0.9, "novel": True},
+]
+
+#: HG1 is diploid at this locus: two co-located insertions of different length.
+#: HG2 carries one. Both haplotypes are `allele` values under the same sample.
+def _segment(sample: str, allele: int, end: int) -> dict:
+    return {"locus_id": "chr1:100", "sample": sample, "allele": allele,
+            "seg_index": 0, "seg_type": "repeat", "start": 0, "end": end,
+            "motif": "AT", "purity": 0.9, "units": end / 2}
+
+
+_TWO_HAPLOTYPES = [
+    _segment("HG1", 1, 40),
+    _segment("HG1", 2, 20),
+    _segment("HG2", 1, 30),
+]
+
+_LOCI_COLUMNS = list(_ONE_LOCUS[0])
+_SEGMENT_COLUMNS = list(_TWO_HAPLOTYPES[0])
+
+
+def _register_pair(client: TestClient, segments: list[dict], columns: list[str]) -> None:
+    loci = _post(client, "l.parquet", _parquet(_ONE_LOCUS, _LOCI_COLUMNS)).json()
+    client.post(f"/api/uploads/{loci['id']}/register",
+                json={"name": "t_loci", "role": "loci"})
+    segs = _post(client, "s.parquet", _parquet(segments, columns)).json()
+    client.post(f"/api/uploads/{segs['id']}/register",
+                json={"name": "t_segments", "role": "segments"})
+
+
+def test_a_diploid_carrier_keeps_its_two_haplotypes_apart(client):
+    """A carrier is not always one allele.
+
+    Co-located insertions of different length in one sample are its two
+    haplotypes. Keying the barcode on the sample alone would splice them into a
+    single allele and draw it as a compound repeat — a different biological
+    claim, and one nothing in the data supports.
+    """
+    _register_pair(client, _TWO_HAPLOTYPES, _SEGMENT_COLUMNS)
+
+    alleles = client.get("/api/loci/chr1:100").json()["alleles"]
+    assert [(a["sample"], a["allele_len"]) for a in alleles] == [
+        ("HG1", 40), ("HG2", 30), ("HG1", 20)
+    ], "three alleles, longest first, with HG1 appearing twice"
+    assert {a["allele"] for a in alleles if a["sample"] == "HG1"} == {1, 2}
+
+
+def test_a_segments_table_without_an_allele_column_still_reads_one_per_carrier(client):
+    """The column is optional. The demo fixtures predate it and any upload of one
+    allele per carrier will never carry it, so its absence has to mean "one", not
+    a query against a column that is not there.
+    """
+    columns = [c for c in _SEGMENT_COLUMNS if c != "allele"]
+    one_per_carrier = [
+        {k: v for k, v in row.items() if k != "allele"}
+        for row in _TWO_HAPLOTYPES if row["allele"] == 1
+    ]
+    _register_pair(client, one_per_carrier, columns)
+
+    body = client.get("/api/loci/chr1:100").json()
+    assert [(a["sample"], a["allele_len"]) for a in body["alleles"]] == [
+        ("HG1", 40), ("HG2", 30)
+    ]
+    assert {a["allele"] for a in body["alleles"]} == {1}, "synthesised, not queried"

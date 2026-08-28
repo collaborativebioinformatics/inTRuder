@@ -28,6 +28,10 @@ const LABELS: Record<keyof ViewFilters, (value: unknown) => string> = {
   platform_agreement: (v) =>
     v === "both" ? "Both catalogs agree" : `${v}`.replace("_", " "),
   disease_gene_only: () => "Disease genes",
+  genic_only: () => "In a gene",
+  exonic_only: () => "Exonic",
+  constrained_only: () => "Constrained (pLI ≥ 0.9)",
+  gene_region: (v) => `${v}`,
   chrom: (v) => `${v}`,
   region: (v) => formatRegion(`${v}`),
   motif_class: (v) => `${v}`,
@@ -79,7 +83,28 @@ const QUICK: { label: string; patch: ViewFilters; title?: string }[] = [
       "UCSC and TRExplorer were compiled separately — where they agree, the call is a property of the data rather than of a threshold.",
   },
   { label: "VNTR", patch: { motif_class: "VNTR" } },
-  { label: "Disease genes", patch: { disease_gene_only: true } },
+  {
+    label: "In a gene",
+    patch: { genic_only: true },
+    title: "The insertion falls inside an annotated gene. Half the catalog does not.",
+  },
+  {
+    label: "Exonic",
+    patch: { exonic_only: true },
+    title:
+      "A breakpoint lands inside an exon — the strong claim. Not the same as the region column, where an intron between the start and stop codons reads as CDS.",
+  },
+  {
+    label: "Disease genes",
+    patch: { disease_gene_only: true },
+    title:
+      "The gene has an OMIM disease entry. Weaker than a STRchive locus, which is a curated repeat-expansion site.",
+  },
+  {
+    label: "Constrained",
+    patch: { constrained_only: true },
+    title: "gnomAD pLI ≥ 0.9 — the gene is intolerant of loss of function.",
+  },
   { label: "Shared ≥ 10", patch: { min_samples: 10 } },
 ];
 
