@@ -63,7 +63,11 @@ dx-run-gpu command time="2h":
 dx-instances pattern="":
     scripts/dnanexus/dx-instance.sh --list-instances {{pattern}}
 
+# Everything CI runs, in the same order. Run this before pushing.
+check: lint test
+
 lint:
+    uv run ruff check src/python tests/python
     cd backend && uv run ruff check app scripts
     cd frontend && npx tsc --noEmit
 
@@ -71,4 +75,5 @@ build:
     cd frontend && npm run build
 
 test:
-    cd backend && uv run pytest
+    uv run pytest -q
+    cd backend && uv run pytest -q

@@ -1,0 +1,85 @@
+# Lint and test on every push and pull request.
+#
+# Deliberately cheap: `uv sync` with no extra groups, so this installs the
+# runtime set plus dev tooling and nothing else. The heavy groups (`analysis`,
+# `dx`) are not exercised here -- if a job ever needs them, add a separate one
+# rather than growing this matrix, so a broken plotting dependency can never
+# block a pipeline fix.
+#
+# The Docker images are built by docker.yml, manually. Nothing here builds them.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A new push to a PR cancels the run still going for the previous one.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (lint + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --frozen: fail if uv.lock disagrees with pyproject.toml rather than
+      # silently resolving something else. That is the whole point of committing
+      # the lockfile -- CI must install exactly what a contributor installs.
+      - name: Install the locked environment
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check src/python tests/python
+
+      - name: Tests
+        run: uv run pytest -q
+
+  backend:
+    name: Backend (lint + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # backend/ is its own uv project with its own lockfile, not a workspace
+      # member of the root one. See backend/pyproject.toml.
+      - name: Install the locked environment
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check app scripts
+
+      - name: Tests
+        run: uv run pytest -q
+
+  shell:
+    name: Shell scripts (advisory)
+    runs-on: ubuntu-latest
+    # Advisory on purpose: the scripts under scripts/ predate any linting and
+    # nobody has confirmed they are clean, so making this blocking on day one
+    # would wedge every open PR. Once someone has run it green, drop this line
+    # and it starts enforcing.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every .sh in the repo now lives under scripts/, so one glob covers them.
+      - name: shellcheck
+        run: shellcheck --severity=error $(git ls-files 'scripts/**/*.sh')
