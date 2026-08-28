@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app, parse_region
-from app.registry import RegistryError, registry
+from app.util.registry import RegistryError, registry
 
 
 @pytest.fixture(scope="module")

@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from app.config import REPO_ROOT
 from app.main import app
-from app.registry import Registry, RegistryError, registry
+from app.util.registry import Registry, RegistryError, registry
 from app.switches import HEADER
 
 DEMO_LOCI = REPO_ROOT / "data" / "web" / "demo" / "loci.parquet"

@@ -5,11 +5,14 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
   useLocalRuntime,
   type ChatModelAdapter,
+  type ReasoningMessagePartProps,
 } from "@assistant-ui/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Markdown } from "@/components/Markdown";
 import { streamChat } from "@/lib/api";
 import type { ViewFilters } from "@/lib/types";
 import { useView } from "@/lib/viewStore";
@@ -31,7 +34,7 @@ interface ToolEvent {
 /**
  * The empty state, and the only place the agent's range is written down for the
  * person using it. A text box advertises nothing, so somebody who has not read
- * `app/tools.py` will type one cohort-level question and conclude that is all
+ * `app/tools/` will type one cohort-level question and conclude that is all
  * there is. The groups here are the tool surface: query the registered tables,
  * move the view, cross to the disease locus reference, and account for what data
  * is loaded — including files they dropped in themselves.
@@ -71,24 +74,83 @@ const SUGGESTIONS: { label: string; prompts: string[] }[] = [
     prompts: [
       "What tables are you querying, and is any of it synthetic?",
       "What have I uploaded, and can you query it?",
+      "What's in the merged SV VCF, and where does it keep the insertion?",
     ],
   },
 ];
 
 function TextPart({ text }: { text: string }) {
-  return <p className="whitespace-pre-wrap leading-relaxed">{text}</p>;
+  return <Markdown>{text}</Markdown>;
 }
 
-function ReasoningPart({ text }: { text: string }) {
-  if (!text.trim()) return null;
+function Chevron() {
   return (
-    <details className="group rounded-md border border-hairline bg-surface px-2 py-1.5">
-      <summary className="cursor-pointer list-none text-[11px] text-ink-muted">
-        Reasoning
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+    >
+      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.5" />
+    </svg>
+  );
+}
+
+/**
+ * Reasoning has two lives.
+ *
+ * While the model is still thinking it is the only thing to look at, so it
+ * streams in place. The moment the answer starts it stops being the point, and
+ * collapses to a chevron that only names itself on hover — the answer is what
+ * you came for, and a permanent "Reasoning" box above every reply competes with
+ * it for the top of the pane.
+ */
+function ReasoningPart({ text, status }: ReasoningMessagePartProps) {
+  // Two conditions, because either one alone can get stuck. The part status
+  // goes complete when the answer starts, which is the collapse we want; but a
+  // turn that ends without ever producing text leaves reasoning as the last
+  // part, and it would stay expanded for good. Once the message is done, it
+  // collapses no matter what the part says.
+  const settled = useAuiState((state) => state.message.status?.type !== "running");
+  const live = status.type === "running" && !settled;
+  const trail = useRef<HTMLDivElement>(null);
+
+  // Follow the tail while it streams, so the newest sentence stays in view
+  // without the capped box growing the whole thread.
+  useEffect(() => {
+    if (live && trail.current) {
+      trail.current.scrollTop = trail.current.scrollHeight;
+    }
+  }, [text, live]);
+
+  if (!text.trim()) return null;
+
+  if (live) {
+    return (
+      <div className="rounded-md border border-hairline bg-surface px-2 py-1.5">
+        <p className="animate-pulse text-[10px] uppercase tracking-wide text-ink-muted">
+          Reasoning
+        </p>
+        <div
+          ref={trail}
+          className="scroll-quiet mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-ink-secondary"
+        >
+          {text}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-[10px] text-ink-muted opacity-40 transition-opacity hover:opacity-100 group-open:opacity-100">
+        <Chevron />
+        <span className="uppercase tracking-wide opacity-0 transition-opacity group-hover:opacity-100 group-open:opacity-100">
+          Reasoning
+        </span>
       </summary>
-      <p className="mt-1.5 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-secondary">
+      <div className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-secondary">
         {text}
-      </p>
+      </div>
     </details>
   );
 }

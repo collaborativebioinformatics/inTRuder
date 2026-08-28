@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.config import REPO_ROOT, settings
 from app.main import app
-from app.registry import _pid_of, registry
+from app.util.registry import _pid_of, registry
 
 DEMO_LOCI = REPO_ROOT / "data" / "web" / "demo" / "loci.parquet"
 DEMO_SEGMENTS = REPO_ROOT / "data" / "web" / "demo" / "segments.parquet"
