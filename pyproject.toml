@@ -31,6 +31,11 @@ strchive = "intruder.pipeline.strchive.__main__:main"
 # pipeline step, so its polars dependency lives in the `analysis` group:
 # `uv sync --group analysis` before running it.
 join-hits = "intruder.analysis.benchmark.join_hits:main"
+svpytrf     = "intruder.pipeline.trf.sv_trfcaller:main"
+filter      = "intruder.pipeline.trf.filter_ins_trf:main"
+novelty     = "intruder.pipeline.novelty.cli:main"
+strchive    = "intruder.pipeline.strchive.__main__:main"
+compression = "intruder.pipeline.compression.annotate:main"
 
 [dependency-groups]
 # Groups, not extras: nothing here is imported by a pipeline step, so none of it

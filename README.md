@@ -70,6 +70,9 @@ See [Methods outline](docs/Methods_overview.md) for the full write-up of each st
 - [Shared Google Drive Directory](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
     - [Hackathon Paper Draft](https://docs.google.com/document/d/10qZ_TYCXGT-6oQeLkNYA6dTP95qblCw60p-mwLw-pfY/edit?usp=sharing)
     - [Detailed project proposal, including background](https://docs.google.com/document/d/18JEbKyxauTkjYTZojyhRf58wiZ7YvwZixZ-JOBXl74c/edit?usp=sharing)
+  * **Final Files for Plotting**
+    * [HG002 Trio](https://drive.google.com/file/d/1ppH3vSswUobjRUMFrTC-4MPwbmW_63L5/view?usp=drive_link)
+    * [HPRC Samples](https://drive.google.com/file/d/10Byv-tfCglKLdArRO9sW8dqmd-rwrh0W/view?usp=drive_link)
 
 ## Quickstart guide
 
@@ -114,6 +117,7 @@ code they cover — they mirror it under `tests/`.
 | [`data/aws_hprc_cram.list`](data/aws_hprc_cram.list) | AWS S3 locations of the processed HPRC CRAM files |
 | [`data/aws_giab_cram.list`](data/aws_giab_cram.list) | AWS S3 locations of the processed GIAB CRAM files |
 | [`data/sv_output/`](data/sv_output/) | Per-sample raw and filtered Sniffles VCFs, plus the merged multi-sample VCF subset |
+| [Plotting inputs](docs/analysis/PLOTTING.md) | The uncommitted tables in `data/plots/` that the figures are drawn from — what each one is, which step produces it, how to regenerate |
 
 ### Tools
 
@@ -149,7 +153,9 @@ docker compose up --build      # same two ports
 
 Add a model credential to `backend/.env` to enable chat — the data views work
 without one. Anthropic, Google, Ollama and OpenAI are all selectable via
-`LLM_PROVIDER`.
+`LLM_PROVIDER`. Or set `LLM_PROVIDER=claude-code` to run chat on the Claude Code
+CLI you already have, with no key at all — see
+[`backend/README.md`](./backend/README.md#running-on-claude-code).
 
 | Directory | What it is |
 |---|---|

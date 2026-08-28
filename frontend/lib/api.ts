@@ -1,3 +1,4 @@
+import { switchHeaders } from "./switches";
 import type {
   AgentEvent,
   Dataset,
@@ -13,11 +14,42 @@ import type {
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+/**
+ * An API response that arrived and said no — as opposed to a network failure,
+ * which is the other thing a rejected fetch means and needs telling apart. A 503
+ * carrying "no candidate-locus dataset is available" is the server working
+ * correctly and reporting a state the reader can fix; "start the backend" is the
+ * wrong advice for it.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { signal });
+  // Every read carries this browser's dataset switches, so a table somebody has
+  // switched off is one the server does not draw from — for them, and only for
+  // them. See lib/switches.ts.
+  const response = await fetch(`${API_BASE}${path}`, { signal, headers: switchHeaders() });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`);
+    // FastAPI puts the sentence worth reading in `detail`. Showing the raw JSON
+    // instead buries it in punctuation.
+    let detail = "";
+    try {
+      detail = String((JSON.parse(body) as { detail?: unknown }).detail ?? "");
+    } catch {
+      detail = body;
+    }
+    throw new ApiError(
+      response.status,
+      detail || `${response.status} ${response.statusText}`,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -26,6 +58,10 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   const params = new URLSearchParams();
   if (filters.novel_only) params.set("novel_only", "true");
   if (filters.disease_gene_only) params.set("disease_gene_only", "true");
+  if (filters.genic_only) params.set("genic_only", "true");
+  if (filters.exonic_only) params.set("exonic_only", "true");
+  if (filters.constrained_only) params.set("constrained_only", "true");
+  if (filters.gene_region) params.set("gene_region", filters.gene_region);
   if (filters.chrom) params.set("chrom", filters.chrom);
   if (filters.region) params.set("region", filters.region);
   if (filters.motif_class) params.set("motif_class", filters.motif_class);
@@ -62,14 +98,25 @@ export interface Health {
   status: string;
   agent_enabled: boolean;
   llm: { provider: string; credential_present?: boolean; credential_env?: string | null };
-  datasets: { available: string[]; unavailable: { name: string; error: string }[] };
+  datasets: {
+    available: string[];
+    unavailable: { name: string; error: string }[];
+    /** Present on this backend; absent on an older one. */
+    disabled?: string[];
+  };
 }
 
 export const fetchHealth = (signal?: AbortSignal) => getJSON<Health>("/api/health", signal);
 
-/** Every registered dataset, including the ones whose file is missing. */
+/**
+ * Every registered dataset, including the ones switched off or missing their
+ * file, plus which table currently holds each role for this caller.
+ */
 export const fetchDatasets = (signal?: AbortSignal) =>
-  getJSON<{ datasets: Dataset[] }>("/api/datasets", signal);
+  getJSON<{ datasets: Dataset[]; roles: Record<string, string | null> }>(
+    "/api/datasets",
+    signal,
+  );
 
 /* -------------------------------------------------------------------------- */
 /* STRchive                                                                    */
@@ -113,7 +160,10 @@ export async function streamChat(
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // The agent is told about the datasets this browser has switched on, and no
+    // others — a fixture hidden from the page but left in the schema prompt is
+    // one the model would happily answer a cohort question from.
+    headers: { "Content-Type": "application/json", ...switchHeaders() },
     body: JSON.stringify({ messages }),
     signal,
   });

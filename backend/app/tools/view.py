@@ -1,99 +1,20 @@
-"""Tools exposed to the agent.
+"""The tool that moves the interface.
 
-There are five, and the count does not grow with the number of datasets. Three are
-generic data access over the registry; the fourth drives the visualization; the
-fifth lists files someone has handed the interface. A tool per dataset would mean
-editing agent code every time somebody contributes a manifest, and would grow the
-tool list without bound — see `data/web/README.md`.
+`set_view` is what makes chat and the charts two views of one state rather than
+two panels: it writes the same filter state the chips and the sort control write,
+so an answer in prose leaves the screen showing the loci it is about.
 
-Note what is absent: nothing here takes a filesystem path. `run_sql` runs on a
-connection with external file access disabled, and an upload is named by its id,
-which is resolved to a path inside the uploads directory by `app.uploads` and
-nowhere else. The model names handles; the server owns paths.
+Its arguments mirror `frontend/lib/types.ts`; adding a filter means adding it in
+both places.
 """
 
 from __future__ import annotations
 
-import json
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from langchain_core.tools import tool
 
-from app import uploads
-from app.registry import RegistryError, registry
-
-
-def _dump(payload: Any) -> str:
-    """Tool results go back to the model as text, so serialize predictably."""
-    return json.dumps(payload, indent=2, default=str)
-
-
-@tool
-def list_datasets() -> str:
-    """List every dataset registered in the data catalog.
-
-    Returns each dataset's name, title, description, row count, column names, and
-    whether its underlying file is present. Call this first when you are unsure
-    what data exists. Datasets flagged synthetic are demo fixtures, not results.
-    """
-    datasets = [d.summary() for d in registry.datasets.values()]
-    if not datasets:
-        return _dump({"datasets": [], "note": "No manifests found in the registry directory."})
-    return _dump({"datasets": datasets})
-
-
-@tool
-def describe_dataset(name: Annotated[str, "The dataset name, as returned by list_datasets."]) -> str:
-    """Get the full schema for one dataset: per-column documentation, provenance,
-    row count, and file path.
-
-    Use this before writing SQL against a table you have not queried yet, so that
-    column names and meanings come from the manifest rather than a guess.
-    """
-    dataset = registry.datasets.get(name)
-    if dataset is None:
-        known = sorted(registry.datasets)
-        return _dump({"error": f"No dataset named {name!r}.", "available": known})
-    return _dump(dataset.detail())
-
-
-@tool
-def run_sql(
-    query: Annotated[str, "A single read-only DuckDB SELECT or WITH statement."],
-) -> str:
-    """Run a read-only DuckDB SQL query against the registered datasets.
-
-    Only a single SELECT or WITH statement is permitted; there is no write access
-    and no filesystem access. Results are capped, and the response reports whether
-    truncation occurred. Prefer aggregate queries over dumping raw rows: to answer
-    "how many novel loci are in disease genes", return a count, not 400 records.
-    """
-    try:
-        result = registry.query(query)
-    except RegistryError as exc:
-        return _dump({"error": str(exc), "query": query})
-    return _dump(result)
-
-
-@tool
-def list_uploads() -> str:
-    """List the files someone has uploaded to this interface.
-
-    Use this when the user refers to a file they have just given you — "the VCF I
-    uploaded", "the callset I dropped in". Returns each file's id, name, size and
-    what could be read from it: for a VCF that is its sample names, the callers
-    named in its header and whether it is a merged callset; for a table, its
-    columns.
-
-    A file listed here with a `dataset` name is already queryable with `run_sql`
-    under that name. One without is not a table yet — a VCF becomes candidate loci
-    by running the TR-detection pipeline, which is not something you can do from
-    here. Say that plainly rather than implying the data is available.
-    """
-    records = uploads.listing()
-    if not records:
-        return _dump({"uploads": [], "note": "Nobody has uploaded a file."})
-    return _dump({"uploads": [u.public() for u in records]})
+from app.tools.payload import dump
 
 
 @tool
@@ -136,7 +57,34 @@ def set_view(
         "Minimum fraction of the insertion that is tandem repeat at all, 0-1. "
         "Low values mean the insertion is mostly something else.",
     ] = None,
-    disease_gene_only: Annotated[bool | None, "Show only loci in known disease genes."] = None,
+    disease_gene_only: Annotated[
+        bool | None,
+        "Show only loci in a gene carrying an OMIM disease entry (2,201 of "
+        "17,270). Weaker than strchive_status: 'in a gene linked to some "
+        "disease', not 'at a known repeat-expansion locus'.",
+    ] = None,
+    genic_only: Annotated[
+        bool | None,
+        "Show only loci inside an annotated gene (9,043 of 17,270). The other "
+        "half are intergenic, which is a real finding and not missing data.",
+    ] = None,
+    exonic_only: Annotated[
+        bool | None,
+        "Show only loci where a breakpoint lands inside an exon (265). This is "
+        "the strong claim about coding impact — NOT gene_region='CDS', which "
+        "merely means the insertion sits between the start and stop codons and "
+        "is true of thousands of intronic loci.",
+    ] = None,
+    constrained_only: Annotated[
+        bool | None,
+        "Show only loci in a gene with gnomAD pLI >= 0.9 — intolerant of loss "
+        "of function (1,867 loci).",
+    ] = None,
+    gene_region: Annotated[
+        Literal["CDS", "UTR", "5'UTR", "3'UTR"] | None,
+        "Which transcript region the insertion sits WITHIN. Read the caveat on "
+        "exonic_only before using 'CDS' to mean coding impact.",
+    ] = None,
     gene: Annotated[str | None, "Restrict to one gene symbol, e.g. 'XYLT1'."] = None,
     gene_query: Annotated[
         str | None,
@@ -209,6 +157,10 @@ def set_view(
             "min_purity": min_purity,
             "min_insertion_purity": min_insertion_purity,
             "disease_gene_only": disease_gene_only,
+            "genic_only": genic_only,
+            "exonic_only": exonic_only,
+            "constrained_only": constrained_only,
+            "gene_region": gene_region,
             "gene": gene,
             "gene_query": gene_query,
             "sample": sample,
@@ -222,8 +174,6 @@ def set_view(
         if value is not None
     }
     if not view:
-        return _dump({"applied": {}, "note": "No fields supplied; the view was left unchanged."})
-    return _dump({"applied": view})
+        return dump({"applied": {}, "note": "No fields supplied; the view was left unchanged."})
+    return dump({"applied": view})
 
-
-ALL_TOOLS = [list_datasets, describe_dataset, run_sql, list_uploads, set_view]

@@ -186,3 +186,21 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The workspace columns.
+
+   Narrow screens stack into one column and the drag handles are hidden, so the
+   pane widths are only in play from `lg` up. They come in as custom properties
+   rather than an inline `grid-template-columns` so that this media query, not
+   the specificity of an inline style, decides which layout applies. The 1px
+   tracks are the seams (see PaneDivider), which draw the hairline the rail and
+   the assistant used to draw as borders of their own. */
+.workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 64rem) {
+  .workspace-grid {
+    grid-template-columns: var(--rail-w) 1px minmax(0, 1fr) 1px var(--chat-w);
+  }
+}

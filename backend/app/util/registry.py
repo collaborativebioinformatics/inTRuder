@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -89,6 +90,10 @@ class Dataset:
     available: bool = False
     n_rows: int | None = None
     error: str | None = None
+    #: Where this dataset's switch sits for someone who has not touched it. A
+    #: property of the registry, not of a client — see `_apply_defaults`. Whether
+    #: it is actually *on* for a given caller is `Registry.switched_off`.
+    default_enabled: bool = True
 
     def summary(self) -> dict[str, Any]:
         """Compact form used by `list_datasets` — cheap enough to show them all."""
@@ -105,18 +110,48 @@ class Dataset:
         }
 
     def detail(self) -> dict[str, Any]:
-        """Full form used by `describe_dataset`."""
+        """Full form used by `describe_dataset` and the datasets surface."""
         return {
             **self.summary(),
             "column_docs": self.columns,
             "provenance": self.provenance,
             "path": str(self.path),
             "manifest_file": self.manifest_file,
+            # Where the switch starts. The interface pairs this with whatever the
+            # person browsing has chosen; the assistant is only ever shown
+            # datasets that are on for the caller, so it never sees this.
+            "default_enabled": self.default_enabled,
         }
 
 
 class RegistryError(RuntimeError):
     pass
+
+
+def _apply_defaults(datasets: dict[str, Dataset]) -> None:
+    """Decide where each switch starts.
+
+    Everything defaults on, with one exception. The committed demo fixtures exist
+    so a fresh clone has something to draw; the moment somebody supplies a real
+    callset they stop being useful and start being misleading — two catalogs in
+    the dataset list, and an assistant free to answer a cohort question off
+    fabricated rows. So a synthetic dataset defaults *off* as soon as real data
+    is driving a surface, and on when none is.
+
+    "Driving a surface" is the test rather than "any real table exists", because
+    the disease-locus reference is real, is always present, and does not replace
+    the demo catalog. Presence on disk is the test rather than `available`,
+    because nothing has been loaded yet at this point — and it is the same
+    question anyway.
+
+    This only decides where a switch starts. Where it ends up is the caller's,
+    and travels with their request.
+    """
+    real_data_present = any(
+        d.role and not d.synthetic and d.path.exists() for d in datasets.values()
+    )
+    for dataset in datasets.values():
+        dataset.default_enabled = not (dataset.synthetic and real_data_present)
 
 
 def _resolve_path(raw: str, registry_dir: Path) -> Path:
@@ -230,26 +265,53 @@ class Registry:
         """
         return self.connection.cursor()
 
-    def available_datasets(self) -> list[Dataset]:
-        return [d for d in self.datasets.values() if d.available]
+    def available_datasets(self, off: Collection[str] = ()) -> list[Dataset]:
+        """The tables that are loaded and that this caller wants read.
 
-    def table_for(self, role: str) -> str | None:
+        `off` is one client's switched-off names — see `switched_off`. It is a
+        parameter rather than registry state because the switches belong to
+        whoever is looking: one backend serves many browsers, and one of them
+        hiding the demo fixtures must not hide them from everybody else.
+        """
+        return [d for d in self.datasets.values() if d.available and d.name not in off]
+
+    def table_for(self, role: str, off: Collection[str] = ()) -> str | None:
         """The table name claiming `role`, or the historical default.
 
         This is how an uploaded callset takes over the catalog surface: the API
         never names a table literally, it asks which one plays the part. A
         manifest that claims a role whose file is missing is ignored here rather
         than blanking the interface — an unavailable table cannot answer a query,
-        so falling back to one that can is the honest behaviour.
+        so falling back to one that can is the honest behaviour. A table this
+        caller has switched off is skipped for the same reason and by the same
+        test, which is what makes turning the real callset off hand the surface
+        back to the fixtures.
         """
         datasets = self.datasets
         for dataset in datasets.values():
-            if dataset.role == role and dataset.available:
+            if dataset.role == role and dataset.available and dataset.name not in off:
                 return dataset.name
         default = _ROLE_DEFAULTS.get(role)
-        if default and default in datasets and datasets[default].available:
+        if default and default in datasets and datasets[default].available and default not in off:
             return default
         return None
+
+    def switched_off(self, overrides: Mapping[str, bool]) -> frozenset[str]:
+        """The names one caller does not want read, defaults applied.
+
+        Callers send only what they explicitly chose; everything else falls to
+        `default_enabled`. That split is deliberate. Which datasets exist — and
+        therefore whether the demo fixtures are still the thing being looked at —
+        is knowledge only the server has, so it computes the default; which
+        switches somebody flipped is a preference belonging to their browser, so
+        it travels with the request. A first-time visitor sends nothing and still
+        gets the fixtures hidden behind a real callset.
+        """
+        return frozenset(
+            name
+            for name, dataset in self.datasets.items()
+            if not overrides.get(name, dataset.default_enabled)
+        )
 
     # ------------------------------------------------------------- lifecycle
 
@@ -263,6 +325,7 @@ class Registry:
         """
         with self._lock:
             datasets = self._read_manifests()
+            _apply_defaults(datasets)
             snapshot = self._materialize(datasets)
             previous, self._snapshot = self._snapshot, snapshot
             self._retire(previous)
@@ -290,13 +353,18 @@ class Registry:
                 continue
             datasets[dataset.name] = dataset
 
+        # Several claimants is a supported configuration, not a mistake: hprc and
+        # trio both claim `loci`, and switching the first one off is how a caller
+        # moves the whole interface onto the second. Logged at info because the
+        # resolution order is still worth being able to see; it is only a warning
+        # when nothing can claim the role at all.
         for role in ROLES:
             claimants = [d.name for d in datasets.values() if d.role == role]
             if len(claimants) > 1:
-                logger.warning(
-                    "%d datasets claim role %r (%s); table_for() will pick the "
-                    "first available one",
-                    len(claimants), role, ", ".join(claimants),
+                logger.info(
+                    "role %r claimed by %s; the first available one drives the "
+                    "surface, the rest take over as it is switched off",
+                    role, ", ".join(claimants),
                 )
         return datasets
 
@@ -384,15 +452,21 @@ class Registry:
             except (duckdb.Error, OSError) as exc:
                 logger.warning("could not retire %s: %s", snapshot.db_path, exc)
 
-    def schema_prompt(self) -> str:
+    def schema_prompt(self, off: Collection[str] = ()) -> str:
         """The block of text describing available tables that is injected into the
         agent's system prompt. This is what lets a new dataset become usable
-        without touching agent code."""
-        if not self.available_datasets():
+        without touching agent code.
+
+        A table this caller has switched off is left out entirely rather than
+        listed as unusable, because a table the model can see in the schema is
+        one it will eventually reach for.
+        """
+        datasets = self.available_datasets(off)
+        if not datasets:
             return "No datasets are currently available."
 
         lines: list[str] = []
-        for dataset in self.available_datasets():
+        for dataset in datasets:
             flag = " [SYNTHETIC DEMO DATA]" if dataset.synthetic else ""
             lines.append(f'Table "{dataset.name}" — {dataset.title}{flag}')
             lines.append(f"  rows: {dataset.n_rows:,}")
@@ -403,10 +477,21 @@ class Registry:
             lines.append("")
         return "\n".join(lines)
 
-    def query(self, sql: str, max_rows: int | None = None) -> dict[str, Any]:
+    def query(
+        self, sql: str, max_rows: int | None = None, off: Collection[str] = ()
+    ) -> dict[str, Any]:
         """Run a single read-only statement and return rows plus column names.
 
-        Raises RegistryError on anything that is not a lone SELECT/WITH statement.
+        Raises RegistryError on anything that is not a lone SELECT/WITH
+        statement, or that names a table this caller has switched off.
+
+        Every registered table is in the database regardless of anybody's
+        switches — one materialization serves every client — so the switch has to
+        be enforced here rather than by absence. The check is a word-boundary
+        scan for the name, which is deliberately blunter than parsing: it also
+        refuses a query that merely mentions the name in a string literal, and a
+        false refusal with a clear reason costs a retry, while a false pass hands
+        back rows the caller believes are not being read.
         """
         max_rows = max_rows or settings.max_sql_rows
         stripped = sql.strip().rstrip(";")
@@ -415,6 +500,12 @@ class Registry:
             raise RegistryError("only SELECT and WITH statements are permitted")
         if ";" in stripped:
             raise RegistryError("only a single statement is permitted")
+        for name in off:
+            if re.search(rf"\b{re.escape(name)}\b", stripped, re.IGNORECASE):
+                raise RegistryError(
+                    f"{name!r} is switched off in this interface and cannot be "
+                    "queried. Say so rather than working around it."
+                )
 
         try:
             cursor = self.cursor().execute(stripped)
