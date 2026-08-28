@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build an hg38 tandem-repeat catalogue with Tandem Repeats Finder.
 #
-#   ./build_hg38_trf.sh [OUTDIR] [MINSCORE]
+#   scripts/catalog/build_hg38_trf.sh [OUTDIR] [MINSCORE]
 #
 # Downloads the 24 primary hg38 chromosomes from UCSC, runs TRF on each in
 # parallel, and converts the .dat output to a BED4 catalogue that the novelty
@@ -16,6 +16,13 @@ JOBS="${JOBS:-10}"           # match physical performance cores, not logical
 PARAMS="2 5 5 80 10 ${MINSCORE} 500"
 
 CHRS=$(printf 'chr%s ' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y)
+
+# Resolved before the `cd` below, and absolute: everything after it runs with
+# OUTDIR as the working directory, so a path relative to this script would no
+# longer point anywhere.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
+DAT2BED="$REPO_ROOT/src/python/intruder/pipeline/catalog/dat2bed.py"
+
 mkdir -p "$OUTDIR"/{fa,dat}
 cd "$OUTDIR"
 
@@ -35,6 +42,6 @@ done | xargs -P "$JOBS" -I{} sh -c \
   "cd dat && trf ../fa/{}.fa $PARAMS -d -h -l 6 >/dev/null 2>&1 || true"
 
 echo "[3/3] converting to BED4"
-python3 "$(dirname "$0")/dat2bed.py" "hg38.trf.minscore${MINSCORE}.bed" dat/*.dat
+python3 "$DAT2BED" "hg38.trf.minscore${MINSCORE}.bed" dat/*.dat
 
 echo "done: $OUTDIR/hg38.trf.minscore${MINSCORE}.bed"

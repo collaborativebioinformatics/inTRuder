@@ -15,7 +15,7 @@ than biology.
 ## Usage
 
 ```bash
-src/python/catalog/build_hg38_trf.sh OUTDIR [MINSCORE]     # default minscore 50
+scripts/catalog/build_hg38_trf.sh OUTDIR [MINSCORE]     # default minscore 50
 ```
 
 Then screen against it:
@@ -98,5 +98,11 @@ chr1	10481	10498	GCCC
 
 Columns are contig, start, end, and the TRF consensus motif (field 14 of the
 `.dat` record). TRF reports 1-based inclusive coordinates, so `start - 1` is
-written. `dat2bed.py` performs that conversion and is verified record-for-record
-against the `.dat` input.
+written. `src/python/intruder/pipeline/catalog/dat2bed.py` performs that
+conversion and is verified record-for-record against the `.dat` input.
+
+The conversion step runs on its own too, over any `.dat` files you already have:
+
+```bash
+uv run python -m intruder.pipeline.catalog.dat2bed OUT.bed dat/*.dat
+```

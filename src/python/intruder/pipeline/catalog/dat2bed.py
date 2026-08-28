@@ -5,7 +5,9 @@ TRF .dat data lines are:
     start end period copies consensusSize %match %indel score A C G T entropy consensus aligned
 Coordinates are 1-based inclusive; BED is 0-based half-open, so start-1 is used.
 
-    python dat2bed.py OUT.bed dat/*.dat
+    uv run python -m intruder.pipeline.catalog.dat2bed OUT.bed dat/*.dat
+
+``scripts/catalog/build_hg38_trf.sh`` runs this as its last step.
 """
 import sys
 from pathlib import Path

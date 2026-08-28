@@ -11,6 +11,7 @@ src/python/intruder/
 ├── trcore/       shared primitives — coordinates, motifs, downloads, repo paths
 ├── pipeline/     the pipeline steps
 │   ├── trf/         call repeats inside SV insertions, then filter the calls
+│   ├── catalog/     build the reference catalogues the novelty screen reads
 │   ├── novelty/     is this repeat absent from the reference and the catalogues?
 │   ├── strchive/    is it a known disease locus?
 │   ├── compression/ how compressible is the insertion? a cheap repetitiveness proxy
