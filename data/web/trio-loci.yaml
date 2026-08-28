@@ -1,28 +1,23 @@
-name: hprc_loci
-title: HPRC candidate TR loci (67 genomes, screened)
+name: trio_loci
+title: GIAB trio candidate TR loci (HG002/03/04, screened)
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/hprc/loci.parquet
+path: ${NOVELTRS_DATA_DIR}/trio/loci.parquet
 format: parquet
 role: loci
 
 description: >
   One row per candidate tandem-repeat locus discovered in insertion calls across
-  67 HPRC long-read genomes. THIS IS REAL DATA, not a demo fixture: 17,270 loci
-  aggregated from the 162,441 screened carrier-alleles in hprc_calls. This is the
-  table for cohort-level questions - how many loci are novel, how novelty varies
-  by motif class or chromosome, which loci land in genes and which of those are disease genes.
-  A locus is an insertion SITE, keyed on (chrom, pos), not an SV record. Sniffles
-  emits several co-located records at one site when carriers have alleles of
-  different length, and those records are alleles of one locus, not separate loci.
-  n_alleles says how many a locus holds. Do not aggregate this table by SVID.
-  Each locus carries the reference screen: a combined novelty verdict plus an
-  independent block per catalog (ucsc_, trexplorer_), recording what hg38
-  annotates at that position. Where the two agree the call is a property of the
-  data rather than of one catalog's coverage.
-  The upstream file is already filtered - every carrier-allele in it passed purity
-  >= 0.80, insertion purity >= 0.80, repeat coverage >= 0.80 and depth >= 30. So a
-  purity threshold applied here selects within an already-clean set and will barely
-  move a count; it is not the filter that decides these numbers.
+  the GIAB Ashkenazi TRIO - HG002 (son), HG003 (father), HG004 (mother). REAL
+  DATA: 4,541 loci aggregated from 7,276 screened carrier-alleles.
+  This is a FAMILY, not a population, and that is the whole difference from
+  hprc_loci. n_samples is 1-3 and is an inheritance pattern, not a frequency: a
+  locus carried by all three is transmitted, one carried by HG002 alone is a
+  candidate de novo insertion or a missed call in a parent. Do NOT read
+  n_samples here as cohort allele frequency the way you would in hprc_loci.
+  Same build, same columns and same caveats as hprc_loci - see that manifest for
+  what a locus is, how novelty rolls up, and how the AnnotSV block is parsed.
+  1,031 of the 4,541 loci are novel (22.7%), 2,433 are in a gene, 618 in a
+  disease gene, 54 exonic, and 6 within 10 bp of a STRchive disease locus.
   Built by backend/scripts/build_web_tables.py from the AnnotSV-annotated callset.
 
 columns:
@@ -36,7 +31,7 @@ columns:
     motif, not the only one.
   motif_len: Length of that motif in bp, 1-392.
   motif_class: One of homopolymer (1bp), STR (2-6bp), VNTR (>=7bp).
-  n_samples: Number of the 67 cohort samples carrying an insertion here, 1-67.
+  n_samples: How many of the 3 trio members carry an insertion here, 1-3. An inheritance pattern, not a frequency - see the description.
   n_carrier_alleles: Carrier-alleles at this locus. Exceeds n_samples where a sample carries two haplotypes.
   n_alleles: >
     Distinct co-located SV records at this site. 1 for most loci; more means
@@ -113,14 +108,14 @@ columns:
   # Gene context, from AnnotSV. A real gene annotation: `gene` is NULL only where
   # the insertion is genuinely intergenic.
   gene: >
-    Symbol of the gene this insertion falls in, NULL when intergenic. 9,043 of
-    17,270 loci are genic. On the 678 loci spanning more than one gene this is the
+    Symbol of the gene this insertion falls in, NULL when intergenic. 2,433 of
+    4,541 loci are genic. On the 173 loci spanning more than one gene this is the
     FIRST of them - see all_genes and gene_count before quoting it.
   all_genes: Every gene at this site, semicolon-separated, e.g. WDFY4;LRRC18. Equals `gene` when gene_count is 1.
-  gene_count: How many genes overlap this insertion. 0 when intergenic, 1 for 8,365 loci, up to 7.
+  gene_count: How many genes overlap this insertion. 0 when intergenic, 1 for 2,260 loci, up to 7.
   genic: True when the insertion falls in at least one gene. Exactly `gene_count > 0`.
   exonic: >
-    True when a breakpoint lands inside an exon - 265 loci. Agrees exactly with
+    True when a breakpoint lands inside an exon - 54 loci. Agrees exactly with
     `location`, and this is the column to use for "does it hit an exon", NOT `region`.
   intronic: >
     True when the insertion is in a gene but not in an exon. DERIVED here, not read
@@ -133,15 +128,15 @@ columns:
     the insertion in the transcript, which is what the gene track draws.
   region: >
     Which transcript region the insertion sits WITHIN - CDS, UTR, 5'UTR or 3'UTR.
-    Not the same as hitting coding sequence: 45,594 rows are intron4-intron4 with
+    Not the same as hitting coding sequence: many rows are intron4-intron4 with
     region CDS, meaning an intron between the start and stop codons. Use `exonic`
     for the stronger claim.
   exon_count: Exons in the annotated transcript, 1-313. A property of `tx`, not of the gene.
   tx: >
     RefSeq accession of the transcript AnnotSV annotated against, e.g. XM_017012475.
     AnnotSV picks one transcript per SV and its pick is NOT stable within a gene -
-    929 genes get more than one across their loci, and 1,859 of the 3,408
-    transcripts used are XM_ predicted models rather than curated NM_ ones. So
+    AnnotSV's pick is not stable within a gene, and many of the transcripts used
+    are XM_ predicted models rather than curated NM_ ones. So
     exon_count and feature_index are only meaningful read together with this.
   tx_version: Version suffix of that accession, e.g. 1 for XM_017012475.1.
   dist_nearest_ss: bp from the insertion point to the nearest splice site of `tx`.
@@ -150,7 +145,7 @@ columns:
   closest_left: Nearest gene to the left. Populated at intergenic loci, where `gene` is NULL.
   closest_right: Nearest gene to the right, likewise.
   disease_gene: >
-    True when a gene at this site has an OMIM disease entry - 2,201 loci. This is
+    True when a gene at this site has an OMIM disease entry - 618 loci. This is
     AnnotSV's DISEASE_GENES flag and is computed across every gene at the site, so
     it stays valid on multi-gene loci where the per-gene text columns are NULL.
     A much weaker claim than strchive_locus: "in a gene linked to some disease",
@@ -158,7 +153,7 @@ columns:
   plof: AnnotSV's predicted loss-of-function flag.
   pli: >
     Highest gnomAD/ExAC pLI across the genes here, 0-1. Above 0.9 means the gene is
-    intolerant of loss of function. 1,867 loci are above that.
+    intolerant of loss of function. 533 loci are above that.
   loeuf_bin: gnomAD LOEUF decile of the first gene, 0 (most constrained) to 9.
   omim_id: OMIM entry number of the first gene, NULL when it has none.
   omim_phenotype: >
@@ -166,7 +161,7 @@ columns:
     every multi-gene locus by design - AnnotSV joins the genes' values with ", "
     and the values contain ", " themselves, so on a multi-gene site they cannot be
     told apart and captioning `gene` with one of them would be a mis-attribution.
-    2,001 loci carry it.
+    558 loci carry it.
   omim_inheritance: Inheritance for that entry - AR, AD, XL, semicolon-separated.
   omim_morbid: True when OMIM marks the gene morbid.
   gencc_disease: GenCC disease association for the gene. NULL on multi-gene loci, as omim_phenotype.
@@ -185,7 +180,7 @@ columns:
   # STRchive overlap. A separate, much stronger claim than disease_gene.
   strchive_gene: >
     Gene symbol of the STRchive disease locus this insertion falls within 10 bp of,
-    NULL otherwise. 39 of 17,270 loci. Distinct from `gene`, which is the real gene
+    NULL otherwise. 6 of 4,541 loci. Distinct from `gene`, which is the real gene
     annotation; this one is non-NULL only at a curated repeat-expansion locus.
   strchive_locus: True when this locus is within 10 bp of a STRchive disease locus. Exactly `strchive_id IS NOT NULL`.
   strchive_id: Matched STRchive locus identifier, e.g. CANVAS_RFC1. Joins to strchive_loci.id.
@@ -199,15 +194,16 @@ columns:
   strchive_distance_bp: bp from the insertion point to the disease locus; 0 means inside it.
 
 provenance:
-  source: Sniffles multisample INS calls across 67 HPRC long-read genomes (hprc_multisample.vcf)
+  source: Sniffles multisample INS calls across the GIAB HG002/HG003/HG004 trio, 30x haplotagged
   pipeline: pyTRF identification | novelty annotate --platform ucsc,trexplorer | novelty filter | AnnotSV
   build: GRCh38
-  upstream_file: data/plots/05_hprc_multisample.tsv (Drive folder Data_final; see scripts/fetch_plot_data.sh)
+  upstream_file: data/plots/05_HG002_03_04_multisample.tsv (Drive folder Data_final; see scripts/fetch_plot_data.sh)
   derivation: backend/scripts/build_web_tables.py
-  license: HPRC data use terms
+  license: GIAB public data
   caveats: >
-    The input TSV carries 58,964 exact duplicate rows (221,405 total, 162,441
-    distinct); the build de-duplicates before aggregating. Allele length is
-    constant within an SV record because the multisample VCF stores one ALT
-    sequence per record, so per-carrier length variation is only visible at the
-    2,966 sites holding more than one record.
+    The input TSV carries 2,432 exact duplicate rows (9,708 total, 7,276
+    distinct); the build de-duplicates before aggregating. Three samples means
+    n_samples saturates at 3, so any filter written against hprc_loci's 1-67
+    range selects everything or nothing here. Absence in a parent is NOT proof of
+    a de novo event - this is a filtered callset, and a missed call in HG003 or
+    HG004 looks identical to one that is genuinely absent.

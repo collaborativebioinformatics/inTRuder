@@ -25,6 +25,53 @@ import { useView } from "@/lib/viewStore";
  * answers "is this new"; the badge answers "new in what way".
  */
 
+/**
+ * The gene a row's insertion sits in, at a glance.
+ *
+ * Before the callset carried gene annotation this slot showed a symbol on the 39
+ * loci STRchive knew and nothing on the other 17,231, which made an annotated
+ * row look like a rare finding rather than the norm. Now 9,043 rows have a gene,
+ * so the tag has to stay quiet: plain text for an ordinary gene, tinted only for
+ * a disease gene, and a marker for the 265 exonic loci — the one class small
+ * enough and strong enough to deserve attention down the page.
+ *
+ * Intergenic renders as nothing rather than as the word "intergenic": half the
+ * catalog is intergenic, and half a page of grey labels is noise. The locus view
+ * says it in full, with the flanking genes.
+ */
+function GeneTag({ locus }: { locus: Locus }) {
+  if (!locus.gene) return null;
+  const disease = locus.disease_gene;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span
+        title={
+          disease
+            ? `${locus.gene} — has an OMIM disease entry`
+            : (locus.gene ?? undefined)
+        }
+        className="shrink-0 rounded-sm px-1 text-[10px] font-medium"
+        style={
+          disease
+            ? { background: "var(--novel-soft)", color: "var(--novel)" }
+            : { color: "var(--ink-secondary)" }
+        }
+      >
+        {locus.gene}
+      </span>
+      {locus.exonic && (
+        <span
+          title="A breakpoint lands inside an exon"
+          className="shrink-0 rounded-sm px-1 text-[10px]"
+          style={{ background: "var(--surface-raised)", color: "var(--ink-secondary)" }}
+        >
+          exonic
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function CatalogView({
   loci,
   strips,
@@ -138,15 +185,7 @@ export function CatalogView({
                         <span className="tabular truncate text-xs text-ink">
                           {formatPos(locus.chrom, locus.pos)}
                         </span>
-                        {locus.disease_gene && (
-                          <span
-                            title="Known repeat-expansion gene"
-                            className="shrink-0 rounded-sm px-1 text-[10px] font-medium text-novel"
-                            style={{ background: "var(--novel-soft)" }}
-                          >
-                            {locus.gene}
-                          </span>
-                        )}
+                        <GeneTag locus={locus} />
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5">
                         <NoveltyBadge status={noveltyOf(locus)} />

@@ -1,8 +1,8 @@
 name: hprc_calls
-title: HPRC carrier-alleles screened against reference catalogs
+title: HPRC carrier-alleles, screened against reference catalogs and gene-annotated
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/web/hprc_multisample.trf.noveltyFiltered.tsv
-format: tsv
+path: ${NOVELTRS_DATA_DIR}/plots/parquet/05_hprc_multisample.parquet
+format: parquet
 
 description: >
   The real screened callset at its native grain: ONE ROW PER (insertion site x SV
@@ -23,15 +23,25 @@ description: >
   disagree on a meaningful fraction of rows, and where they agree the call is a
   property of the data rather than of one catalog's coverage. There is no STRchive
   layer in this file; the disease-locus overlap lives on hprc_loci instead.
+  The last 120 columns are the raw AnnotSV block - gene, transcript, OMIM, GenCC,
+  constraint. Prefer hprc_loci for any of it: these columns pack several values
+  into one field with THREE different separators (Gene_name is ';'-joined per
+  gene; the transcript-level *_merged columns are ', '-joined and repeat per
+  transcript; the gene-level ones are ', '-joined per gene and their free text
+  contains ', ' itself), and hprc_loci is that already parsed into one clean
+  column each. Twenty-five of them are entirely empty - the AnnotSV ranking was
+  not run - including AnnotSV_ranking_score, ACMG_class and every P_gain_/P_loss_
+  column. AnnotSV's own `Intronic` column is computed as NOT Exonic and so is
+  true at intergenic sites too; hprc_loci.intronic is the corrected version.
   Already filtered: every row is filter = PASS, purity >= 0.80, insertion_purity
   >= 0.80, repeat_coverage >= 0.80, depth >= 30. Both `filter` and `allele` are
   constant across the whole file and discriminate nothing.
-  WARNING - every ucsc_* and trexplorer_* column is TEXT, not numeric, because a
-  row with no reference repeat to describe (any novel_locus call - 10,178 rows
-  for UCSC, 2,086 for TRExplorer) writes the literal string 'NA'. TRY_CAST before
-  any arithmetic or comparison on them, or 'NA' sorts as a value and '9' compares
-  greater than '10'. hprc_loci carries the same columns already cast, with NULL
-  in place of 'NA'; prefer it whenever the question is numeric.
+  Numeric columns really are numeric here. The upstream TSV writes the literal
+  string 'NA' wherever a value is absent - which used to make every ucsc_* and
+  trexplorer_* column TEXT and needed a TRY_CAST before any arithmetic -
+  but scripts/plots_to_parquet.py turns that sentinel into a real NULL at
+  conversion time, so they arrive as BIGINT and DOUBLE. NULL means "no reference
+  repeat exists at this position", which is absence, not a distance of zero.
 
 columns:
   chrom: Chromosome of the insertion site (GRCh38).
@@ -83,7 +93,7 @@ columns:
 
 provenance:
   source: Sniffles multisample INS calls across 67 HPRC long-read genomes (hprc_multisample.vcf)
-  pipeline: pyTRF identification | novelty annotate --platform ucsc,trexplorer | novelty filter
+  pipeline: pyTRF identification | novelty annotate --platform ucsc,trexplorer | novelty filter | AnnotSV
   build: GRCh38
-  upstream_file: /Results/NoveltyFiltering_OUTPUT/hprc_multisample.trf.noveltyFiltered.tsv (DNAnexus Group2_2026)
+  upstream_file: data/plots/05_hprc_multisample.tsv (Drive folder Data_final; see scripts/fetch_plot_data.sh)
   license: HPRC data use terms

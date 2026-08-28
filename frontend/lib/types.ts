@@ -88,11 +88,76 @@ export interface Locus {
   trexplorer_start?: number | null;
   trexplorer_end?: number | null;
   trexplorer_distance?: number | null;
-  /* ---- Present once the STRchive step (PR #42) has been run. */
+  /* ---- Gene context, from AnnotSV. Optional as a block: a table without the
+     annotation must render as "not screened for genes" rather than as
+     "intergenic", which is a finding we did not compute. `genic` is the flag to
+     branch on — `gene === null` alone cannot tell the two apart. */
+  genic?: boolean;
+  /** Every gene at this site, `;`-joined. `gene` is the first of them. */
+  all_genes?: string | null;
+  gene_count?: number | null;
+  /** A breakpoint lands inside an exon. The strong claim; `region` is not. */
+  exonic?: boolean;
+  /** In a gene but not in an exon. Derived in the build — AnnotSV's own
+      `Intronic` column is `NOT Exonic` and so is true at intergenic sites too. */
+  intronic?: boolean;
+  /** As AnnotSV writes it: `intron12-intron12`. */
+  location?: string | null;
+  /** Parsed from `location`, and what the gene track draws. */
+  feature?: "intron" | "exon" | null;
+  feature_index?: number | null;
+  /** Which transcript region the insertion sits WITHIN — not what it hits. An
+      intron between the start and stop codons has region `CDS`. */
+  region?: GeneRegion | null;
+  /** Exons in `tx`. A property of the transcript, never of the gene: AnnotSV's
+      transcript pick is not stable within a gene, so this is only meaningful
+      read together with `tx`. */
+  exon_count?: number | null;
+  tx?: string | null;
+  tx_version?: number | null;
+  dist_nearest_ss?: number | null;
+  nearest_ss_type?: "5'" | "3'" | null;
+  cytoband?: string | null;
+  /** Flanking genes, populated at intergenic loci where `gene` is null. */
+  closest_left?: string | null;
+  closest_right?: string | null;
+  plof?: boolean;
+  /** Highest pLI across the genes here, 0-1. Above 0.9 is constrained. */
+  pli?: number | null;
+  loeuf_bin?: number | null;
+  omim_id?: string | null;
+  /** Null on every multi-gene locus by design — see the manifest. */
+  omim_phenotype?: string | null;
+  omim_inheritance?: string | null;
+  omim_morbid?: boolean;
+  gencc_disease?: string | null;
+  gencc_classification?: string | null;
+  gencc_moi?: string | null;
+  gencc_pmid?: string | null;
+  ncbi_gene_id?: number | null;
+  hgnc_id?: string | null;
+  pop_ins_af?: number | null;
+  pop_ins_source?: string | null;
+
+  /* ---- Present once the STRchive step (PR #42) has been run. A far stronger
+     claim than `disease_gene`: at a curated repeat-expansion locus, not merely
+     in a gene linked to some disease. */
   strchive_status?: StrchiveStatus;
+  strchive_gene?: string | null;
+  strchive_locus?: boolean;
   strchive_id?: string | null;
   strchive_disease?: string | null;
 }
+
+/** Which transcript region an insertion sits within, as AnnotSV reports it. */
+export type GeneRegion = "CDS" | "UTR" | "5'UTR" | "3'UTR";
+
+export const REGION_LABELS: Record<GeneRegion, string> = {
+  CDS: "within the CDS span",
+  UTR: "in a UTR",
+  "5'UTR": "in the 5′ UTR",
+  "3'UTR": "in the 3′ UTR",
+};
 
 export interface Segment {
   sample: string;
@@ -533,6 +598,14 @@ export interface ViewFilters {
   min_purity?: number | null;
   min_insertion_purity?: number | null;
   disease_gene_only?: boolean;
+  /** In an annotated gene at all — the funnel's fifth stage. */
+  genic_only?: boolean;
+  /** A breakpoint inside an exon. The strong claim; `gene_region` is not. */
+  exonic_only?: boolean;
+  /** pLI >= 0.9: the gene is intolerant of loss of function. */
+  constrained_only?: boolean;
+  /** Which transcript region the insertion sits within. */
+  gene_region?: GeneRegion | null;
   gene?: string | null;
   /** Free-text gene search: a case-insensitive substring of the gene symbol.
    *  The exact `gene` is what the agent reaches for when it knows the symbol. */
