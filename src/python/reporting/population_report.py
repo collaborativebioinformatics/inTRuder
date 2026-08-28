@@ -33,6 +33,7 @@ GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 
 CLASSES = ["known", "novel_motif", "novel_locus"]
+NOVEL_CLASSES = ["novel_motif", "novel_locus"]
 CLASS_COLOR = {"known": "#2a78d6", "novel_motif": "#eb6834", "novel_locus": "#1baf7a"}
 
 mpl.rcParams.update({
@@ -65,7 +66,16 @@ def gc_content(motif: str) -> float:
 
 
 def load(input_path: Path) -> pd.DataFrame:
-    df = pd.read_csv(input_path, sep="\t")
+    df = pd.read_csv(input_path, sep="\t", low_memory=False)
+    n_before = len(df)
+    df = df.drop_duplicates()
+    n_dropped = n_before - len(df)
+    if n_dropped:
+        # sv_trfcaller.py double-emits every repeat call for homozygous-alt
+        # genotypes (exact duplicate rows, not distinct repeat regions).
+        # See issue_duplicate_rows.md.
+        print(f"dropped {n_dropped:,} exact-duplicate rows ({100 * n_dropped / n_before:.1f}%) "
+              f"from homozygous-alt double-emission")
     df["gc_content"] = df["motif"].astype(str).apply(gc_content)
     return df
 
@@ -89,6 +99,7 @@ def summary_table(df: pd.DataFrame) -> pd.DataFrame:
 def plot_class_distribution(
     df: pd.DataFrame, column: str, ax_label: str, title: str, outfile: Path,
     binwidth: float | None = None, cap: float | None = None, discrete: bool = False,
+    classes: list[str] = CLASSES,
 ) -> None:
     """Layered raw-count histogram of `column`, split by novelty class.
 
@@ -97,6 +108,7 @@ def plot_class_distribution(
     a fixed binrange that stops at the cap without pooling excludes real
     data rather than summarizing it.
     """
+    df = df[df["novelty"].isin(classes)]
     plot_col = column
     overflow_n = 0
     d = df
@@ -107,7 +119,7 @@ def plot_class_distribution(
 
     fig, ax = plt.subplots(figsize=(7.2, 3.6), constrained_layout=True)
     hist_kwargs = dict(
-        data=d, x=plot_col, hue="novelty", hue_order=CLASSES, palette=CLASS_COLOR,
+        data=d, x=plot_col, hue="novelty", hue_order=classes, palette=CLASS_COLOR,
         stat="count", element="step", fill=True, alpha=0.4, multiple="layer", ax=ax,
     )
     if discrete:
@@ -161,36 +173,46 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
     plot_novelty_counts(df, assets_dir / "novelty_counts.png")
     plot_class_distribution(
         df, "motif_length", "Motif length (bp)", "Motif length by novelty class",
-        assets_dir / "motif_length.png", cap=30, discrete=True,
+        assets_dir / "motif_length.png", cap=30, discrete=True, classes=NOVEL_CLASSES,
     )
     plot_class_distribution(
         df, "rep_length", "Repeat tract length (bp)", "Repeat tract length by novelty class",
-        assets_dir / "rep_length.png", binwidth=100, cap=3000,
+        assets_dir / "rep_length.png", binwidth=100, cap=3000, classes=NOVEL_CLASSES,
     )
     plot_class_distribution(
         df, "purity", "Purity", "Purity by novelty class",
-        assets_dir / "purity.png", binwidth=0.02,
+        assets_dir / "purity.png", binwidth=0.02, classes=NOVEL_CLASSES,
     )
     plot_class_distribution(
         df, "gc_content", "GC content of motif", "GC content by novelty class",
-        assets_dir / "gc_content.png", binwidth=0.05,
+        assets_dir / "gc_content.png", binwidth=0.05, classes=NOVEL_CLASSES,
     )
 
     summary = summary_table(df)
     rel_assets = assets_dir.relative_to(report_path.parent)
     generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    df_novel = df[df["novelty"].isin(NOVEL_CLASSES)]
+    novel_ratio = (df["novelty"] == "novel_motif").sum() / max((df["novelty"] == "novel_locus").sum(), 1)
+    motif_overflow_n = int((df_novel["motif_length"] >= 30).sum())
+    motif_overflow_pct = 100 * motif_overflow_n / len(df_novel)
+    rep_overflow_n = int((df_novel["rep_length"] >= 3000).sum())
+    rep_overflow_pct = 100 * rep_overflow_n / len(df_novel)
+
     lines = [
         "# Population-level TR distributions by novelty class",
         "",
         f"*Generated {generated} by `src/python/reporting/population_report.py` "
-        f"from `{input_path}` ({len(df):,} TRF calls across {df['SVID'].nunique():,} SVs).*",
+        f"from `{input_path}` ({len(df):,} TRF calls across "
+        f"{df.groupby(['chrom', 'ins_coord']).ngroups:,} loci; locus = chrom+position, not SVID -- "
+        f"see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*",
         "",
         "Colours follow the same fixed palette as "
         "[`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): "
-        "one novelty class, one colour, everywhere. Distributions are shown as raw "
-        "counts (not density) — class sizes differ by ~4x, so absolute magnitude "
-        "matters here, not just shape.",
+        "one novelty class, one colour, everywhere. Distributions below the summary "
+        "chart are `novel_motif` vs `novel_locus` only (`known` excluded, not of "
+        f"interest here), shown as raw counts (not density) — the two classes differ "
+        f"by ~{novel_ratio:.0f}x in size, so absolute magnitude matters, not just shape.",
         "",
         "## Summary",
         "",
@@ -200,28 +222,30 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
         "",
         "## Motif length",
         "",
-        "Values at or above 30bp are pooled into the `30+` bucket and called out "
-        "with an annotation — the underlying summary table above is exact. An "
-        "earlier version of this chart used a fixed axis range that cut the view "
-        "off at 32bp without pooling the overflow, which silently dropped 8.3% of "
-        "all calls (actual motif lengths run up to 77bp) from the plot entirely.",
+        f"Values at or above 30bp are pooled into the `30+` bucket and called out "
+        f"with an annotation ({motif_overflow_n:,} calls, {motif_overflow_pct:.1f}% of all "
+        f"calls, actual motif lengths run up to {int(df_novel['motif_length'].max()):,}bp) — the "
+        f"underlying summary table above is exact. An earlier version of this chart used a "
+        f"fixed axis range that cut the view off at 32bp without pooling the overflow, which "
+        f"silently dropped that many calls from the plot entirely.",
         "",
         f"![Motif length by novelty class]({rel_assets}/motif_length.png)",
         "",
         "## Repeat tract length",
         "",
-        "Values at or above 3000bp are pooled into the `3000+` bucket the same way "
-        "(here the overflow is small: 11 rows, 0.2% of all calls).",
+        f"Values at or above 3000bp are pooled into the `3000+` bucket the same way "
+        f"({rep_overflow_n:,} calls, {rep_overflow_pct:.1f}% of all calls; actual repeat "
+        f"tract lengths run up to {int(df_novel['rep_length'].max()):,}bp).",
         "",
         f"![Repeat tract length by novelty class]({rel_assets}/rep_length.png)",
         "",
         "## Purity",
         "",
-        "`known` calls concentrate sharply around 0.67-0.85 purity; novel calls "
-        "(both classes) are flatter and skew higher. This matters for "
+        "Median purity by class is in the summary table above. This matters for "
         "interpreting the purity filter used downstream "
-        "(`src/python/filter/filter_ins_trf.py`): it removes a "
-        "disproportionate share of `novel_locus` calls relative to `known` ones.",
+        "(`src/python/filter/filter_ins_trf.py`, min purity 0.7): the shape of "
+        "each class's distribution near that threshold determines how much of "
+        "it survives filtering, not just the median.",
         "",
         f"![Purity by novelty class]({rel_assets}/purity.png)",
         "",
@@ -250,13 +274,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--outdir", type=Path, default=Path("docs/figures"),
-        help="Directory to write population_distributions.md and its assets/ subfolder into.",
+        help="Directory to write <name>.md and its assets/<name>/ subfolder into.",
+    )
+    parser.add_argument(
+        "--name", default="population_distributions",
+        help="Base name for the report file and its assets subfolder (change this to avoid "
+             "overwriting a report generated from a different --input).",
     )
     args = parser.parse_args()
 
     df = load(args.input)
-    report_path = args.outdir / "population_distributions.md"
-    assets_dir = args.outdir / "assets" / "population_distributions"
+    report_path = args.outdir / f"{args.name}.md"
+    assets_dir = args.outdir / "assets" / args.name
     build_report(df, args.input, assets_dir, report_path)
     print(f"Wrote {report_path}")
 
