@@ -1,6 +1,8 @@
-import pysam
-import zlib
 import argparse
+import zlib
+
+import pysam
+
 
 def main():
     parser = argparse.ArgumentParser(description="Annotate VCF with INFO fields\neg. python add_compresion.py -i HG00320.merged.sniffles.vcf -o HG00320.merged.sniffles_annotated.vcf")
