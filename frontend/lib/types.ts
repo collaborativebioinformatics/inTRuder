@@ -148,7 +148,15 @@ export interface Summary {
   funnel: FunnelStage[];
   by_class: { motif_class: MotifClass; n: number; novel: number }[];
   by_chrom: { chrom: string; n: number; novel: number }[];
+  /** True when either table behind this view is a generated fixture. */
   synthetic: boolean;
+  /**
+   * Which of them. Registering a real locus table without a matching segments
+   * table leaves real rows drawn with fixture barcodes, and naming the tables is
+   * the only honest way to say so — a bare boolean would read as "all of this is
+   * fake" over half-real data.
+   */
+  synthetic_tables: string[];
 }
 
 /* --------------------------------------------------------------------------
@@ -302,10 +310,107 @@ export interface StrchiveMatchesResponse {
   matches: StrchiveMatch[];
 }
 
+/* --------------------------------------------------------------------------
+   Uploads and the dataset registry.
+   -------------------------------------------------------------------------- */
+
+/**
+ * What the server could do with a file. `table` files become queryable datasets
+ * straight away; `variants` files are stored and described but are not tables —
+ * a VCF becomes candidate loci by running the TR-detection step, not by being
+ * uploaded. The interface says which of the two it is holding rather than
+ * implying every upload is data you can now chart.
+ */
+export type UploadKind = "table" | "variants";
+
+/** The manifest roles a table can claim, and which surface each drives. */
+export type DatasetRole = "loci" | "segments";
+
+export interface UploadColumn {
+  name: string;
+  type: string;
+}
+
+/**
+ * What could be read off the file without processing it. One shape for both
+ * kinds, because the dialog renders one or the other and never both: `columns`
+ * is a table's answer, `samples` is a VCF's.
+ */
+export interface Inspection {
+  readable: boolean;
+  error?: string;
+  note?: string;
+  /* Tables. */
+  n_rows?: number;
+  columns?: UploadColumn[];
+  preview?: Record<string, unknown>[];
+  /* VCFs, from the header alone. */
+  fileformat?: string;
+  sources?: string[];
+  n_samples?: number;
+  samples?: string[];
+  samples_truncated?: boolean;
+  n_contigs?: number;
+  info_keys?: string[];
+  format_keys?: string[];
+  /** True when the header carries a caller-support vector — a merged callset. */
+  merged?: boolean;
+}
+
+export interface Upload {
+  id: string;
+  filename: string;
+  bytes: number;
+  sha256: string;
+  uploaded_at: string;
+  kind: UploadKind;
+  format: string;
+  /** True when the server points at the file in place rather than holding a copy. */
+  linked: boolean;
+  /** The dataset name this was registered as, once it has been. */
+  dataset: string | null;
+  inspect: Inspection;
+  /** False when the file has gone missing from under a record of it. */
+  present: boolean;
+  suggested_name?: string;
+  /**
+   * Per role, the columns this table is missing before it could play that part.
+   * An empty array means eligible. Computed on the server so the dialog and the
+   * register endpoint cannot disagree about what is legal.
+   */
+  roles?: Record<DatasetRole, string[]>;
+}
+
+export interface UploadListing {
+  enabled: boolean;
+  directory: string;
+  max_upload_mb: number;
+  accepted: string[];
+  uploads: Upload[];
+}
+
+/** One registered dataset, as `/api/datasets` reports it. */
+export interface Dataset {
+  name: string;
+  title: string;
+  description: string;
+  synthetic: boolean;
+  /** "" for a table the assistant can query but that no page reads. */
+  role: string;
+  available: boolean;
+  n_rows: number | null;
+  columns: string[];
+  /** Why it is unavailable. Present only when it is. */
+  error?: string;
+  column_docs: Record<string, string>;
+  provenance: Record<string, unknown>;
+  manifest_file: string;
+}
+
 /* -------------------------------------------------------------------------- */
 
 /** Which surface the workspace is showing. The agent can move this too. */
-export type PageName = "catalog" | "strchive";
+export type PageName = "catalog" | "strchive" | "datasets";
 
 /**
  * How the catalog list is ordered. Ordering is not filtering — it changes which
