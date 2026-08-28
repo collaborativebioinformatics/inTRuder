@@ -227,7 +227,7 @@ def fig5_burden_by_ancestry():
     """Non-reference insertion burden per genome, full 67-genome callset."""
     b = pd.read_csv(BURDEN, sep="\t")
     b = b[b.superpopulation.isin(SUPERPOPS)]
-    groups = [b[b.superpopulation == s].n_insertions.values for s in SUPERPOPS]
+    groups = [b[b.superpopulation == s].n_all.values for s in SUPERPOPS]
     H, p = stats.kruskal(*groups)
     afr, eur = groups[0], groups[3]
     _, p_ae = stats.mannwhitneyu(afr, eur)
@@ -265,6 +265,49 @@ def fig5_burden_by_ancestry():
     return fig
 
 
+def fig6_rarity_gradient():
+    """Restricting to rarer insertions sharpens the ancestry difference."""
+    b = pd.read_csv(BURDEN, sep="\t")
+    b = b[b.superpopulation.isin(SUPERPOPS)]
+    strata = [("n_all", "all"), ("n_lt34", "<50%\n(<34)"), ("n_le7", "<=10%\n(<=7)"),
+              ("n_le3", "<=5%\n(<=3)"), ("n_single", "private\n(n=1)")]
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(8.6, 4.0), gridspec_kw={"width_ratios": [1.35, 1]})
+
+    for sp in SUPERPOPS:
+        vals = [b[b.superpopulation == sp][c].median() for c, _ in strata]
+        col = SERIES["novel_motif"] if sp == "AFR" else "#a8c4e4"
+        lw = 2.4 if sp == "AFR" else 1.4
+        ax.plot(range(len(strata)), vals, marker="o", ms=6, color=col, linewidth=lw,
+                markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=4 if sp == "AFR" else 3)
+        if sp in ("AFR", "EUR"):
+            ax.text(len(strata) - 0.90, vals[-1], f" {sp}", fontsize=7.8,
+                    color=INK, va="center",
+                    fontweight="bold" if sp == "AFR" else "normal")
+    ax.set_xticks(range(len(strata)))
+    ax.set_xticklabels([lab for _, lab in strata], fontsize=7.4)
+    ax.set_yscale("log")
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    ax.set_xlabel("Restricted to insertions carried by at most", fontsize=8.5)
+    style(ax, "Rarer insertions, sharper difference",
+          "Median per genome, log scale. Pale lines are AMR, EAS and SAS.",
+          "Insertions per genome")
+    ax.set_xlim(-0.3, len(strata) - 0.25)
+
+    ratios = [b[b.superpopulation == "AFR"][c].median() / b[b.superpopulation == "EUR"][c].median()
+              for c, _ in strata]
+    ax2.bar(range(len(strata)), ratios, width=0.62, color=SERIES["novel_motif"],
+            edgecolor=SURFACE, linewidth=0.8, zorder=3)
+    for i, r in enumerate(ratios):
+        ax2.text(i, r + 0.05, f"{r:.2f}x", ha="center", va="bottom", fontsize=7.6, color=INK2)
+    ax2.axhline(1.0, color=MUTED, linewidth=1.1, linestyle=(0, (4, 3)), zorder=2)
+    ax2.set_xticks(range(len(strata)))
+    ax2.set_xticklabels([lab for _, lab in strata], fontsize=7.4)
+    ax2.set_ylim(0, max(ratios) + 0.45)
+    style(ax2, "AFR / EUR ratio", "Dashed line is parity.", "Ratio of medians")
+    fig.tight_layout()
+    return fig
+
+
 def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     d, cohort = load()
@@ -272,7 +315,8 @@ def main():
                       ("fig2_ancestry_burden", fig2_ancestry(cohort)),
                       ("fig3_private_loci", fig3_private(d)),
                       ("fig4_fixed_frequency", fig4_fixed_frequency(d)),
-                      ("fig5_burden_by_ancestry", fig5_burden_by_ancestry())]:
+                      ("fig5_burden_by_ancestry", fig5_burden_by_ancestry()),
+                      ("fig6_rarity_gradient", fig6_rarity_gradient())]:
         for ext in ("png", "pdf"):
             fig.savefig(OUTDIR / f"{name}.{ext}", dpi=200, bbox_inches="tight")
         plt.close(fig)
