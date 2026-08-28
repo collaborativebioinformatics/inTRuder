@@ -10,7 +10,6 @@ dependencies = [
     "numpy>=2.0",
     "optuna>=4.9.0",
     "pandas>=3.0.5",
-    "parasail>=1.3.4",
     "pytrf>=1.5.0",
     "tqdm>=4.70.0",
     "pandas>=3.0.5",
@@ -19,7 +18,9 @@ dependencies = [
 
 [project.scripts]
 # `uv run novelty ...` / `uv run strchive ...` from anywhere in the repo.
-novelty = "novelty.cli:main"
+svpytrf  = "svpytrf.sv_trfcaller:main"
+filter   = "filter.filter_ins_trf:main"
+novelty  = "novelty.cli:main"
 strchive = "strchive.__main__:main"
 
 [dependency-groups]
@@ -51,7 +52,7 @@ build-backend = "uv_build"
 # PATH. Loose scripts under src/python -- such as sv_trfcaller.py -- stay
 # scripts and are not part of the distribution.
 module-root = "src/python"
-module-name = ["trcore", "novelty", "strchive"]
+module-name = ["trcore", "novelty", "strchive", "svpytrf", "filter"]
 
 [tool.ruff]
 line-length = 100
