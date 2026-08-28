@@ -55,9 +55,12 @@ RUN gunzip /data/FamDB-3.0.0/Libraries/famdb/*.gz
 
 WORKDIR /data
 
-ENV FAMDB_DIR=/data/FamDB-3.0.0
-ENV TRF_PRGM=$CONDA_PREFIX/bin
-ENV RMBLAST_DIR=$CONDA_PREFIX/bin
-ENV REPEAT_MASKER=RepeatMasker/RepeatMasker
+ENV FAMDB_DIR="/data/FamDB-3.0.0"
+ENV TRF_PRGM="/opt/conda/envs/repeatmasker/bin/trf"
+ENV RMBLAST_DIR="/opt/conda/envs/repeatmasker/bin"
+ENV REPEAT_MASKER="/data/RepeatMasker/RepeatMasker"
 
-ENTRYPOINT ["micromamba", "run", "-n", "repeatmasker", "REPEAT_MASKER"]
+WORKDIR /data/RepeatMasker
+RUN (printf "1\n5\n") | perl ./configure -famdb_dir /data/FamDB-3.0.0/ -default_search_engine rmblast
+
+ENTRYPOINT ["micromamba", "run", "-n", "repeatmasker", "/data/RepeatMasker/RepeatMasker"]

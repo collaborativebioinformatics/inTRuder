@@ -21,7 +21,7 @@ done
 2. Run RM to annotate for TEs (it's a bit slow and cumbersome, perhaps only run it on the merged cohort VCF)
 
 ```
-docker run --rm -v $(pwd):/data dfam/tetools:latest RepeatMasker -species human -no_is /data/first_500_INS_comp.vcf.fa
+docker run --rm -v $(pwd):/data dfam/tetools:latest RepeatMasker -pa 4 -species human -dir out/ -no_is /data/first_500_INS_comp.vcf.fa
 ```
 Outputs the following:
 ```
