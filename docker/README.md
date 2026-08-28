@@ -50,12 +50,14 @@ Each build is tagged with the sanitized ref name (`nextflow-pipeline`,
 `latest`:
 
 ```bash
-docker pull ghcr.io/collaborativebioinformatics/noveltrs/backend:latest
-docker pull ghcr.io/collaborativebioinformatics/noveltrs/frontend:latest
-docker pull ghcr.io/collaborativebioinformatics/noveltrs/pipeline:nextflow-pipeline
+docker pull ghcr.io/collaborativebioinformatics/intruder/backend:latest
+docker pull ghcr.io/collaborativebioinformatics/intruder/frontend:latest
+docker pull ghcr.io/collaborativebioinformatics/intruder/pipeline:nextflow-pipeline
 ```
 
-The repository name is lowercased in the path; GHCR rejects `novelTRs`.
+The path carries the **project** name, not the repository name — the repo is
+still `novelTRs` and gets renamed on its own schedule, and a Docker reference
+cannot hold the capitals in inTRuder in any case.
 
 **A new package starts private.** The first push of each image creates it
 under the organization's Packages, visible only to people with repository
@@ -67,7 +69,7 @@ on someone else's machine needs:
 ```groovy
 docker {
     docker.enabled = true
-    process.container = 'ghcr.io/collaborativebioinformatics/noveltrs/pipeline:latest'
+    process.container = 'ghcr.io/collaborativebioinformatics/intruder/pipeline:latest'
 }
 ```
 
