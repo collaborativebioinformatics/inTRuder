@@ -57,6 +57,12 @@ COPY src/python/sv_trfcaller.py /opt/scripts/sv_trfcaller.py
 # dependencies are needed for it.
 COPY pipelines/sv_preprocess/scripts/normalize_svtype.py /opt/scripts/normalize_svtype.py
 
+# Bundle filter_ins_trf.py (from the teammate who built the 02B
+# filtering stage) for the FILTER_BY_COVERAGE process to call directly.
+# It's pure standard-library Python (no external dependencies), so no
+# extra packages are needed for it.
+COPY src/python/filter_ins_trf.py /opt/scripts/filter_ins_trf.py
+
 # --- Pre-bake novelty's reference catalogs (UCSC simpleRepeat ~30MB,
 # TRExplorer ~45MB) at build time, so runs never need network access
 # and are instant.
