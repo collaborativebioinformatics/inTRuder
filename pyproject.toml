@@ -23,10 +23,11 @@ dependencies = [
 # `uv run novelty ...` etc. from anywhere in the repo. The command names are
 # unchanged from before the move -- only the module paths behind them shift, so
 # nobody's notes or Nextflow process bodies break.
-svpytrf  = "intruder.pipeline.trf.sv_trfcaller:main"
-filter   = "intruder.pipeline.trf.filter_ins_trf:main"
-novelty  = "intruder.pipeline.novelty.cli:main"
-strchive = "intruder.pipeline.strchive.__main__:main"
+svpytrf     = "intruder.pipeline.trf.sv_trfcaller:main"
+filter      = "intruder.pipeline.trf.filter_ins_trf:main"
+novelty     = "intruder.pipeline.novelty.cli:main"
+strchive    = "intruder.pipeline.strchive.__main__:main"
+compression = "intruder.pipeline.compression.annotate:main"
 
 [dependency-groups]
 # Groups, not extras: nothing here is imported by a pipeline step, so none of it
