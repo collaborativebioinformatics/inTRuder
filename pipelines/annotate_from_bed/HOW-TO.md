@@ -31,6 +31,44 @@ Create the log directory before submitting the job:
 mkdir -p logs
 ```
 
+## Obtaining htsSidra
+
+The final step runs `htsSidra-1.2-jar-with-dependencies.jar`, an 11 MB Java fat jar.
+**It is not committed to this repository** — built binaries are fetched, not versioned,
+and `*.jar` is in `.gitignore`. Build it once and keep it outside the checkout.
+
+htsSidra is the Java utility from the Qatar Genome Programme structural-variation paper
+(Aliyev et al. 2026, see [Reference](#reference)). The source lives at
+<https://github.com/idraktt/qgp_sv_paper/tree/main/htsSidra>, archived at
+<https://doi.org/10.5281/zenodo.17604635>. There is no prebuilt jar on the releases page,
+so build it with Maven (JDK 8 or newer):
+
+```bash
+git clone https://github.com/idraktt/qgp_sv_paper.git
+cd qgp_sv_paper/htsSidra
+mvn -q package
+# -> target/htsSidra-1.2-jar-with-dependencies.jar
+```
+
+The `maven-assembly-plugin` produces the `jar-with-dependencies` artifact; the
+`processAnnotatedFileAnnotSV_3_8` subcommand this workflow calls is dispatched from
+`com.mycompany.htssidra.Main`. Upstream does not tag the tool independently — pin the
+`qgp_sv_paper` commit you built from and record it alongside the jar, because `pom.xml`
+has said `1.2` for some time and the version alone does not identify a build.
+
+Then point the workflow at it:
+
+```bash
+nextflow run annotsv_from_tsv.nf \
+  --input_tsv  .../HG002_03_04_multisample.trf.noveltyFilter.tsv \
+  --work_dir   .../tr_from_sv/ \
+  --htssidra_jar /path/to/htsSidra-1.2-jar-with-dependencies.jar
+```
+
+`--htssidra_jar` defaults to `<--software_path>/tools/htsSidra-1.2-jar-with-dependencies.jar`,
+which is where the original runs kept it. The path is resolved inside the AnnotSV
+Singularity container, so it must sit under a bind-mounted directory.
+
 ## Submit the workflow
 
 ```bash

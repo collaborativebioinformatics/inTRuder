@@ -6,6 +6,11 @@ params.input_tsv     = params.input_tsv     ?: null
 params.work_dir      = params.work_dir      ?: launchDir
 params.software_path = params.software_path ?: '/pl/active/dashnowlab/work/ealiyev/SVTR_Analysis/software'
 
+// htsSidra is not shipped with this repository — it is built from source, see
+// HOW-TO.md. Point --htssidra_jar at wherever you put the built fat jar; the
+// default is the copy under --software_path that the original run used.
+params.htssidra_jar  = params.htssidra_jar  ?: "${params.software_path}/tools/htsSidra-1.2-jar-with-dependencies.jar"
+
 if (!params.input_tsv) {
     error 'Missing required parameter: --input_tsv <file.tsv>'
 }
@@ -39,7 +44,8 @@ process ANNOTATE_SV {
     path "${project}.tsv.processed.tsv", emit: processed_tsv
 
     script:
-    def sw = params.software_path
+    def sw  = params.software_path
+    def jar = params.htssidra_jar
     """
     awk -F '\\t' 'BEGIN { OFS="\\t" }
         NR == 1 {
@@ -77,7 +83,7 @@ process ANNOTATE_SV {
         -outputDir      .
 
     java -jar -Xmx64G \\
-        "${sw}/tools/htsSidra-1.2-jar-with-dependencies.jar" \\
+        "${jar}" \\
         processAnnotatedFileAnnotSV_3_8 \\
         "${project}.tsv"
     """
