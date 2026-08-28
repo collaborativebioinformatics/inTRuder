@@ -56,7 +56,7 @@ See [Methods outline](docs/Methods_overview.md) for the full write-up of each st
   - [Data](#data)
   - [Tools](#tools)
   - [Code and environments](#code-and-environments)
-- [Web interface (proof of concept)](#web-interface-proof-of-concept)
+- [Web interface](#web-interface)
 - [Flowchart](#flowchart)
 - [Contributing](#contributing)
 - [Team](#team)
@@ -135,10 +135,27 @@ code they cover — they mirror it under `tests/`.
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
 
-## Web interface (proof of concept)
+## Web interface
 
-An interactive browser for candidate loci, with an agent that queries the same
-data the charts read and can move the view for you.
+<p align="center">
+  <b>An interactive browser for the callset, with an agent that queries the same tables the charts read.</b>
+</p>
+
+<p align="center">
+  <img src="docs/images/web/web-catalog.jpg" alt="inTRuder catalog view: the discovery funnel on the left, candidate loci drawn as motif barcodes in the centre, the assistant on the right" width="900">
+</p>
+
+<p align="center">
+  <sub>The 67-genome HPRC callset — 17,270 candidate insertion loci, 3,467 of them absent from every catalog.</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind v4">
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/LangGraph-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
+  <img src="https://img.shields.io/badge/DuckDB-FFF000?logo=duckdb&logoColor=black" alt="DuckDB">
+</p>
 
 ```bash
 just setup     # installs everything, generates the synthetic demo dataset
@@ -151,11 +168,79 @@ Or in containers, with no toolchain to install:
 docker compose up --build      # same two ports
 ```
 
-Add a model credential to `backend/.env` to enable chat — the data views work
-without one. Anthropic, Google, Ollama and OpenAI are all selectable via
-`LLM_PROVIDER`. Or set `LLM_PROVIDER=claude-code` to run chat on the Claude Code
-CLI you already have, with no key at all — see
-[`backend/README.md`](./backend/README.md#running-on-claude-code).
+---
+
+### The funnel is the filter
+
+Every stage in the left rail is a click, not a caption. 17,270 merged insertion calls
+narrow to 17,226 non-homopolymer, to 3,467 with no equivalent motif in any catalog, to
+1,795 inside an annotated gene, to 412 inside a gene with an OMIM disease entry — and
+clicking any stage filters the list beside it. The motif-class chart below it does the
+same, so "which class carries the novelty" is one hover away.
+
+### One primitive, three zoom levels
+
+An inserted allele is drawn as a **strip of motif blocks**, not as bases. Base-level
+rendering fails on tandem repeats — a GCC and a CGG expansion are the same coloured mush —
+so the encoding moves up a level to where the information actually is.
+
+| Level | What it shows | Colour carries | Width scale |
+|---|---|---|---|
+| Catalog | Every locus, one strip each | Novel vs catalogued | sqrt-compressed per row |
+| Locus | One locus, every carrier | Motif identity | Shared linear |
+| Allele | One strip, hovered | Motif identity | Shared linear |
+
+### Ask it in English
+
+<img src="docs/images/web/web-agent.jpg" alt="The assistant answering a question about novel VNTRs and setting the catalog filters to match" width="900">
+
+The assistant is not a sidebar bolted onto a dashboard — it is a second way to edit the
+same state. It writes SQL against the same DuckDB tables the charts read, shows you every
+query it ran under **Agent actions**, and calls `set_view` to move the screen: here it set
+the VNTR, novel-only and ≥10-carrier chips and re-sorted by carrier count, so the answer
+and the view agree. Type the same thing into the filter bar and you get the same result.
+
+### Drill into one locus
+
+<img src="docs/images/web/web-locus.jpg" alt="Locus detail for chr3:37,708,652 in ITGA9 — a novel locus carried by 61 of 67 samples, with neither catalog annotating a repeat there" width="900">
+
+Every candidate gets the whole argument for its verdict on one screen: what both catalogs
+say at that position, how far the observed motif is from the catalogued one, and where the
+insertion point falls in the gene. `chr3:37,708,652` sits in intron 18 of *ITGA9*, is
+carried by 61 of 67 samples — and neither UCSC simpleRepeat nor TRExplorer annotates any
+repeat within 10 bp of it.
+
+<img src="docs/images/web/web-alleles.jpg" alt="Allele-length histogram across 61 carriers, and the five distinct allele structures at the locus" width="900">
+
+Below that, the locus across the cohort: allele lengths from 1.2 kb to 4.4 kb, and the five
+distinct architectures those 85 alleles collapse into — same repeat blocks, same order,
+same copy number. Click a bar to isolate its carriers.
+
+### Compare against what is already known
+
+<img src="docs/images/web/web-disease-loci.jpg" alt="The STRchive disease-locus view — 82 curated loci, 11 whose pathogenic motif is not in hg38" width="900">
+
+The STRchive view is reference knowledge, not a result: the 82 curated repeat-expansion
+disease loci our candidates are compared against. Eleven of them have a pathogenic motif
+that does not exist in hg38 at all — a genotyper working from a reference-derived catalog
+has no locus to genotype. That is exactly the shape this pipeline detects.
+
+### Bring your own data
+
+<img src="docs/images/web/web-datasets.jpg" alt="The datasets view — every table is a YAML manifest, with per-table switches" width="900">
+
+**Adding a dataset is one YAML file, no code changes.** Every table is a manifest
+describing a file on this machine, and the prose in it is what the assistant reads when
+deciding whether a table can answer a question. Switch a table off and it leaves the whole
+interface — no page draws it, and the assistant is not told it exists. Manifests point at
+paths on your own machine; nothing is uploaded.
+
+---
+
+Add a model credential to `backend/.env` to enable chat — the data views work without one.
+Anthropic, Google, Ollama and OpenAI are all selectable via `LLM_PROVIDER`. Or set
+`LLM_PROVIDER=claude-code` to run chat on the Claude Code CLI you already have, with no key
+at all — see [`backend/README.md`](./backend/README.md#running-on-claude-code).
 
 | Directory | What it is |
 |---|---|
@@ -164,13 +249,12 @@ CLI you already have, with no key at all — see
 | [`data/web/`](./data/web) | Dataset manifests — add your own data here |
 | [`docker/`](./docker) | Images for both services; `data/` is bind-mounted, not baked in |
 
-**Adding a dataset is one YAML file, no code changes.** Manifests point at paths
-on your own machine; nothing is uploaded and nothing but the small synthetic demo
-set is committed. See [`data/web/README.md`](./data/web/README.md).
-
-> The bundled demo data is **synthetic**. Sample names and the motif-length mix
-> mirror the real HPRC callset so the shapes look right, but every locus,
-> coordinate and catalog membership is generated. It is not a result.
+> **About these screenshots.** They show the real 67-genome HPRC callset, which is not
+> committed to this repository. What ships with `just setup` is a small **synthetic** demo
+> set: sample names and the motif-length mix mirror the real callset so the shapes look
+> right, but every locus, coordinate and catalog membership is generated. The demo data is
+> not a result. See [`data/web/README.md`](./data/web/README.md) for pointing the app at
+> your own tables.
 
 ## Flowchart
 
