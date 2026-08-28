@@ -340,6 +340,7 @@ results/figures/*
 !results/figures/*.pdf
 !results/locus_carriers.tsv
 !results/locus_carriers_full.tsv
+!results/locus_carriers_filtered.tsv
 !results/per_sample_insertion_burden.tsv
 
 # Nextflow run artifacts - logs, work directory, session cache
