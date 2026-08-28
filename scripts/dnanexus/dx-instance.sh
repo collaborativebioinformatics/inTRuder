@@ -2,10 +2,10 @@
 # Rent a DNAnexus box, set it up, drop you into a terminal on it, bring back
 # anything you leave in $OUT, and terminate it.
 #
-#     scripts/dx-instance.sh --time 1h              # a shell on a CPU box
-#     scripts/dx-instance.sh --gpu --time 2h        # ... on an L4
-#     scripts/dx-instance.sh -t 30m -- pytest -q    # run something instead
-#     scripts/dx-instance.sh --list-instances       # what can we even ask for?
+#     scripts/dnanexus/dx-instance.sh --time 1h              # a shell on a CPU box
+#     scripts/dnanexus/dx-instance.sh --gpu --time 2h        # ... on an L4
+#     scripts/dnanexus/dx-instance.sh -t 30m -- pytest -q    # run something instead
+#     scripts/dnanexus/dx-instance.sh --list-instances       # what can we even ask for?
 #
 # The whole point is the last step. A cloud_workstation bills for wall-clock
 # time whether or not anyone is attached and whether or not it is doing any
@@ -23,7 +23,7 @@
 # billing, which instance types actually launch, and how to do each step by hand.
 set -uo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 
 log()  { echo "[$(date +%H:%M:%S)] $*" >&2; }
 warn() { echo "[$(date +%H:%M:%S)] WARNING: $*" >&2; }
@@ -49,7 +49,7 @@ REPO_DIR="${REPO_DIR:-/home/dnanexus/novelTRs}"
 SYNC_ARGS="${SYNC_ARGS:-}"
 REMOTE_OUT="/home/dnanexus/out"
 RUN="dx-$(date +%Y%m%d-%H%M%S)"
-SETUP="$REPO/scripts/dx-worker-setup.sh"
+SETUP="$REPO/scripts/dnanexus/dx-worker-setup.sh"
 # How long to wait for sshd after the job reaches 'running'. The host key is
 # published minutes after the state flips, and on a slow day the gap has been
 # longer than the 10 min this used to allow -- which reads as a hard failure
@@ -74,7 +74,7 @@ SHELL_AFTER=0
 DRY=0
 # Which of the two shapes this run is: "" is whichever you asked for, "batch"
 # runs a program and never opens a shell, "interactive" opens a shell and takes
-# no program. The scripts/dx-{instance,batch}-{cpu,gpu}.sh wrappers set one of
+# no program. The scripts/dnanexus/dx-{instance,batch}-{cpu,gpu}.sh wrappers set one of
 # these instead of re-implementing the option table above to work out whether a
 # command was given -- which is the only place that answer is reliably known.
 MODE=""
@@ -109,7 +109,7 @@ Options:
                                                        [/Results/<you>/<run>/]
   -b, --branch BRANCH     branch the worker clones     [your current branch]
       --setup SCRIPT      environment build to run on the worker
-                                                       [scripts/dx-worker-setup.sh]
+                          [scripts/dnanexus/dx-worker-setup.sh]
       --sync-args ARGS    extra flags for the worker's `uv sync`, as one
                           argument, e.g. --sync-args "--group dx"      [none]
       --no-setup          leave the box as it boots: no clone, no uv, no venv
@@ -139,14 +139,14 @@ uv.lock and would uninstall anything you installed on top of it.
 
 Examples:
   # a shell on a CPU box for an hour, with a VCF staged onto it
-  scripts/dx-instance.sh -t 1h -f /survivor/HPRC_SV.survivor.vcf
+  scripts/dnanexus/dx-instance.sh -t 1h -f /survivor/HPRC_SV.survivor.vcf
 
   # run something and bring the results back into data/dx/run1/
-  scripts/dx-instance.sh -t 2h -o data/dx/run1 -- \
+  scripts/dnanexus/dx-instance.sh -t 2h -o data/dx/run1 -- \
       novelty screen /home/dnanexus/calls.vcf '$OUT/hits.tsv'
 
   # a GPU box, no repo, no venv -- just the hardware
-  scripts/dx-instance.sh --gpu --no-setup -t 30m -- nvidia-smi
+  scripts/dnanexus/dx-instance.sh --gpu --no-setup -t 30m -- nvidia-smi
 EOF
 }
 
@@ -187,7 +187,7 @@ done
 
 # The name to blame in an error. The wrappers export their own so the advice
 # names the command that was actually typed.
-SELF="${DX_WRAPPER_NAME:-scripts/$(basename "${BASH_SOURCE[0]:-$0}")}"
+SELF="${DX_WRAPPER_NAME:-scripts/dnanexus/$(basename "${BASH_SOURCE[0]:-$0}")}"
 
 case "$MODE" in
     batch)
@@ -197,15 +197,15 @@ case "$MODE" in
        $SELF --time 1h -- novelty screen calls.vcf '\$OUT/hits.tsv'
        For a terminal instead, use the matching dx-instance-*.sh."
         [ "$SHELL_AFTER" = 0 ] || die "--shell contradicts $SELF, which never opens one.
-       Use the matching dx-instance-*.sh, or scripts/dx-instance.sh --shell."
+       Use the matching dx-instance-*.sh, or scripts/dnanexus/dx-instance.sh --shell."
         [ "$KEEP_EXPLICIT" = 0 ] || die "--keep contradicts $SELF: it would leave the box
-       billing after the program finished. Use scripts/dx-instance.sh --keep."
+       billing after the program finished. Use scripts/dnanexus/dx-instance.sh --keep."
         # --job set KEEP=1 on our behalf. Batch terminates what it attaches
         # to -- that is the mode -- but silently killing a box someone else is
         # using is not a thing to discover afterwards, so say it up front.
         if [ "$ATTACHED" = 1 ]; then
             warn "--batch will TERMINATE $JOB when the program is done, even"
-            warn "  though you attached to it. Use scripts/dx-instance.sh --job"
+            warn "  though you attached to it. Use scripts/dnanexus/dx-instance.sh --job"
             warn "  --keep to run something on a box and leave it up."
         fi
         KEEP=0
@@ -255,8 +255,8 @@ dx_do() {
     "${DX[@]}" "$@"
 }
 
-# shellcheck source=scripts/dx-env.sh
-source "$REPO/scripts/dx-env.sh" || die "could not authenticate; see docs/scripts/DNANexus.md"
+# shellcheck source=scripts/dnanexus/dx-env.sh
+source "$REPO/scripts/dnanexus/dx-env.sh" || die "could not authenticate; see docs/scripts/DNANexus.md"
 PROJECT="${DX_PROJECT_CONTEXT_ID:?dx-env.sh did not pin a project}"
 
 # --- what can we even ask for? ------------------------------------------------
