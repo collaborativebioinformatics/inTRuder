@@ -1,0 +1,245 @@
+# Build the project's container images and publish them to GHCR.
+#
+# MANUAL ONLY. There is no `push:` or `pull_request:` trigger here on purpose —
+# the pipeline image compiles parasail and cyvcf2 from source and downloads
+# ~75 MB of reference catalogs at build time, which is not something anyone
+# wants happening on every commit. Run it from the Actions tab, or:
+#
+#   gh workflow run docker.yml -f image=pipeline -f ref=nextflow-pipeline
+#
+# The images land under the project name, lowercased — a Docker reference
+# cannot carry the capitals in inTRuder:
+#
+#   ghcr.io/collaborativebioinformatics/intruder/backend
+#   ghcr.io/collaborativebioinformatics/intruder/frontend
+#   ghcr.io/collaborativebioinformatics/intruder/pipeline
+#
+# See docker/README.md for pulling them and for the one-time step that makes a
+# package public.
+
+name: Docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Which image to build"
+        type: choice
+        default: all
+        options:
+          - all
+          - backend
+          - frontend
+          - pipeline
+      ref:
+        description: "Branch, tag, or SHA to build from (blank = the ref selected above)"
+        type: string
+        default: ""
+      push:
+        description: "Push to GHCR (uncheck to build only, as a validation run)"
+        type: boolean
+        default: true
+      tag:
+        description: "Extra tag to publish alongside the ref and sha tags (optional)"
+        type: string
+        default: ""
+      platforms:
+        description: "Target platforms. arm64 is emulated and much slower."
+        type: choice
+        default: linux/amd64
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
+      next_public_api_base:
+        description: "frontend only: API URL inlined into the browser bundle at build time"
+        type: string
+        default: http://localhost:8000
+
+# Two builds of the same image writing the same tags would race each other.
+# Queue rather than cancel: a half-pushed manifest is worse than a slow one.
+concurrency:
+  group: docker-${{ inputs.ref || github.ref }}-${{ inputs.image }}
+  cancel-in-progress: false
+
+jobs:
+  # Turn the single `image` choice into a build matrix. Each entry carries its
+  # own Dockerfile path because the three images do not share a layout: the two
+  # web images live under docker/, the pipeline one is a root Dockerfile on the
+  # nextflow-pipeline branch.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          all='[
+            {"name": "backend",  "dockerfile": "docker/backend.Dockerfile",  "description": "inTRuder web API - FastAPI + LangGraph + DuckDB"},
+            {"name": "frontend", "dockerfile": "docker/frontend.Dockerfile", "description": "inTRuder web interface - Next.js"},
+            {"name": "pipeline", "dockerfile": "Dockerfile",                 "description": "inTRuder Nextflow pipeline runtime"}
+          ]'
+          if [ "$IMAGE" = all ]; then
+            matrix=$(jq -c . <<<"$all")
+          else
+            matrix=$(jq -c --arg n "$IMAGE" '[.[] | select(.name == $n)]' <<<"$all")
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Building: $(jq -r 'map(.name) | join(", ")' <<<"$matrix")" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    # The pipeline image builds htslib and parasail from source; an emulated
+    # arm64 leg of that is slow enough to need the headroom.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Empty means the ref this run was dispatched against. Naming one
+          # explicitly is how you build a branch whose own copy of this
+          # workflow does not exist yet — `ref: nextflow-pipeline`.
+          ref: ${{ inputs.ref }}
+
+      # `all` is a convenience, so an image the checked-out ref simply does not
+      # have is a skip. Asking for one by name and not finding it is an error.
+      - id: check
+        name: Check the Dockerfile exists on this ref
+        env:
+          DOCKERFILE: ${{ matrix.image.dockerfile }}
+          NAME: ${{ matrix.image.name }}
+          EXPLICIT: ${{ inputs.image != 'all' }}
+        run: |
+          set -euo pipefail
+          if [ -f "$DOCKERFILE" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EXPLICIT" = true ]; then
+            echo "::error::$NAME was requested but $DOCKERFILE does not exist on this ref."
+            exit 1
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::skipping $NAME - no $DOCKERFILE on this ref"
+          fi
+
+      # Tags are derived from what was actually checked out, not from
+      # github.ref: those differ whenever the `ref` input is used, and a
+      # pipeline image tagged `main` because the run was dispatched from main
+      # would be a lie.
+      - id: meta
+        name: Work out tags and labels
+        if: steps.check.outputs.found == 'true'
+        env:
+          NAME: ${{ matrix.image.name }}
+          PROJECT: intruder
+          REF_INPUT: ${{ inputs.ref }}
+          FALLBACK_REF: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EXTRA_TAG: ${{ inputs.tag }}
+          DESCRIPTION: ${{ matrix.image.description }}
+        run: |
+          set -euo pipefail
+
+          # Named for the project, not the repository: the repo is still
+          # novelTRs and will be renamed separately, and a Docker reference
+          # rejects the capitals in inTRuder either way.
+          owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner_lc}/${PROJECT}/${NAME}"
+
+          ref_name="${REF_INPUT:-$FALLBACK_REF}"
+          sha=$(git rev-parse HEAD)
+          created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # A docker tag allows only [A-Za-z0-9._-], so branch names like
+          # andrewscouten/docker have to be flattened.
+          sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-128; }
+
+          tags="${image}:$(sanitize "$ref_name")"
+          tags="${tags},${image}:sha-${sha:0:7}"
+          # `latest` only ever tracks the default branch.
+          if [ "$ref_name" = "$DEFAULT_BRANCH" ]; then
+            tags="${tags},${image}:latest"
+          fi
+          if [ -n "$EXTRA_TAG" ]; then
+            tags="${tags},${image}:$(sanitize "$EXTRA_TAG")"
+          fi
+
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+          # image.source is what links the package to this repository in the
+          # GitHub UI and gives it a README — it is load-bearing, not decoration.
+          {
+            echo "labels<<EOF"
+            echo "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
+            echo "org.opencontainers.image.revision=${sha}"
+            echo "org.opencontainers.image.created=${created}"
+            echo "org.opencontainers.image.version=$(sanitize "$ref_name")"
+            echo "org.opencontainers.image.title=${PROJECT}-${NAME}"
+            echo "org.opencontainers.image.description=${DESCRIPTION}"
+            echo "org.opencontainers.image.licenses=MIT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        if: steps.check.outputs.found == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        # Only needed for the emulated arm64 leg; skip the setup cost otherwise.
+        if: steps.check.outputs.found == 'true' && contains(inputs.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GHCR
+        if: steps.check.outputs.found == 'true' && inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build${{ inputs.push && ' and push' || '' }} ${{ matrix.image.name }}
+        if: steps.check.outputs.found == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          # Both web Dockerfiles expect the repository root as context (one
+          # .dockerignore governs everything), and so does the pipeline one.
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # NEXT_PUBLIC_* is inlined into the client bundle at BUILD time, so a
+          # published frontend image is pinned to whatever API URL it was built
+          # with. Serving from elsewhere means another build, not another env var.
+          build-args: ${{ matrix.image.name == 'frontend' && format('NEXT_PUBLIC_API_BASE={0}', inputs.next_public_api_base) || '' }}
+          # Scoped per image so three images in one run do not evict each other.
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+          # Keeps the package's version list to real platforms instead of
+          # burying them under `unknown/unknown` attestation manifests.
+          provenance: false
+
+      - name: Summary
+        if: steps.check.outputs.found == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PUSHED: ${{ inputs.push }}
+        run: |
+          set -euo pipefail
+          if [ "$PUSHED" = true ]; then
+            echo "### \`${{ matrix.image.name }}\` pushed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### \`${{ matrix.image.name }}\` built (not pushed)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tr ',' '\n' <<<"$TAGS" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
