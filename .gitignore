@@ -315,6 +315,16 @@ results/figures/*.png
 data/*.vcf
 data/*.vcf.gz
 results/
+# ...except the population-structure analysis outputs, which are tracked and
+# small (see docs/analysis/POPULATION_STRUCTURE.md). Nextflow writes its own
+# run outputs elsewhere under results/, and those stay ignored.
+!results/
+results/*
+!results/figures/
+results/figures/*
+!results/figures/*.pdf
+!results/locus_carriers.tsv
+!results/per_sample_insertion_burden.tsv
 
 # Nextflow run artifacts - logs, work directory, session cache
 .nextflow/

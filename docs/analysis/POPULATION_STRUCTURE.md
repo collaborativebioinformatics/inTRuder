@@ -125,10 +125,55 @@ tails rather than tandem repeats. All rows carry `filter = PASS` because the
 committed run set no `--min-insertion-purity`; the 80% threshold discussed in
 issue #25 would remove them.
 
+### 5. African genomes carry 13.6% more non-reference insertions
+
+`results/figures/fig5_burden_by_ancestry.pdf`
+
+Results 1 to 4 use the 500-record chr1 subset. This one uses the **full callset**:
+`hprc_multisample.INS.vcf`, 106,844 insertions across all 24 chromosomes and the
+same 67 genomes, joint-called with Sniffles2 2.8.0.
+
+| Superpopulation | n | Median insertions | Range |
+|---|---:|---:|---|
+| **AFR** | 19 | **14,947** | 14,650-15,504 |
+| AMR | 12 | 13,192 | 12,664-13,600 |
+| EUR | 9 | 13,162 | 12,830-13,395 |
+| SAS | 12 | 13,115 | 12,933-13,469 |
+| EAS | 14 | 13,104 | 12,844-13,430 |
+
+Kruskal-Wallis H = 40.13, **p = 4.1e-08**. AFR versus EUR, **+13.6%, p = 2.9e-05**.
+
+The separation is complete: **the lowest AFR genome (14,650) carries more
+insertions than the highest non-AFR genome (13,600)**. All 19 AFR genomes sit
+above all 48 others, with no overlap.
+
+This is the signature reference bias predicts. GRCh38 is built predominantly from
+individuals of European ancestry, so genomes of African ancestry carry more
+sequence the reference lacks, and that sequence surfaces as insertion calls.
+
+**Note that this supersedes result 2, and measures something broader.** Result 2
+found no ancestry difference in *novel TR* burden across 221 chr1 loci and was
+reported as an underpowered null. This measures *total insertion* burden across
+106,844 records, where the signal is unambiguous. The two are consistent: the
+earlier analysis lacked the power, not the effect. Whether the difference holds
+specifically for novel TR loci still requires running the TR detection and
+novelty screen over the full callset.
+
+Carrier status is taken from **genotypes**, not `SUPP_VEC`. In this Sniffles2
+joint-called VCF the two disagree on 17.4% of records, because `SUPP_VEC` marks
+samples with supporting evidence while `GT` is the post-filter call; `SUPP_VEC`
+reports 34,984 singletons against the genotypes' 39,304. In the SURVIVOR file
+used for results 1 to 4 they agree exactly on all 500 records.
+
+Coverage remains uncontrolled, and a systematic depth difference by ancestry
+could in principle produce this. The complete separation of the groups makes that
+unlikely but does not exclude it; per-sample mosdepth output would settle it.
+
+
 ## Limitations
 
-- **Subset, not the full callset.** 500 records from chr1 only, yielding 221
-  loci. Every count scales with the complete merged VCF.
+- **Results 1 to 4 use a subset.** 500 records from chr1 only, yielding 221 loci.
+  Result 5 uses the full 106,844-record callset.
 - **Input predates the fix for issue #48.** The committed TSVs still carry its
   signature (`min(insert_size - rep_end) = 68` across 1,125 rows), so
   `rep_start`, `rep_end` and `insertion_purity` are shifted. Carrier counts are
