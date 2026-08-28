@@ -64,9 +64,19 @@ process ANNOTATE_COMPRESSIBILITY {
     path "*_comp.vcf"
 
     script:
-
+    // Calls the installed `compression` console script (declared in
+    // pyproject.toml, backed by intruder.pipeline.compression.annotate),
+    // the same way FIND_NOVEL calls `uv run novelty`. Nothing is read from
+    // the host source tree, so this works from whatever directory Nextflow
+    // stages the task in - the old relative "../src/python/..." path only
+    // ever resolved by accident.
+    //
+    // simpleName strips the directory and every extension, so
+    // sample.merged.vcf -> sample_comp.vcf, matching the output glob below.
+    // Bash-style ${var%.vcf} does NOT work here: Nextflow interpolates
+    // ${...} as Groovy before the shell ever sees it.
     """
-    python3 ../src/python/add_compression.py -i ${vcf_file} -o ${vcf_file%.vcf}_comp.vcf
+    uv run compression -i ${vcf_file} -o ${vcf_file.simpleName}_comp.vcf
     """
 }
 
