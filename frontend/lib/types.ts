@@ -610,6 +610,9 @@ export interface ViewFilters {
   /** Free-text gene search: a case-insensitive substring of the gene symbol.
    *  The exact `gene` is what the agent reaches for when it knows the symbol. */
   gene_query?: string | null;
+  /** Exact match against a specific list of gene symbols, e.g. from a
+   *  phenotype-to-loci lookup. Additive to `gene`/`gene_query`, not a replacement. */
+  genes?: string[] | null;
   sample?: string | null;
   strchive_status?: StrchiveStatus | null;
   /** Restrict the STRchive catalog to loci whose pathogenic motif is not in hg38. */

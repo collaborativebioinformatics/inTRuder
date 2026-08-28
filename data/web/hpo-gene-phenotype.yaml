@@ -1,0 +1,32 @@
+name: hpo_gene_phenotype
+title: HPO Consortium gene-phenotype associations
+synthetic: false
+path: hpo/genes_to_phenotype.parquet
+format: parquet
+
+description: >
+  One row per (gene, HPO phenotype term, disease) association, from the official
+  HPO Consortium release `genes_to_phenotype.txt`. This is the table Step 5 of
+  the phenotype-to-loci pipeline joins against: given one or more HPO term ids
+  already confirmed real by `resolve_hpo()`, filter this table to those ids and
+  take the distinct `gene_symbol` values to get the genes a phenotype implicates.
+  Do not use HPO ids that were only proposed by a similarity search or an LLM
+  guess and never independently validated - see `resolve_phenotype` in the
+  agent's tools, which does that validation before this table is ever queried.
+  Fetched, checksummed and flattened by backend/scripts/fetch_hpo.py.
+
+columns:
+  gene_id: NCBI/Entrez gene id.
+  gene_symbol: Official gene symbol, e.g. RFC1. Join target for a phenotype-to-gene lookup.
+  hpo_id: HPO term id, e.g. HP:0002650. Validate with resolve_hpo() before filtering on this - never trust an id that did not come from that check.
+  hpo_name: The HPO term's canonical name, e.g. Scoliosis. For display only; not authoritative - resolve_hpo() is.
+  frequency: How often this phenotype occurs in this disease, as HPO reports it (e.g. "15/15", "HP:0040283", or "-" when unknown).
+  disease_id: The disease this gene-phenotype pair was reported in, e.g. OMIM:243400.
+  release_version: Pinned HPO release this row came from, e.g. "v2026-06-23". Quote it when reporting a result.
+
+provenance:
+  source: >
+    Human Phenotype Ontology Consortium, genes_to_phenotype.txt,
+    https://github.com/obophenotype/human-phenotype-ontology/releases
+  license: HPO Consortium license (see the HPO GitHub repository)
+  fetched_by: backend/scripts/fetch_hpo.py
