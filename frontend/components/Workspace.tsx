@@ -15,6 +15,7 @@ import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UploadDialog } from "@/components/UploadDialog";
 import {
+  ApiError,
   fetchHealth,
   fetchLoci,
   fetchStrchiveSummary,
@@ -101,6 +102,7 @@ function DatasetsRail({
   health: Health | null;
 }) {
   const unavailable = health?.datasets.unavailable ?? [];
+  const disabled = health?.datasets.disabled ?? [];
 
   return (
     <div className="space-y-6">
@@ -135,6 +137,25 @@ function DatasetsRail({
                 <p className="break-all text-[11px] leading-relaxed text-ink-muted">
                   {row.error}
                 </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {disabled.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-ink">Switched off</h2>
+          <p className="text-[11px] leading-relaxed text-ink-muted">
+            No page draws these and the assistant is never told they exist. The
+            demo fixtures do this to themselves once real data is driving a
+            surface; every switch is yours to move, and yours alone — they live
+            in this browser.
+          </p>
+          <ul className="space-y-0.5">
+            {disabled.map((name) => (
+              <li key={name} className="tabular text-[11px] text-ink-secondary">
+                {name}
               </li>
             ))}
           </ul>
@@ -195,7 +216,9 @@ function WorkspaceInner() {
   const [health, setHealth] = useState<Health | null>(null);
   const [data, setData] = useState<LociResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Kept as the Error rather than its message: a 503 the API answered and a
+  // network failure need different advice, and only the object knows which.
+  const [error, setError] = useState<Error | null>(null);
   // The block pinned out of a barcode. Deliberately not part of the view store:
   // it is what one person clicked, not a description of the data on screen, so
   // the agent has no business setting it and it does not belong in a URL.
@@ -226,14 +249,24 @@ function WorkspaceInner() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([fetchSummary(controller.signal), fetchHealth(controller.signal)])
-      .then(([s, h]) => {
+    // Three independent fetches, deliberately not gathered into one Promise.all.
+    // The cohort summary fails outright when no table holds `role: loci` — which
+    // is a state you can reach by switching the locus tables off — and a
+    // combined promise would take health down with it, freezing the very page
+    // that shows you which switch to put back.
+    fetchSummary(controller.signal)
+      .then((s) => {
         setSummary(s);
-        setHealth(h);
+        setError(null);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        setSummary(null);
+        setError(err);
       });
+    fetchHealth(controller.signal)
+      .then(setHealth)
+      .catch(() => undefined);
     // The disease catalog is independent of the cohort tables, so a missing
     // callset must not stop it loading — and vice versa.
     fetchStrchiveSummary(controller.signal)
@@ -262,7 +295,12 @@ function WorkspaceInner() {
         setError(null);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        // Dropped rather than left on screen: rows fetched under different
+        // filters, or from a table that has since been switched off, are not an
+        // answer to the request that just failed.
+        setData(null);
+        setError(err);
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -343,13 +381,26 @@ function WorkspaceInner() {
         </div>
       </header>
 
+      {/* A 503 is the API answering, and it answers with a reason — most often
+          that no table holds `role: loci`, which is a switch away from being
+          fixed. Telling someone to start a server that is plainly running would
+          send them looking in the wrong place, so the two cases read
+          differently and the server's own sentence is the one shown. */}
       {error && page === "catalog" && (
         <div
           className="shrink-0 px-4 py-2 text-xs"
           style={{ background: "var(--novel-soft)", color: "var(--novel)" }}
         >
-          Cannot reach the API — {error}. Start it with:{" "}
-          <span className="tabular">cd backend &amp;&amp; uv run uvicorn app.main:app --reload</span>
+          {error instanceof ApiError ? (
+            <>Nothing to draw — {error.message}</>
+          ) : (
+            <>
+              Cannot reach the API — {error.message}. Start it with:{" "}
+              <span className="tabular">
+                cd backend &amp;&amp; uv run uvicorn app.main:app --reload
+              </span>
+            </>
+          )}
         </div>
       )}
 
@@ -370,6 +421,11 @@ function WorkspaceInner() {
               <Funnel stages={summary.funnel} />
               <ClassBreakdown summary={summary} />
             </>
+          ) : error ? (
+            // The banner above already says what happened. Saying "loading"
+            // under it would be the page insisting on something it has been told
+            // is not true.
+            <p className="text-sm text-ink-muted">No cohort to summarize.</p>
           ) : (
             <p className="text-sm text-ink-muted">Loading summary…</p>
           )}
@@ -411,6 +467,14 @@ function WorkspaceInner() {
                 cohortSize={summary?.cohort_size}
               />
             </div>
+          ) : error instanceof ApiError && !data ? (
+            // Drawing the filter row and an empty list here would read as "your
+            // filters matched nothing" — the wrong diagnosis, and one that sends
+            // the reader clearing controls that were never the problem. The
+            // banner above carries the real reason.
+            <p className="pt-4 text-sm text-ink-muted">
+              Switch a locus table back on from the Datasets page, or add one.
+            </p>
           ) : (
             <>
               <FilterBar ignored={data?.ignored_filters ?? []} />

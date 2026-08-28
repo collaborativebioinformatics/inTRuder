@@ -12,12 +12,13 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.datastructures import Headers
 
-from app import uploads
+from app import switches, uploads
 from app.agent import sse, stream_agent
 from app.config import settings
 from app.llm import describe_provider
-from app.registry import registry
+from app.registry import ROLES, registry
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,13 +42,52 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="novelTRs API", version="0.1.0", lifespan=lifespan)
 
+
+class SwitchesMiddleware:
+    """Carry the caller's dataset switches for the length of one request.
+
+    Pure ASGI rather than `@app.middleware("http")`: that decorator's
+    BaseHTTPMiddleware runs the endpoint in a child task and streams the response
+    body after returning, so a context variable set there would already be gone
+    by the time the agent's tools ran on the SSE path. This runs in the same task
+    as everything it wraps.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header = Headers(scope=scope).get(switches.HEADER)
+        token = switches.bind(switches.parse(header))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            switches.reset(token)
+
+
+app.add_middleware(SwitchesMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
+    # Includes switches.HEADER, which is a custom header and so is preflighted.
     allow_headers=["*"],
 )
+
+
+def _off() -> frozenset[str]:
+    """The datasets this caller does not want read, defaults applied.
+
+    Every handler that resolves a table goes through here, so a switch reaches
+    the whole API — the surfaces, the funnel, and the assistant — without any of
+    them knowing where the value came from.
+    """
+    return registry.switched_off(switches.current())
 
 
 # --------------------------------------------------------------------------- #
@@ -56,15 +96,20 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    off = _off()
     return {
         "status": "ok",
         "datasets": {
-            "available": [d.name for d in registry.available_datasets()],
+            "available": [d.name for d in registry.available_datasets(off)],
+            # A switched-off dataset is not reported here: it is not *missing*,
+            # and putting it beside a manifest whose file never arrived would
+            # give it an empty reason where the others have a real one.
             "unavailable": [
                 {"name": d.name, "error": d.error}
                 for d in registry.datasets.values()
-                if not d.available
+                if not d.available and d.name not in off
             ],
+            "disabled": sorted(off),
         },
         "llm": describe_provider(settings.llm_provider),
         "agent_enabled": settings.agent_enabled,
@@ -73,7 +118,20 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/datasets")
 def datasets() -> dict[str, Any]:
-    return {"datasets": [d.detail() for d in registry.datasets.values()]}
+    """Every registered dataset, with where its switch starts and where it is.
+
+    `default_enabled` is the server's — it depends on what data exists here.
+    `enabled` folds in the caller's own switches, so this is the one place the
+    interface has to look to draw the row and the switch together.
+    """
+    off = _off()
+    return {
+        "datasets": [
+            {**d.detail(), "enabled": d.name not in off}
+            for d in registry.datasets.values()
+        ],
+        "roles": {role: registry.table_for(role, off) for role in ROLES},
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -81,7 +139,7 @@ def datasets() -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 def _available(name: str) -> bool:
-    return name in {d.name for d in registry.available_datasets()}
+    return name in {d.name for d in registry.available_datasets(_off())}
 
 
 def _rows(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
@@ -96,23 +154,26 @@ def _loci_table() -> str:
 
     Resolved by role rather than named, so registering an uploaded callset with
     `role: loci` repoints every query below it without a code change. Falls back
-    to the committed demo fixture, which is what a fresh clone has.
+    to the committed demo fixture, which is what a fresh clone has — and skips
+    whatever the caller has switched off, which is how one browser can look at
+    the fixtures while another looks at the real cohort.
     """
-    table = registry.table_for("loci")
+    table = registry.table_for("loci", _off())
     if table is None:
         raise HTTPException(
             status_code=503,
             detail="No candidate-locus dataset is available. Generate the demo "
                    "fixtures with `cd backend && uv run python "
-                   "scripts/make_demo_data.py`, or upload a locus table and "
-                   "register it with role 'loci'.",
+                   "scripts/make_demo_data.py`, upload a locus table and "
+                   "register it with role 'loci', or switch one back on from the "
+                   "Datasets page.",
         )
     return table
 
 
 def _segments_table() -> str | None:
     """The per-allele table, when one is registered. Optional everywhere."""
-    return registry.table_for("segments")
+    return registry.table_for("segments", _off())
 
 
 # --------------------------------------------------------------------------- #
@@ -991,14 +1052,16 @@ def reload_registry() -> dict[str, Any]:
     """Re-read the manifests. Also the escape hatch for a file dropped into
     `data/` by hand, which used to mean restarting the backend."""
     registry.reload()
+    off = _off()
     return {
-        "available": [d.name for d in registry.available_datasets()],
+        "available": [d.name for d in registry.available_datasets(off)],
         "unavailable": [
             {"name": d.name, "error": d.error}
             for d in registry.datasets.values()
-            if not d.available
+            if not d.available and d.name not in off
         ],
-        "roles": {role: registry.table_for(role) for role in ("loci", "segments")},
+        "disabled": sorted(off),
+        "roles": {role: registry.table_for(role, off) for role in ROLES},
     }
 
 

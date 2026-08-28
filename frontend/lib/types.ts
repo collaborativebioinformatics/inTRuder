@@ -404,6 +404,7 @@ export interface Dataset {
   synthetic: boolean;
   /** "" for a table the assistant can query but that no page reads. */
   role: string;
+  /** Loaded and queryable. False while it is switched off — nothing was loaded. */
   available: boolean;
   n_rows: number | null;
   columns: string[];
@@ -412,6 +413,18 @@ export interface Dataset {
   column_docs: Record<string, string>;
   provenance: Record<string, unknown>;
   manifest_file: string;
+  /**
+   * The switch as it stands for *this browser*: the server folding
+   * `default_enabled` together with the overrides sent in the request header.
+   */
+  enabled: boolean;
+  /**
+   * Where the switch sits untouched. True for everything except a synthetic
+   * fixture once real data is driving a surface — the demo turns itself off the
+   * moment it is no longer the thing being looked at. The server computes it,
+   * because only it knows what data exists here.
+   */
+  default_enabled: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
