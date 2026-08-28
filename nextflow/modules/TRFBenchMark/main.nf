@@ -87,3 +87,40 @@ process CALCULATE_SENSITIVITY {
     touch false_negatives.bed.gz
     """
 }
+
+
+process INTERSECT_REPEAT_CATALOG {
+    tag "${tr_results.name}"
+    container "community.wave.seqera.io/library/bedtools:2.31.1--7c4ce4cb07c09ee4"
+
+    input:
+    path tr_results
+    path ground_truth
+
+    output:
+    path "HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz", emit: catalog_tsv
+    path "intersections.bed.gz"                     , emit: intersections_bed
+
+    script:
+    """
+    # Create start-end coordinates by adding end pos (start + 1) and dropping header
+    awk 'BEGIN{FS=OFS="\t"} NR>1 {$2=$2 OFS ($2+1); print}' "${tr_results}" > tr_results_positions.tsv
+
+    # Extract required columns from ground truth BED
+    zcat "${ground_truth}" | grep -v "^#" | cut -f1-4 | gzip > ground_truth_positions.bed.gz
+
+    # Intersect ground truth insertion catalog with dataset
+    bedtools intersect \\
+        -a ground_truth_positions.bed.gz \\
+        -b tr_results_positions.tsv \\
+        -wb \\
+        | cut -f5- \\
+        | gzip > intersections.bed.gz
+
+    # Join original file with hits
+    uv run ${projecctDir}/scripts/check_repeat_catalog/join-hits.py \\
+        --query "${tr_results}" \\
+        --hits intersections.bed.gz \\
+        --output HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz
+    """
+}
