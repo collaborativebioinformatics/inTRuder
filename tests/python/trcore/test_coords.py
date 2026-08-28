@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from trcore.coords import interval_distance, normalize_chrom, to_external, to_internal
+from intruder.trcore.coords import interval_distance, normalize_chrom, to_external, to_internal
 
 
 @pytest.mark.parametrize("raw,expected", [

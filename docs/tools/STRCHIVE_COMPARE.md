@@ -35,7 +35,7 @@ uv run strchive --help
 
 # or directly, without installing anything
 cd src/python
-python -m strchive --help
+python -m intruder.pipeline.strchive --help
 ```
 
 Three commands:
@@ -261,18 +261,18 @@ silently shifts every interval by a base.
 
 | file | what it holds |
 |---|---|
-| `src/python/trcore/motifs.py` | canonical form of a repeat unit, and fuzzy distance between two motifs — shared with the novelty screen |
-| `src/python/trcore/coords.py` | 0-based/1-based conversion, contig naming, distance between intervals — shared |
-| `src/python/trcore/fetch.py` | where a downloaded catalogue is cached, and the `curl` fallback — shared |
-| `src/python/strchive/catalog.py` | fetching, checksumming and parsing `STRchive-loci.json`; the per-contig index; the allele ranges |
-| `src/python/strchive/compare.py` | the three questions, the rollup status, and the output row |
-| `src/python/strchive/__main__.py` | the three commands and the input-column contract |
+| `src/python/intruder/trcore/motifs.py` | canonical form of a repeat unit, and fuzzy distance between two motifs — shared with the novelty screen |
+| `src/python/intruder/trcore/coords.py` | 0-based/1-based conversion, contig naming, distance between intervals — shared |
+| `src/python/intruder/trcore/fetch.py` | where a downloaded catalogue is cached, and the `curl` fallback — shared |
+| `src/python/intruder/pipeline/strchive/catalog.py` | fetching, checksumming and parsing `STRchive-loci.json`; the per-contig index; the allele ranges |
+| `src/python/intruder/pipeline/strchive/compare.py` | the three questions, the rollup status, and the output row |
+| `src/python/intruder/pipeline/strchive/__main__.py` | the three commands and the input-column contract |
 | `data/strchive/` | the five-record catalogue the tests run against, offline |
 | `tests/python/strchive/` | one test module per source module, offline |
 | `tests/python/trcore/` | the shared motif, coordinate and fetch suites |
 
 Steps in this pipeline communicate through files, not imports. The one
-exception is [`trcore`](../../src/python/trcore/__init__.py): motif
+exception is [`trcore`](../../src/python/intruder/trcore/__init__.py): motif
 canonicalisation, the coordinate conventions and the download cache were
 provably identical in both
 steps, and they are wrong in the same way when they are wrong — two steps that
