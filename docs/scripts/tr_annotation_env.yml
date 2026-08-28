@@ -1,3 +1,9 @@
+# Kept for the record, not required. The project is managed with uv, and every
+# Python package the compression annotator imports (python, pysam, zlib,
+# argparse) is already in the root pyproject.toml -- `uv sync` covers the step.
+# What uv does not cover is the non-Python toolchain pinned here, bcftools and
+# htslib, used alongside it for VCF wrangling. The build strings below are
+# macOS-arm64 only, so this will not solve on Linux. See annotate_compression.md.
 name: tr_annotation
 channels:
   - bioconda
