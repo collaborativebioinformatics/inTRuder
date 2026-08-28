@@ -220,13 +220,59 @@ def fig4_fixed_frequency(d):
     return fig
 
 
+BURDEN = Path("results/per_sample_insertion_burden.tsv")
+
+
+def fig5_burden_by_ancestry():
+    """Non-reference insertion burden per genome, full 67-genome callset."""
+    b = pd.read_csv(BURDEN, sep="\t")
+    b = b[b.superpopulation.isin(SUPERPOPS)]
+    groups = [b[b.superpopulation == s].n_insertions.values for s in SUPERPOPS]
+    H, p = stats.kruskal(*groups)
+    afr, eur = groups[0], groups[3]
+    _, p_ae = stats.mannwhitneyu(afr, eur)
+
+    fig, ax = plt.subplots(figsize=(7.4, 4.2))
+    rng = np.random.default_rng(0)
+    order = np.argsort([-np.median(g) for g in groups])
+    for i, gi in enumerate(order):
+        sp, vals = SUPERPOPS[gi], groups[gi]
+        col = SERIES["novel_motif"] if sp == "AFR" else SINGLE
+        ax.scatter(i + rng.uniform(-0.17, 0.17, len(vals)), vals, s=30, color=col,
+                   alpha=0.7, linewidth=0.8, edgecolor=SURFACE, zorder=3)
+        m = np.median(vals)
+        ax.plot([i - 0.31, i + 0.31], [m, m], color=INK, linewidth=2.2, zorder=4)
+        ax.text(i, m, f"{m:,.0f}", va="bottom", ha="center", fontsize=7.4,
+                color=INK, zorder=5,
+                bbox=dict(boxstyle="round,pad=0.18", fc=SURFACE, ec="none", alpha=0.85))
+
+    # the separation line: AFR minimum sits above every other genome
+    sep = (min(afr) + max([v for g, s in zip(groups, SUPERPOPS) if s != "AFR" for v in g])) / 2
+    ax.axhline(sep, color=MUTED, linewidth=1.1, linestyle=(0, (5, 3)), zorder=2)
+    ax.text(len(SUPERPOPS) - 0.42, sep, "all 19 AFR genomes above\nall 48 others below",
+            fontsize=7.2, color=INK2, va="center", ha="left")
+
+    ax.set_xticks(range(len(SUPERPOPS)))
+    ax.set_xticklabels([f"{SUPERPOPS[gi]}\nn={len(groups[gi])}" for gi in order])
+    ax.set_xlabel("1000 Genomes superpopulation", fontsize=8.5)
+    ax.set_xlim(-0.6, len(SUPERPOPS) + 0.9)
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    style(ax, "African genomes carry 13.6% more non-reference insertions",
+          f"One point per genome; 106,844 insertions, 67 HPRC genomes. "
+          f"Kruskal-Wallis p = {p:.0e}.",
+          "Insertions carried per genome")
+    fig.tight_layout()
+    return fig
+
+
 def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     d, cohort = load()
     for name, fig in [("fig1_sharing_spectrum", fig1_sharing(d)),
                       ("fig2_ancestry_burden", fig2_ancestry(cohort)),
                       ("fig3_private_loci", fig3_private(d)),
-                      ("fig4_fixed_frequency", fig4_fixed_frequency(d))]:
+                      ("fig4_fixed_frequency", fig4_fixed_frequency(d)),
+                      ("fig5_burden_by_ancestry", fig5_burden_by_ancestry())]:
         for ext in ("png", "pdf"):
             fig.savefig(OUTDIR / f"{name}.{ext}", dpi=200, bbox_inches="tight")
         plt.close(fig)
