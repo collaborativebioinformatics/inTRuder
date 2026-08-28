@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { CatalogView } from "@/components/CatalogView";
 import { Chat } from "@/components/Chat";
 import { ClassBreakdown } from "@/components/ClassBreakdown";
+import { DatasetsView } from "@/components/DatasetsView";
 import { FilterBar } from "@/components/FilterBar";
 import { Funnel } from "@/components/Funnel";
 import { Inspector, type Selection } from "@/components/Inspector";
 import { LocusView } from "@/components/LocusView";
 import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UploadDialog } from "@/components/UploadDialog";
 import {
   fetchHealth,
   fetchLoci,
@@ -24,8 +26,11 @@ import type {
   PageName,
   StrchiveSummary,
   Summary,
+  UploadListing,
   ViewFilters,
 } from "@/lib/types";
+import { useWindowFileDrop } from "@/lib/useFileDrop";
+import { fetchUploads } from "@/lib/uploads";
 import { ViewProvider, useView } from "@/lib/viewStore";
 
 /**
@@ -87,9 +92,71 @@ function StrchiveRail({ summary }: { summary: StrchiveSummary | null }) {
   );
 }
 
+/** Left rail on the datasets surface — where the data lives and how to add more. */
+function DatasetsRail({
+  listing,
+  health,
+}: {
+  listing: UploadListing | null;
+  health: Health | null;
+}) {
+  const unavailable = health?.datasets.unavailable ?? [];
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-2">
+        <h2 className="text-sm font-medium text-ink">Where data comes from</h2>
+        <p className="text-[11px] leading-relaxed text-ink-secondary">
+          Every table is one YAML manifest describing a file on this machine.
+          Adding data is a manifest, never a code change — and the prose in it is
+          what the assistant reads when deciding whether a table can answer a
+          question.
+        </p>
+        <p className="text-[11px] leading-relaxed text-ink-muted">
+          Uploading writes both: the file into the data directory, and a manifest
+          beside the hand-written ones. Nothing is sent anywhere — the backend is
+          running on this machine.
+        </p>
+      </section>
+
+      {unavailable.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-ink">Not loaded</h2>
+          <p className="text-[11px] leading-relaxed text-ink-muted">
+            These manifests are committed ahead of the data they describe. A
+            missing file is reported rather than crashing the backend.
+          </p>
+          <ul className="space-y-1.5">
+            {unavailable.map((row) => (
+              <li key={row.name} className="space-y-0.5">
+                <span className="tabular text-[11px] text-ink-secondary">{row.name}</span>
+                {/* A filesystem path has nothing to wrap on, and the rail is
+                    19rem — without break-all it runs off the edge. */}
+                <p className="break-all text-[11px] leading-relaxed text-ink-muted">
+                  {row.error}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {listing && !listing.enabled && (
+        <p className="text-[11px] leading-relaxed" style={{ color: "var(--novel)" }}>
+          Uploads are turned off on this server (UPLOADS_ENABLED).
+        </p>
+      )}
+    </div>
+  );
+}
+
 const TABS: { page: PageName; href: string; label: string }[] = [
   { page: "catalog", href: "/", label: "Candidate loci" },
   { page: "strchive", href: "/strchive", label: "Disease loci" },
+  // Nouns, like its neighbours: each tab names the data you are looking at.
+  // Uploading is the verb, and it lives on the right as a control rather than
+  // as a place you navigate to.
+  { page: "datasets", href: "/datasets", label: "Datasets" },
 ];
 
 function Nav() {
@@ -134,7 +201,28 @@ function WorkspaceInner() {
   // the agent has no business setting it and it does not belong in a URL.
   const [selection, setSelection] = useState<Selection | null>(null);
 
+  // Uploads. `dropped` is the file that opened the dialog, and it is set to null
+  // on close so dropping the same file again is a new upload rather than a
+  // no-op. `registryVersion` is bumped whenever the server's data changed, which
+  // is what re-runs the fetches below — a newly registered locus table changes
+  // every number on the page.
+  const [listing, setListing] = useState<UploadListing | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [dropped, setDropped] = useState<File | null>(null);
+  const [registryVersion, setRegistryVersion] = useState(0);
+
   const page = filters.page ?? "catalog";
+
+  const openUpload = useCallback((file?: File) => {
+    setDropped(file ?? null);
+    setUploadOpen(true);
+  }, []);
+
+  const onRegistryChanged = useCallback(() => setRegistryVersion((n) => n + 1), []);
+
+  // Dragging a file anywhere over the window arms the upload, which is what
+  // everyone tries first. The dialog opens already uploading.
+  const dragging = useWindowFileDrop(openUpload, listing?.enabled ?? true);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,7 +240,17 @@ function WorkspaceInner() {
       .then(setStrchive)
       .catch(() => setStrchive(null));
     return () => controller.abort();
-  }, []);
+  }, [registryVersion]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchUploads(controller.signal)
+      .then(setListing)
+      // An older backend has no /api/uploads. The rest of the page is unaffected,
+      // so this stays null and the Upload control simply does not appear.
+      .catch(() => setListing(null));
+    return () => controller.abort();
+  }, [registryVersion]);
 
   useEffect(() => {
     if (page !== "catalog") return;
@@ -168,7 +266,7 @@ function WorkspaceInner() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [filters, page]);
+  }, [filters, page, registryVersion]);
 
   const focused = filters.focus_locus_id;
 
@@ -188,9 +286,19 @@ function WorkspaceInner() {
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-medium"
               style={{ background: "var(--novel-soft)", color: "var(--novel)" }}
-              title="Every number on screen comes from a generated fixture, not a real callset."
+              title={
+                summary.synthetic_tables.length === 1
+                  ? `${summary.synthetic_tables[0]} is a generated fixture, not a real callset.`
+                  : `${summary.synthetic_tables.join(" and ")} are generated fixtures, not a real callset.`
+              }
             >
-              Synthetic demo data
+              {/* Named rather than blanket, because a real locus table drawn
+                  with fixture barcodes is half of each, and a badge that
+                  overclaims is one people learn to ignore. */}
+              {summary.synthetic_tables.length === 1 &&
+              summary.synthetic_tables[0].endsWith("segments")
+                ? "Synthetic barcodes"
+                : "Synthetic demo data"}
             </span>
           )}
           {page === "strchive" && strchive && (
@@ -201,6 +309,35 @@ function WorkspaceInner() {
             >
               {strchive.catalog_version}
             </span>
+          )}
+          {/* The only verb in this header, so it is deliberately not shaped like
+              a nav pill. It is also deliberately not filled with --novel: that
+              warm colour is the novelty encoding the whole catalog is read
+              through, and spending it on a button would put the loudest thing on
+              the page on a control rather than on a finding. */}
+          {listing?.enabled !== false && (
+            <button
+              type="button"
+              onClick={() => openUpload()}
+              title="Add a callset, a locus table, or a VCF."
+              className="flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1 text-[11px] text-ink-secondary transition-colors hover:border-baseline hover:text-ink"
+              style={{ background: "var(--surface-raised)" }}
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 8.5V1.8M3.4 4.4 6 1.8l2.6 2.6M1.8 8.5v1.2a.5.5 0 0 0 .5.5h7.4a.5.5 0 0 0 .5-.5V8.5" />
+              </svg>
+              Upload
+            </button>
           )}
           <ThemeToggle />
         </div>
@@ -224,7 +361,9 @@ function WorkspaceInner() {
           {page === "catalog" && selection && (
             <Inspector selection={selection} onClear={() => setSelection(null)} />
           )}
-          {page === "strchive" ? (
+          {page === "datasets" ? (
+            <DatasetsRail listing={listing} health={health} />
+          ) : page === "strchive" ? (
             <StrchiveRail summary={strchive} />
           ) : summary ? (
             <>
@@ -254,7 +393,13 @@ function WorkspaceInner() {
               : "flex min-h-0 flex-col gap-3 p-4"
           }
         >
-          {page === "strchive" ? (
+          {page === "datasets" ? (
+            <DatasetsView
+              listing={listing}
+              onUpload={openUpload}
+              onChanged={onRegistryChanged}
+            />
+          ) : page === "strchive" ? (
             <StrchiveView />
           ) : focused ? (
             <div className="space-y-3 pt-4">
@@ -290,6 +435,36 @@ function WorkspaceInner() {
           <Chat agentEnabled={health?.agent_enabled ?? false} />
         </aside>
       </div>
+
+      {/* Drawn over everything while a file is in flight over the window, so the
+          page says it will accept the drop before you let go. Pointer events off:
+          it must not become the drop target itself, or the event would land on an
+          overlay that appeared mid-drag. */}
+      {dragging && !uploadOpen && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "color-mix(in srgb, var(--plane) 82%, transparent)" }}
+        >
+          <div
+            className="rounded-xl border border-dashed px-8 py-6 text-sm text-ink"
+            style={{ borderColor: "var(--baseline)", background: "var(--surface)" }}
+          >
+            Drop to upload
+          </div>
+        </div>
+      )}
+
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => {
+          setUploadOpen(false);
+          setDropped(null);
+        }}
+        initialFile={dropped}
+        listing={listing}
+        onChanged={onRegistryChanged}
+      />
     </div>
   );
 }
