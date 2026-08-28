@@ -8,6 +8,7 @@ params.input_vcf   = null
 params.run_novelty  = false
 params.run_annotation =  false
 params.run_validation = false
+params.run_compressibility = false
 
 // TODO: set the actual path to your TR catalogue BED file (needed by
 // stage 04 - Validation)
@@ -43,6 +44,29 @@ process FIND_TRS {
     //   python sv_trfcaller.py <input.vcf> <output.tsv>
     """
     python3 /opt/scripts/sv_trfcaller.py -i ${vcf_file} -o trf_output.tsv
+    """
+}
+
+// ---------------------------------------------------------------------
+// 01.1 - Add alt allele sequence compressibility score (optional)
+// ---------------------------------------------------------------------
+process ANNOTATE_COMPRESSIBILITY {
+
+    // publishDir copies this process's output to a results folder,
+    // so it's not just buried in Nextflow's internal work/ directory
+    // TODO: change to output in corresponding parent directory
+    publishDir "results/011_annotate_compressibility", mode: "copy"
+
+    input:
+    path vcf_file
+
+    output:
+    path "*_comp.vcf"
+
+    script:
+
+    """
+    python3 ../src/python/add_compression.py -i ${vcf_file} -o ${vcf_file%.vcf}_comp.vcf
     """
 }
 
@@ -296,6 +320,15 @@ workflow {
         vcf_ch = Channel.fromPath(params.default_vcf_path)
     }
 
+    // --- Optional compressibility annotation ---
+    if (params.run_compressibility) {
+        ANNOTATE_COMPRESSIBILITY(vcf_ch)
+        vcf_ch = ANNOTATE_COMPRESSIBILITY.out
+    }
+    else {
+        vcf_ch = vcf_ch
+    }
+    
     // --- Baseline: find TRs in the insertions (always runs)---
     FIND_TRS(vcf_ch)
 
