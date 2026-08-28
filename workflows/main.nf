@@ -14,7 +14,7 @@ params.run_validation = false
 params.tr_catalogue_bed = null
 params.min_overlap_b = null
 
-params.default_vcf_path = params.default_vcf_path ?: "${projectDir}/../data/HPRC_SV.survivor.ins.vcf"
+params.default_vcf_path = params.default_vcf_path ?: "${projectDir}/../data/sv_output/sniffles/first_500_INS.vcf"
 
 
 // ---------------------------------------------------------------------
@@ -42,7 +42,7 @@ process FIND_TRS {
     // sv_trfcaller.py takes POSITIONAL args, not flags:
     //   python sv_trfcaller.py <input.vcf> <output.tsv>
     """
-    python3 /opt/scripts/sv_trfcaller.py ${vcf_file} trf_output.tsv
+    python3 /opt/scripts/sv_trfcaller.py -i ${vcf_file} -o trf_output.tsv
     """
 }
 
@@ -303,7 +303,7 @@ workflow {
     if (params.run_novelty) {
     FIND_NOVEL(FIND_TRS.out)
     FILTER_BY_COVERAGE(FIND_NOVEL.out)
-    novelty_out = FILTER_BY_COVERAGE.out
+    novelty_out = FILTER_BY_COVERAGE.out.filtered
     } else {
         novelty_out = Channel.fromPath("${projectDir}/assets/NO_FILE")
     }
