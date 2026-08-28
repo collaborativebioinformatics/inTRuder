@@ -285,6 +285,7 @@ def _filter_clause(
     constrained_only: bool = False,
     gene_region: str | None = None,
     available: set[str] | None = None,
+    genes: list[str] | None = None,
 ) -> tuple[str, list[Any], list[str]]:
     """Build the WHERE clause, and report which filters the table cannot honour."""
     available = available if available is not None else set()
@@ -333,6 +334,13 @@ def _filter_clause(
         # % and _ mean those characters and not wildcards.
         clauses.append("contains(upper(gene), upper(?))")
         params.append(gene_query)
+    if genes:
+        # A specific gene *list* rather than one substring — e.g. every gene a
+        # phenotype lookup implicated. Case-insensitive, same as gene_query, but
+        # an exact-match IN rather than a contains.
+        placeholders = ",".join("?" for _ in genes)
+        clauses.append(f"upper(gene) IN ({placeholders})")
+        params.extend(symbol.upper() for symbol in genes)
 
     if novelty and needs("novelty"):
         clauses.append("novelty = ?")
@@ -496,6 +504,7 @@ def loci(
     gene: str | None = None,
     region: str | None = None,
     gene_query: str | None = None,
+    genes: list[str] | None = Query(None),  # noqa: B008 - FastAPI's documented way to accept a repeated query param
     novelty: str | None = Query(None, pattern="^(known|novel_motif|novel_locus)$"),
     platform_agreement: str | None = Query(
         None, pattern="^(both|ucsc_only|trexplorer_only|neither)$"
@@ -523,7 +532,9 @@ def loci(
     site falls inside it. A range that does not parse is a 400 rather than an
     empty list, because an empty list reads as a finding. `gene_query` is the
     free-text counterpart of `gene`: a case-insensitive substring of the gene
-    symbol, for a search box rather than an exact pick.
+    symbol, for a search box rather than an exact pick. `genes` is for a
+    specific list of symbols already in hand — e.g. from a phenotype lookup —
+    matched exactly (case-insensitively) rather than by substring.
 
     With `include_strips`, also returns the segment structure of one
     representative (median-length) allele per locus, so the catalog can render
@@ -546,6 +557,7 @@ def loci(
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
         genic_only, exonic_only, constrained_only, gene_region,
         available=_columns(loci_table),
+        genes=genes,
     )
 
     needs_segments = sort in _SEGMENT_SORTS and segments_table is not None

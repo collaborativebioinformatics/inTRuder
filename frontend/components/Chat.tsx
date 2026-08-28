@@ -36,13 +36,15 @@ interface ToolEvent {
  * person using it. A text box advertises nothing, so somebody who has not read
  * `app/tools/` will type one cohort-level question and conclude that is all
  * there is. The groups here are the tool surface: query the registered tables,
- * move the view, cross to the disease locus reference, and account for what data
- * is loaded — including files they dropped in themselves.
+ * move the view, cross to the disease locus reference — including from a
+ * free-text phenotype, via `resolve_phenotype` — and account for what data is
+ * loaded, including files they dropped in themselves.
  *
- * Every prompt is answerable against the HPRC callset this interface ships
- * pointed at. `chr4:39,348,3xx` is the CANVAS/RFC1 site, where five of the six
- * candidates carry a motif hg38 does not have there — which is the finding, not
- * a coordinate picked to have something in it.
+ * Every prompt but the phenotype one is answerable against the HPRC callset this
+ * interface ships pointed at; that one resolves against the HPO release.
+ * `chr4:39,348,3xx` is the CANVAS/RFC1 site, where five of the six candidates
+ * carry a motif hg38 does not have there — which is the finding, not a
+ * coordinate picked to have something in it.
  */
 const SUGGESTIONS: { label: string; prompts: string[] }[] = [
   {
@@ -67,6 +69,7 @@ const SUGGESTIONS: { label: string; prompts: string[] }[] = [
     prompts: [
       "Which disease loci is hg38 missing the pathogenic motif for?",
       "Open CANVAS_RFC1 — did we find anything there?",
+      "Find genes related to this patient description: patient presents with a curved spine noted on physical exam.",
     ],
   },
   {

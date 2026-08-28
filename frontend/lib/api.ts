@@ -67,6 +67,7 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   if (filters.motif_class) params.set("motif_class", filters.motif_class);
   if (filters.gene) params.set("gene", filters.gene);
   if (filters.gene_query) params.set("gene_query", filters.gene_query);
+  if (filters.genes) for (const gene of filters.genes) params.append("genes", gene);
   if (filters.min_motif_len != null) params.set("min_motif_len", String(filters.min_motif_len));
   if (filters.min_samples != null) params.set("min_samples", String(filters.min_samples));
   if (filters.min_purity != null) params.set("min_purity", String(filters.min_purity));
