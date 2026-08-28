@@ -2,7 +2,7 @@
 
 The provider is chosen with `LLM_PROVIDER` in `backend/.env`. Only the Anthropic
 client is installed by default; the others are optional extras so that a clone
-does not pull four SDKs to run one. Each entry records the package to install and
+does not pull every SDK to run one. Each entry records the package to install and
 the environment variable that carries the credential, so a misconfiguration
 produces an actionable message instead of an ImportError traceback.
 """
@@ -21,6 +21,10 @@ class Provider:
     package: str          # pip/uv package supplying the LangChain integration
     credential_env: str    # "" when the provider needs no credential (local models)
     notes: str = ""
+    # True for a provider that is not a chat model at all but a local harness
+    # running its own agent loop. `build_chat_model` cannot build one; the graph
+    # hands the turn to `app.agent.claude_code` instead.
+    local_harness: bool = False
 
 
 PROVIDERS: dict[str, Provider] = {
@@ -30,6 +34,18 @@ PROVIDERS: dict[str, Provider] = {
         package="langchain-anthropic",
         credential_env="ANTHROPIC_API_KEY",
         notes="Installed by default. Adaptive thinking and effort are wired up below.",
+    ),
+    "claude-code": Provider(
+        name="claude-code",
+        default_model="",     # whatever the local Claude Code is configured to use
+        package="claude-agent-sdk",
+        credential_env="",    # signs in as the CLI, so there is no key to set
+        notes=(
+            "Runs the turn through the Claude Code CLI on this machine, on its own "
+            "login. No API key. Claude Code supplies the agent loop, so the LangGraph "
+            "graph is not used - see app/agent/claude_code.py."
+        ),
+        local_harness=True,
     ),
     "google": Provider(
         name="google",
@@ -58,6 +74,10 @@ def provider_credential_present(provider_name: str) -> bool:
     provider = PROVIDERS.get(provider_name)
     if provider is None:
         return False
+    if provider.local_harness:
+        from app.agent.claude_code import cli_path
+
+        return cli_path() is not None
     if not provider.credential_env:
         return True  # local providers such as Ollama need no key
     return bool(os.getenv(provider.credential_env))
@@ -74,6 +94,10 @@ def describe_provider(provider_name: str) -> dict[str, Any]:
         "default_model": provider.default_model,
         "credential_env": provider.credential_env or None,
         "credential_present": provider_credential_present(provider_name),
+        # What credential_present actually looked for, since it is not always a key.
+        "credential": (
+            "the Claude Code CLI" if provider.local_harness else provider.credential_env or None
+        ),
         "notes": provider.notes,
     }
 
@@ -97,6 +121,13 @@ def build_chat_model(
     if provider is None:
         raise RuntimeError(
             f"Unknown LLM_PROVIDER={provider_name!r}. Supported: {', '.join(sorted(PROVIDERS))}"
+        )
+
+    if provider.local_harness:
+        raise RuntimeError(
+            f"LLM_PROVIDER={provider.name} has no chat model to build - it brings its "
+            "own agent loop. Route the turn through app.agent.stream_agent, which "
+            "dispatches to app.agent.claude_code."
         )
 
     if provider.credential_env and not os.getenv(provider.credential_env):

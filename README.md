@@ -137,7 +137,9 @@ docker compose up --build      # same two ports
 
 Add a model credential to `backend/.env` to enable chat — the data views work
 without one. Anthropic, Google, Ollama and OpenAI are all selectable via
-`LLM_PROVIDER`.
+`LLM_PROVIDER`. Or set `LLM_PROVIDER=claude-code` to run chat on the Claude Code
+CLI you already have, with no key at all — see
+[`backend/README.md`](./backend/README.md#running-on-claude-code).
 
 | Directory | What it is |
 |---|---|

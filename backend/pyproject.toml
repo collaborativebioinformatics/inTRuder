@@ -31,7 +31,13 @@ package = false
 
 [tool.ruff]
 line-length = 100
-src = ["app"]
+src = ["."]
+
+[tool.ruff.lint.isort]
+# `app` is a top-level package in this directory rather than an installed one, so
+# say so explicitly: without it the import sorter's answer depends on how it
+# happens to resolve the path, and flips between runs.
+known-first-party = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
