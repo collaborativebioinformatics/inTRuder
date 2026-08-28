@@ -1,0 +1,127 @@
+{
+ "hitCount": 100,
+ "resultList": {
+  "result": [
+   {
+    "id": "30926972",
+    "source": "MED",
+    "pmid": "30926972",
+    "pmcid": "PMC6709527",
+    "doi": "10.1038/s41588-019-0372-4",
+    "title": "Biallelic expansion of an intronic repeat in RFC1 is a common cause of late-onset ataxia.",
+    "authorString": "Cortese A, Simone R, Sullivan R, Vandrovcova J, Tariq H, Yau WY, Humphrey J, Jaunmuktane Z, Sivakumar P, Polke J, Ilyas M, Tribollet E, Tomaselli PJ, Devigili G, Callegari I, Versino M, Salpietro V, Efthymiou S, Kaski D, Wood NW, Andrade NS, Buglo E, Rebelo A, Rossor AM, Bronstein A, Fratta P, Fratta P, Marques WJ, Z\u00fcchner S, Reilly MM, Houlden H.",
+    "journalInfo": {
+     "issue": "4",
+     "volume": "51",
+     "journalIssueId": 2798850,
+     "dateOfPublication": "2019 Apr",
+     "monthOfPublication": 4,
+     "yearOfPublication": 2019,
+     "printPublicationDate": "2019-04-01",
+     "journal": {
+      "title": "Nature genetics",
+      "medlineAbbreviation": "Nat Genet",
+      "essn": "1546-1718",
+      "issn": "1061-4036",
+      "isoabbreviation": "Nat Genet",
+      "nlmid": "9216904"
+     }
+    },
+    "pubYear": "2019",
+    "abstractText": "Late-onset ataxia is common, often idiopathic, and can result from cerebellar, proprioceptive, or vestibular impairment; when in combination, it is also termed cerebellar ataxia, neuropathy, vestibular areflexia syndrome (CANVAS). We used non-parametric linkage analysis and genome sequencing to identify a biallelic intronic AAGGG repeat expansion in the replication factor C subunit 1 (RFC1) gene as the cause of familial CANVAS and a frequent cause of late-onset ataxia, particularly if sensory neuronopathy and bilateral vestibular areflexia coexist. The expansion, which occurs in the poly(A) tail of an AluSx3 element and differs in both size and nucleotide sequence from the reference (AAAAG)<sub>11</sub> allele, does not affect RFC1 expression in patient peripheral and brain tissue, suggesting no overt loss of function. These data, along with an expansion carrier frequency of 0.7% in Europeans, implies that biallelic AAGGG expansion in RFC1 is a frequent cause of late-onset ataxia.",
+    "isOpenAccess": "N",
+    "citedByCount": 427
+   },
+   {
+    "id": "31230722",
+    "source": "MED",
+    "pmid": "31230722",
+    "pmcid": "PMC6612533",
+    "doi": "10.1016/j.ajhg.2019.05.016",
+    "title": "Bioinformatics-Based Identification of Expanded Repeats: A Non-reference Intronic Pentamer Expansion in RFC1 Causes CANVAS.",
+    "authorString": "Rafehi H, Szmulewicz DJ, Bennett MF, Sobreira NLM, Pope K, Smith KR, Gillies G, Diakumis P, Dolzhenko E, Eberle MA, Barcina MG, Breen DP, Chancellor AM, Cremer PD, Delatycki MB, Fogel BL, Hackett A, Halmagyi GM, Kapetanovic S, Lang A, Mossman S, Mu W, Patrikios P, Perlman SL, Rosemergy I, Storey E, Watson SRD, Wilson MA, Zee DS, Valle D, Amor DJ, Bahlo M, Lockhart PJ.",
+    "journalInfo": {
+     "issue": "1",
+     "volume": "105",
+     "journalIssueId": 2835101,
+     "dateOfPublication": "2019 Jul",
+     "monthOfPublication": 7,
+     "yearOfPublication": 2019,
+     "printPublicationDate": "2019-07-01",
+     "journal": {
+      "title": "American journal of human genetics",
+      "medlineAbbreviation": "Am J Hum Genet",
+      "essn": "1537-6605",
+      "issn": "0002-9297",
+      "isoabbreviation": "Am J Hum Genet",
+      "nlmid": "0370475"
+     }
+    },
+    "pubYear": "2019",
+    "abstractText": "Genomic technologies such as next-generation sequencing (NGS) are revolutionizing molecular diagnostics and clinical medicine. However, these approaches have proven inefficient at identifying pathogenic repeat expansions. Here, we apply a collection of bioinformatics tools that can be utilized to identify either known or novel expanded repeat sequences in NGS data. We performed genetic studies of a cohort of 35 individuals from 22 families with a clinical diagnosis of cerebellar ataxia with neuropathy and bilateral vestibular areflexia syndrome (CANVAS). Analysis of whole-genome sequence (WGS) data with five independent algorithms identified a recessively inherited intronic repeat expansion [(AAGGG)<sub>exp</sub>] in the gene encoding Replication Factor C1 (RFC1). This motif, not reported in the reference sequence, localized to an Alu element and replaced the reference (AAAAG)<sub>11</sub> short tandem repeat. Genetic analyses confirmed the pathogenic expansion in 18 of 22 CANVAS-affected families and identified a core ancestral haplotype, estimated to have arisen in Europe more than twenty-five thousand years ago. WGS of the four RFC1-negative CANVAS-affected families identified plausible variants in three, with genomic re-diagnosis of SCA3, spastic ataxia of the Charlevoix-Saguenay type, and SCA45. This study identified the genetic basis of CANVAS and demonstrated that these improved bioinformatics tools increase the diagnostic utility of WGS to determine the genetic basis of a heterogeneous group of clinically overlapping neurogenetic disorders.",
+    "isOpenAccess": "Y",
+    "citedByCount": 199
+   },
+   {
+    "id": "32040566",
+    "source": "MED",
+    "pmid": "32040566",
+    "pmcid": "PMC7009469",
+    "doi": "10.1093/brain/awz418",
+    "title": "Cerebellar ataxia, neuropathy, vestibular areflexia syndrome due to RFC1 repeat expansion.",
+    "authorString": "Cortese A, Tozza S, Yau WY, Rossi S, Beecroft SJ, Jaunmuktane Z, Dyer Z, Ravenscroft G, Lamont PJ, Mossman S, Chancellor A, Maisonobe T, Pereon Y, Cauquil C, Colnaghi S, Mallucci G, Curro R, Tomaselli PJ, Thomas-Black G, Sullivan R, Efthymiou S, Rossor AM, Laur\u00e1 M, Pipis M, Horga A, Polke J, Kaski D, Horvath R, Chinnery PF, Marques W, Tassorelli C, Devigili G, Leonardis L, Wood NW, Bronstein A, Giunti P, Z\u00fcchner S, Stojkovic T, Laing N, Roxburgh RH, Houlden H, Reilly MM.",
+    "journalInfo": {
+     "issue": "2",
+     "volume": "143",
+     "journalIssueId": 2912000,
+     "dateOfPublication": "2020 Feb",
+     "monthOfPublication": 2,
+     "yearOfPublication": 2020,
+     "printPublicationDate": "2020-02-01",
+     "journal": {
+      "title": "Brain : a journal of neurology",
+      "medlineAbbreviation": "Brain",
+      "essn": "1460-2156",
+      "issn": "0006-8950",
+      "isoabbreviation": "Brain",
+      "nlmid": "0372537"
+     }
+    },
+    "pubYear": "2020",
+    "abstractText": "Ataxia, causing imbalance, dizziness and falls, is a leading cause of neurological disability. We have recently identified a biallelic intronic AAGGG repeat expansion in replication factor complex subunit 1 (RFC1) as the cause of cerebellar ataxia, neuropathy, vestibular areflexia syndrome (CANVAS) and a major cause of late onset ataxia. Here we describe the full spectrum of the disease phenotype in our first 100 genetically confirmed carriers of biallelic repeat expansions in RFC1 and identify the sensory neuropathy as a common feature in all cases to date. All patients were Caucasian and half were sporadic. Patients typically reported progressive unsteadiness starting in the sixth decade. A dry spasmodic cough was also frequently associated and often preceded by decades the onset of walking difficulty. Sensory symptoms, oscillopsia, dysautonomia and dysarthria were also variably associated. The disease seems to follow a pattern of spatial progression from the early involvement of sensory neurons, to the later appearance of vestibular and cerebellar dysfunction. Half of the patients needed walking aids after 10 years of disease duration and a quarter were wheelchair dependent after 15 years. Overall, two-thirds of cases had full CANVAS. Sensory neuropathy was the only manifestation in 15 patients. Sixteen patients additionally showed cerebellar involvement, and six showed vestibular involvement. The disease is very likely to be underdiagnosed. Repeat expansion in RFC1 should be considered in all cases of sensory ataxic neuropathy, particularly, but not only, if cerebellar dysfunction, vestibular involvement and cough coexist.",
+    "isOpenAccess": "Y",
+    "citedByCount": 172
+   },
+   {
+    "id": "34034831",
+    "source": "MED",
+    "pmid": "34034831",
+    "pmcid": "PMC8145836",
+    "doi": "10.1186/s40478-021-01201-x",
+    "title": "An update on the neurological short tandem repeat expansion disorders and the emergence of long-read sequencing diagnostics.",
+    "authorString": "Chintalaphani SR, Pineda SS, Deveson IW, Kumar KR.",
+    "journalInfo": {
+     "issue": "1",
+     "volume": "9",
+     "journalIssueId": 3164024,
+     "dateOfPublication": "2021 May",
+     "monthOfPublication": 5,
+     "yearOfPublication": 2021,
+     "printPublicationDate": "2021-05-01",
+     "journal": {
+      "title": "Acta neuropathologica communications",
+      "medlineAbbreviation": "Acta Neuropathol Commun",
+      "essn": "2051-5960",
+      "issn": "2051-5960",
+      "isoabbreviation": "Acta Neuropathol Commun",
+      "nlmid": "101610673"
+     }
+    },
+    "pubYear": "2021",
+    "abstractText": "<h4>Background</h4>Short tandem repeat (STR) expansion disorders are an important cause of human neurological disease. They have an established role in more than 40 different phenotypes including the myotonic dystrophies, Fragile X syndrome, Huntington's disease, the hereditary cerebellar ataxias, amyotrophic lateral sclerosis and frontotemporal dementia.<h4>Main body</h4>STR expansions are difficult to detect and may explain unsolved diseases, as highlighted by recent findings including: the discovery of a biallelic intronic 'AAGGG' repeat in RFC1 as the cause of cerebellar ataxia, neuropathy, and vestibular areflexia syndrome (CANVAS); and the finding of 'CGG' repeat expansions in NOTCH2NLC as the cause of neuronal intranuclear inclusion disease and a range of clinical phenotypes. However, established laboratory techniques for diagnosis of repeat expansions (repeat-primed PCR and Southern blot) are cumbersome, low-throughput and poorly suited to parallel analysis of multiple gene regions. While next generation sequencing (NGS) has been increasingly used, established short-read NGS platforms (e.g., Illumina) are unable to genotype large and/or complex repeat expansions. Long-read sequencing platforms recently developed by Oxford Nanopore Technology and Pacific Biosciences promise to overcome these limitations to deliver enhanced diagnosis of repeat expansion disorders in a rapid and cost-effective fashion.<h4>Conclusion</h4>We anticipate that long-read sequencing will rapidly transform the detection of short tandem\u00a0repeat expansion disorders for both clinical diagnosis and gene discovery.",
+    "isOpenAccess": "Y",
+    "citedByCount": 157
+   }
+  ]
+ }
+}
