@@ -9,12 +9,12 @@ Should only require docker/singularity and a couple of other things that should 
 
 ## Usage
 
-1. VCF to fasta
+1. VCF to fasta, with [scripts/vcf_to_fasta.sh](../../scripts/vcf_to_fasta.sh)
 ```
 for vcf in *.vcf
 do
-base=$(basename $file .vcf)
-bash vcf_to_fasta.sh $vcf ${base}.fa
+base=$(basename $vcf .vcf)
+bash scripts/vcf_to_fasta.sh $vcf ${base}.fa
 done
 ```
 
