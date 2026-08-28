@@ -1,4 +1,4 @@
-import { TEAM, fullName } from "@/lib/team";
+import { TEAM, fullName, initials, type Member } from "@/lib/team";
 
 /**
  * Who made this, and what it is.
@@ -10,6 +10,101 @@ import { TEAM, fullName } from "@/lib/team";
  * The roster is imported already sorted (see lib/team). Nothing on this page
  * reorders it: one list, one order, both surfaces.
  */
+
+/**
+ * Fixed-size portrait, photo or not.
+ *
+ * Everyone gets the same square whether they sent a headshot or not, because
+ * the alternative — an image on five rows and nothing on the rest — leaves the
+ * names in two different left margins and the list stops reading as one list.
+ * Without a photo the square is a quiet monogram, which is visibly a stand-in
+ * rather than a picture of somebody.
+ *
+ * The alt text is empty on purpose: the name is the very next thing in the row,
+ * so a described portrait would just say it twice.
+ */
+function Portrait({ member }: { member: Member }) {
+  const shape = "h-14 w-14 shrink-0 rounded-full ring-1 ring-hairline";
+
+  if (member.image) {
+    return (
+      <img
+        src={member.image}
+        alt=""
+        width={256}
+        height={256}
+        loading="lazy"
+        decoding="async"
+        className={`${shape} object-cover`}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden
+      className={`${shape} grid place-items-center bg-surface-raised text-[13px] font-medium tracking-wide text-ink-muted`}
+    >
+      {initials(member)}
+    </span>
+  );
+}
+
+function MemberLinks({ member }: { member: Member }) {
+  if (!member.links?.length) return null;
+
+  return (
+    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ink-muted">
+      {member.links.map((link) => {
+        // mailto: opens a compose window, not a page — sending it to a new tab
+        // leaves the reader with a blank one to close.
+        const external = link.href.startsWith("http");
+        return (
+          <li key={link.href}>
+            <a
+              href={link.href}
+              target={external ? "_blank" : undefined}
+              rel={external ? "noreferrer" : undefined}
+              className="underline decoration-dotted underline-offset-2 hover:text-ink"
+            >
+              {link.label}
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function TeamRow({ member }: { member: Member }) {
+  const detailed = Boolean(member.bio || member.links?.length);
+
+  return (
+    <li
+      // A name on its own is one line against a 3.5rem portrait, so it centres
+      // against it; a bio is a paragraph, and centring that would float the
+      // portrait somewhere in the middle of it. Same row, two natural baselines.
+      className={`flex gap-4 py-5 ${detailed ? "items-start" : "items-center"}`}
+    >
+      <Portrait member={member} />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <h3 className="text-[15px] font-medium text-ink">{fullName(member)}</h3>
+          {member.pronouns && (
+            <span className="text-[12px] text-ink-muted">{member.pronouns}</span>
+          )}
+        </div>
+        {member.bio && (
+          <p className="max-w-[36rem] text-[13.5px] leading-relaxed text-ink-secondary">
+            {member.bio}
+          </p>
+        )}
+        <MemberLinks member={member} />
+      </div>
+    </li>
+  );
+}
+
 export function AboutView() {
   return (
     <article className="mx-auto w-full max-w-[46rem] px-5 pb-20 pt-8 sm:px-6">
@@ -32,22 +127,16 @@ export function AboutView() {
         <div className="space-y-1">
           <h2 className="text-xl font-semibold tracking-tight text-ink">Team</h2>
           <p className="text-[13px] leading-relaxed text-ink-muted">
-            Alphabetical by surname.
+            Alphabetical by surname. Bios, links and photos are each person&rsquo;s
+            own, where they supplied them.
           </p>
         </div>
-        {/* Two columns once there is room, laid out with CSS columns rather than
-            a grid: a grid fills row-major, which would run the alphabet across
-            the page and leave each column jumping A, C, E — unreadable as the
-            sorted list it is. Columns fill top-to-bottom, so the left column is
-            the first half of the alphabet and the right one is the second. */}
-        <ul className="columns-1 gap-x-8 sm:columns-2">
+        {/* One name per row, hairline-separated: this is a list of people, and a
+            person is the unit — a two-column layout would put a paragraph-long
+            bio next to a bare name and imply they belong together. */}
+        <ul className="divide-y divide-hairline border-y border-hairline">
           {TEAM.map((member) => (
-            <li
-              key={fullName(member)}
-              className="break-inside-avoid border-b border-hairline py-1.5 text-[15px] text-ink-secondary"
-            >
-              {fullName(member)}
-            </li>
+            <TeamRow key={fullName(member)} member={member} />
           ))}
         </ul>
       </section>
