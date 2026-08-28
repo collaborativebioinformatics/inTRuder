@@ -1,0 +1,11 @@
+novelty_source	population	n_samples	known_n	known_pct	novel_locus_n	novel_locus_pct	novel_motif_n	novel_motif_pct	unscreened_n	unscreened_pct
+ucsc_novelty	AFR	20	34352	51.8	4531	6.8	27460	41.4	0	0.0
+ucsc_novelty	AMR	12	23494	52.1	3010	6.7	18611	41.3	0	0.0
+ucsc_novelty	EAS	14	23973	52.5	2998	6.6	18673	40.9	0	0.0
+ucsc_novelty	EUR	9	13128	52.2	1627	6.5	10395	41.3	0	0.0
+ucsc_novelty	SAS	12	20203	51.6	2666	6.8	16248	41.5	0	0.0
+trexplorer_novelty	AFR	20	49862	75.2	865	1.3	15616	23.5	0	0.0
+trexplorer_novelty	AMR	12	34031	75.4	614	1.4	10470	23.2	0	0.0
+trexplorer_novelty	EAS	14	34628	75.9	582	1.3	10434	22.9	0	0.0
+trexplorer_novelty	EUR	9	19083	75.9	323	1.3	5744	22.8	0	0.0
+trexplorer_novelty	SAS	12	29478	75.4	522	1.3	9117	23.3	0	0.0
