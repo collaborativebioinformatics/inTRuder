@@ -26,6 +26,41 @@ uv run novelty --platform ucsc,trexplorer,bed \
     annotate in.trf.tsv out.tsv
 ```
 
+## Reproducing the comparison below
+
+Every number in the table further down comes from these commands, run against
+the test set already in the repository. About 40 minutes end to end, almost all
+of it the two genome builds; 15 minutes if you only build `minscore=50`.
+
+```bash
+IN=data/sv_output/survivor_multi_sample_vcf/first_500_INS.trf.tsv
+
+# 1. build the catalogues        7 min and 28 min wall clock, 10 cores
+scripts/catalog/build_hg38_trf.sh trf50 50
+scripts/catalog/build_hg38_trf.sh trf10 10
+
+# 2. the shipped baseline, UCSC + TRExplorer alone
+uv run novelty --platform ucsc,trexplorer \
+    annotate "$IN" base.tsv --metrics base.metrics.tsv
+
+# 3. add the matched-parameter catalogue at each minscore
+uv run novelty --platform ucsc,trexplorer,bed \
+    --repeats bed=trf50/hg38.trf.minscore50.bed \
+    annotate "$IN" ms50.tsv --metrics ms50.metrics.tsv
+
+uv run novelty --platform ucsc,trexplorer,bed \
+    --repeats bed=trf10/hg38.trf.minscore10.bed \
+    annotate "$IN" ms10.tsv --metrics ms10.metrics.tsv
+```
+
+`--metrics` is what writes the per-locus counts; without it you get an annotated
+table but no summary. Read `loci_known`, `loci_novel_motif` and
+`loci_novel_locus` from each metrics file, or the per-locus block each run prints
+to stderr.
+
+Expected: baseline **48.4%** novel, `ms50` **47.1%**, `ms10` **42.5%**, over 221
+loci.
+
 About 12 minutes wall clock on 10 cores, plus ~6 GB of scratch. The catalogues
 are 72 MB (`minscore=50`) and 636 MB (`minscore=10`), so they are built rather
 than committed.
