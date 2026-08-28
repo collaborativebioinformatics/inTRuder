@@ -329,3 +329,11 @@ work/
 
 # Run reports configured in nextflow.config (timeline/report/trace/dag)
 reports/
+
+#### BUILT BINARIES
+
+# Third-party JARs. htsSidra is built from source at
+# https://github.com/idraktt/qgp_sv_paper/tree/main/htsSidra (see
+# pipelines/annotate_from_bed/HOW-TO.md); an 11 MB fat jar has no business in a
+# clone when `mvn package` reproduces it from a pinned upstream commit.
+*.jar
