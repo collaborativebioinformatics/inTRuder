@@ -298,6 +298,13 @@ data/dx/
 # pinned, checksummed download, so it is not.
 data/web/strchive/
 
+# Inputs and outputs of the plotting scripts in src/R/plotting/ - the numbered
+# tables (02_ novelty-filtered calls, 03_ catalogue membership, 04_ AnnotSV
+# annotation, 05_ the merge main.R writes). They are 165 MB+ of derived pipeline
+# output, so they are regenerated or downloaded rather than cloned - see
+# docs/analysis/PLOTTING.md for what each one is and where it comes from.
+data/plots/
+
 # Files handed to the web interface through the Upload button, plus the
 # manifests generated for them. Somebody else's callset is exactly the thing
 # that should not ride along in a clone; the directory itself is kept so the
