@@ -179,6 +179,7 @@ All paths are relative to the project. The same commands work on a machine.
 | `scripts/dx-env.sh` | Reads `.env`, authenticates the dx toolkit, and selects the project. |
 | `scripts/dx-instance.sh` | The script the four commands call. Accepts their options and more. |
 | `scripts/dx-shard-gpu.sh` | Runs one program across several GPU machines at once, each on a slice of the input, and stops all of them. |
+| `scripts/dx-worker-run.sh` | Runs on the machine. Detaches the program from the ssh session, uploads results as they appear, and stops the machine when it ends. |
 | `scripts/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
 | `scripts/dx-worker-setup-evo2.sh` | The `--setup` script for Evo 2 runs. The generic one cannot install evo2 or flash-attn. |
 | `scripts/dx-wrapper.sh` | Shared code of the four commands. |
@@ -203,6 +204,31 @@ run; it then harvests the job ids from the shard logs and stops any survivor.
 
 `--shell`, `--keep` and `--interactive` are refused, and `--time` must cover the
 **largest** shard, not the average.
+
+### Why the program is detached from the connection
+
+By default each shard runs through `scripts/dx-worker-run.sh` on the machine
+rather than directly. That exists because of a measured failure on 2026-08-27:
+a four-shard run billed **12.3 GPU-hours and produced nothing**. Throughput was
+fine — 6.3–8.1 s/window, as profiled. What happened is that all four programs
+died **within ten seconds of each other**, 44 minutes into 73 minutes of work.
+One dropped connection on the laptop, four dead runs.
+
+Three faults, each independently sufficient to lose the run, and each now closed:
+
+| Fault | Fix |
+|---|---|
+| The program ran in the foreground of `dx ssh`, so a closing session sent it SIGHUP | started under `setsid nohup` with stdin from `/dev/null` — it has no terminal to lose |
+| Results were uploaded only after the program returned, so an interruption at 99% lost everything | each file is uploaded to the project as it is written, and on failure too |
+| A finished or dead program did not stop its machine — it idled at `CPU: 1%` for two hours | the program terminates its own job as its last act, on success and on error alike |
+
+The launcher still mirrors the log, so an attached terminal sees progress as
+before — but that half is now expendable. If the connection drops, collect with
+`uv run dx download -r <destination>`. `--no-detach` restores the old behaviour.
+
+A shard that raises also **stops the queue**: the remaining shards are not
+launched, because a systematic fault would otherwise cost one GPU box each to
+rediscover.
 
 Three further options of `scripts/dx-instance.sh`:
 

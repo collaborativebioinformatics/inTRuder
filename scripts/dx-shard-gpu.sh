@@ -81,6 +81,7 @@ RUN="dx-shard-$(date +%Y%m%d-%H%M%S)"
 OUTPUT_DIR=""
 LOG_DIR=""
 POLL="${POLL:-60}"
+DETACH=1
 DRY=0
 PASS=()
 COMMAND=()
@@ -98,6 +99,8 @@ Options:
   -o, --output-dir DIR    results land in DIR/shard<k>/        [data/dx/<run>/]
       --run NAME          base run name; shard k is <NAME>-<k>
       --log-dir DIR       per-shard logs                    [<output-dir>/logs]
+      --no-detach         run the program in the ssh session, the old way. A
+                          dropped connection then kills the run; see below
   -n, --dry-run           print what each shard would do, launch nothing
   -h, --help              this
 
@@ -136,6 +139,7 @@ while [ $# -gt 0 ]; do
         --run)             RUN="${2:?}"; shift 2 ;;
         --log-dir)         LOG_DIR="${2:?}"; shift 2 ;;
         -n|--dry-run)      DRY=1; PASS+=("--dry-run"); shift ;;
+        --no-detach)       DETACH=0; shift ;;
         -h|--help)         usage; exit 0 ;;
         # dx-batch-gpu.sh refuses these anyway; saying so here names the reason
         # instead of surfacing it N times from N children at once.
@@ -172,6 +176,8 @@ done
 # dx-instance.sh checks these itself, but only after this script has already
 # launched every other shard. Failing here costs nothing; failing there costs
 # however many boxes were already up.
+USER_NAME=""
+PROJECT=""
 if [ "$DRY" = 0 ]; then
     [ -f "$HOME/.dnanexus_config/ssh_id" ] \
         || die "no SSH key pair. Run 'uv run dx ssh_config' once, then retry."
@@ -179,6 +185,26 @@ if [ "$DRY" = 0 ]; then
         warn "this checkout has uncommitted changes; the workers clone from"
         warn "  GitHub and will NOT have them. Commit and push first."
     fi
+fi
+
+# Authenticate BEFORE any box is launched. An expired token found by a child
+# costs a boot to learn; found here it costs nothing -- and the last run began
+# with exactly that, a token that had already timed out. It also yields the
+# username the upload destinations are built from.
+#
+# Run in dry mode too, so --dry-run prints the destination a real run would use
+# instead of a plausible-looking `:/Results//`. Only a real run dies on failure.
+# shellcheck source=scripts/dx-env.sh
+source "$REPO/scripts/dx-env.sh" >/dev/null 2>&1 || true
+PROJECT="${DX_PROJECT_CONTEXT_ID:-}"
+USER_NAME="$(uv run --group dx --no-sync dx whoami 2>/dev/null | tr -d '\r')"
+if [ "$DRY" = 0 ]; then
+    [ -n "$USER_NAME" ] || die "dx whoami failed -- is the token in .env current?
+       It expires on an inactivity timeout, and a stale one only fails at launch."
+    [ -n "$PROJECT" ] || die "dx-env.sh did not pin a project; see docs/scripts/DNANexus.md"
+else
+    : "${USER_NAME:=<you>}"
+    : "${PROJECT:=<project>}"
 fi
 
 mkdir -p "$LOG_DIR" || die "could not create $LOG_DIR"
@@ -215,6 +241,8 @@ log "logs         $LOG_DIR/shard<k>.log"
 # sweep is the backstop for a child that never got to run its trap.
 PIDS=()
 STATES=()
+STATUS=()      # exit code per shard once reaped; empty while it is still running
+FAILED=0
 
 # Every job this run created, as recorded in the shard logs by dx-instance.sh's
 # own "job          job-xxxx" line.
@@ -298,10 +326,24 @@ launch() {
     done
     [ "$subst" = 0 ] && cmd+=(--offset "$off" --limit "$lim")
 
+    # Run the program through the worker-side runner rather than directly. It
+    # detaches the work from the ssh session, uploads each result as it is
+    # written, and terminates the box the moment the work ends -- the three
+    # things whose absence turned one dropped connection into 12.3 wasted
+    # GPU-hours on 2026-08-27. dx-instance.sh still uploads and terminates too;
+    # both doing it is the point, since either side can die.
+    local dest=""
+    if [ "$DETACH" = 1 ]; then
+        dest="/Results/$USER_NAME/$RUN-$k/"
+        cmd=(scripts/dx-worker-run.sh --destination "$PROJECT:$dest" -- "${cmd[@]}")
+    fi
+
     log "shard $k: calls [$off, $((off + lim))) -> $out"
+    STATUS[$k]=""
     "$BACKEND" \
         --run "$RUN-$k" \
         --output-dir "$out" \
+        ${dest:+--destination "$dest"} \
         ${PASS+"${PASS[@]}"} \
         -- "${cmd[@]}" >"$logf" 2>&1 &
     PIDS+=("$!")
@@ -333,7 +375,31 @@ while [ "$running" = 1 ]; do
         i=$(( i + 1 ))
     done
 
-    # Backfill the queue as slots free up.
+    # Reap whatever has finished. Doing this here rather than only at the end is
+    # what lets a failure stop the queue: `wait` on a live pid would block.
+    i=0
+    while [ "$i" -lt "${#PIDS[@]}" ]; do
+        if [ -z "${STATUS[$i]:-}" ] && ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
+            wait "${PIDS[$i]}"; STATUS[$i]=$?
+            if [ "${STATUS[$i]}" = 0 ]; then
+                log "  shard $i: finished ok"
+            else
+                FAILED=$(( FAILED + 1 ))
+                warn "shard $i FAILED (rc=${STATUS[$i]}) -- see $LOG_DIR/shard$i.log"
+            fi
+        fi
+        i=$(( i + 1 ))
+    done
+
+    # Backfill the queue as slots free up -- but not into a known failure. If a
+    # shard has already raised, the next one almost certainly will too, and
+    # launching it spends a GPU box to learn the same thing twice.
+    if [ "$FAILED" -gt 0 ] && [ "$next" -lt "$SHARDS" ]; then
+        warn "not launching the remaining $(( SHARDS - next )) shard(s): shard(s)
+       already failed, and a systematic fault would cost a box each to rediscover.
+       Fix, then rerun those with --start/--calls."
+        next="$SHARDS"
+    fi
     if [ "$next" -lt "$SHARDS" ]; then
         live=0
         for pid in "${PIDS[@]}"; do
@@ -380,8 +446,7 @@ done
 failed=0
 i=0
 while [ "$i" -lt "${#PIDS[@]}" ]; do
-    wait "${PIDS[$i]}"
-    rc=$?
+    if [ -n "${STATUS[$i]:-}" ]; then rc="${STATUS[$i]}"; else wait "${PIDS[$i]}"; rc=$?; fi
     if [ "$rc" = 0 ]; then
         STATES+=("shard $i: ok")
     else
