@@ -10,15 +10,15 @@ Complete the [Setup](#setup) before your first run.
 
 ```bash
 # a terminal, for 30 minutes at most
-scripts/dx-instance-cpu.sh -t 30m
-scripts/dx-instance-gpu.sh -t 30m
+scripts/dnanexus/dx-instance-cpu.sh -t 30m
+scripts/dnanexus/dx-instance-gpu.sh -t 30m
 
 # run one program, then return
-scripts/dx-batch-cpu.sh -t 1h -- .venv/bin/python -m pytest -q
-scripts/dx-batch-gpu.sh -t 30m -- nvidia-smi
+scripts/dnanexus/dx-batch-cpu.sh -t 1h -- .venv/bin/python -m pytest -q
+scripts/dnanexus/dx-batch-gpu.sh -t 30m -- nvidia-smi
 
 # with an input file, and a directory for the results
-scripts/dx-batch-cpu.sh -t 4h -o data/dx/screen1 \
+scripts/dnanexus/dx-batch-cpu.sh -t 4h -o data/dx/screen1 \
     -f /survivor/HPRC_SV.survivor.vcf -- \
     novelty screen /home/dnanexus/HPRC_SV.survivor.vcf '$OUT/hits.tsv'
 ```
@@ -69,7 +69,7 @@ All four scripts accept these options. Use `--help` for the rest.
 5. Register your SSH key. Do this once per computer.
 
    ```bash
-   source scripts/dx-env.sh
+   source scripts/dnanexus/dx-env.sh
    uv run dx ssh_config
    ```
 
@@ -86,7 +86,7 @@ Use `uv run dx`, not `dx`. `.venv/bin` is not on `PATH`, so a bare `dx` reports
 ## Running
 
 The scripts read `.env` and authenticate themselves. You do not source
-`scripts/dx-env.sh` first.
+`scripts/dnanexus/dx-env.sh` first.
 
 The scripts terminate the machine when the program finishes, when you exit the
 terminal, when the run fails, and when you press Ctrl-C.
@@ -109,8 +109,8 @@ They are also kept in the project at `/Results/<your username>/<run>/`.
 ## Instance types
 
 ```bash
-scripts/dx-instance.sh --list-instances
-scripts/dx-instance.sh --list-instances gpu
+scripts/dnanexus/dx-instance.sh --list-instances
+scripts/dnanexus/dx-instance.sh --list-instances gpu
 ```
 
 | Instance type | GPU | Cores | RAM | Disk | Use for |
@@ -156,14 +156,14 @@ The script terminates the machine itself, and it copies your results first.
 Authenticate the shell before you run `dx` commands yourself:
 
 ```bash
-source scripts/dx-env.sh
+source scripts/dnanexus/dx-env.sh
 
 uv run dx ls /survivor/
 uv run dx download -f /survivor/HPRC_SV.survivor.vcf
 uv run dx upload results.tsv --destination /Results/<yours>/
 ```
 
-Source `scripts/dx-env.sh`. Do not execute it. It only sets variables.
+Source `scripts/dnanexus/dx-env.sh`. Do not execute it. It only sets variables.
 
 All paths are relative to the project. The same commands work on a machine.
 
@@ -171,17 +171,17 @@ All paths are relative to the project. The same commands work on a machine.
 
 | Script | Function |
 |---|---|
-| `scripts/dx-env.sh` | Reads `.env`, authenticates the dx toolkit, and selects the project. |
-| `scripts/dx-instance.sh` | The script the four commands call. Accepts their options and more. |
-| `scripts/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
-| `scripts/dx-wrapper.sh` | Shared code of the four commands. |
+| `scripts/dnanexus/dx-env.sh` | Reads `.env`, authenticates the dx toolkit, and selects the project. |
+| `scripts/dnanexus/dx-instance.sh` | The script the four commands call. Accepts their options and more. |
+| `scripts/dnanexus/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
+| `scripts/dnanexus/dx-wrapper.sh` | Shared code of the four commands. |
 
-Three further options of `scripts/dx-instance.sh`:
+Three further options of `scripts/dnanexus/dx-instance.sh`:
 
 ```bash
-scripts/dx-instance.sh -t 2h --shell -- pytest -q
-scripts/dx-instance.sh --job job-xxxx
-scripts/dx-instance.sh --gpu --no-setup -t 30m -- nvidia-smi
+scripts/dnanexus/dx-instance.sh -t 2h --shell -- pytest -q
+scripts/dnanexus/dx-instance.sh --job job-xxxx
+scripts/dnanexus/dx-instance.sh --gpu --no-setup -t 30m -- nvidia-smi
 ```
 
 - `--shell`: run the program, then open a terminal on the same machine.

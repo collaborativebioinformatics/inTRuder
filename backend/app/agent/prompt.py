@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from langchain_core.messages import SystemMessage
 
+from app import uploads
 from app.util.registry import registry
 
 SYSTEM_PROMPT = """\
@@ -101,7 +102,33 @@ THREE THINGS TO GET RIGHT ABOUT THIS DOMAIN:
 Available data:
 
 {schema}
-"""
+{uploads}"""
+
+
+def _uploads_prompt() -> str:
+    """Files someone has handed the interface, named so the agent knows they exist.
+
+    Without this, a user who has just dropped a VCF into the browser has to
+    explain to the assistant that they did — which is precisely the moment the
+    interface should already know.
+    """
+    records = uploads.listing()
+    if not records:
+        return ""
+
+    lines = ["Files uploaded to this interface (see the `list_uploads` tool):"]
+    for record in records:
+        detail = []
+        if record.dataset:
+            detail.append(f'queryable as "{record.dataset}"')
+        elif record.kind == uploads.KIND_VARIANTS:
+            n_samples = record.inspect.get("n_samples")
+            detail.append(f"{n_samples} samples" if n_samples else "variants")
+            detail.append("NOT a table yet")
+        else:
+            detail.append("not registered as a table yet")
+        lines.append(f"  - {record.filename} (id {record.id}) — {', '.join(detail)}")
+    return "\n" + "\n".join(lines) + "\n"
 
 
 def system_text() -> str:
@@ -110,7 +137,7 @@ def system_text() -> str:
     Both providers render it here: the LangGraph path wraps it in a
     `SystemMessage`, the Claude Code path passes the string to the SDK.
     """
-    return SYSTEM_PROMPT.format(schema=registry.schema_prompt())
+    return SYSTEM_PROMPT.format(schema=registry.schema_prompt(), uploads=_uploads_prompt())
 
 
 def system_message() -> SystemMessage:

@@ -48,6 +48,24 @@ class Settings:
         )
     )
 
+    # Uploads. The directory is deliberately derived from data_dir rather than
+    # configured separately: under Docker that is the /data bind mount, and on a
+    # bare `just dev` it is the repository's data/ — so the same code path puts
+    # the file somewhere the registry can already reach in both cases, and
+    # nothing in the app has to ask which one it is running under.
+    uploads_enabled: bool = field(
+        default_factory=lambda: os.getenv("UPLOADS_ENABLED", "true").lower()
+        not in {"0", "false", "no"}
+    )
+    max_upload_mb: int = field(default_factory=lambda: int(os.getenv("MAX_UPLOAD_MB", "4096")))
+    # Extra directories that "register a file already on this machine" may point
+    # at. data_dir is always allowed. Anything outside these roots is refused:
+    # the endpoint is unauthenticated, so an unbounded path would make it an
+    # arbitrary-file-read for anyone who can reach the port.
+    upload_link_roots: list[str] = field(
+        default_factory=lambda: _env_list("UPLOAD_LINK_ROOTS", [])
+    )
+
     # Model selection. See app/agent/llm.py for the supported providers.
     llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "anthropic").lower())
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", ""))
@@ -99,6 +117,21 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: _env_list("CORS_ORIGINS", ["http://localhost:3000"])
     )
+
+    @property
+    def uploads_dir(self) -> Path:
+        return self.data_dir / "uploads"
+
+    @property
+    def link_roots(self) -> list[Path]:
+        """Directories a linked (not copied) upload may live under."""
+        roots = [self.data_dir]
+        roots.extend(Path(r).expanduser().resolve() for r in self.upload_link_roots)
+        return roots
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def agent_enabled(self) -> bool:
