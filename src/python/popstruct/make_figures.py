@@ -321,19 +321,29 @@ def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     d, cohort = load()
     dfull = load_full()
-    # Figures 1, 3 and 4 are retired. They were computed on the unfiltered call
-    # set and did not survive the quality filters the pipeline actually applies:
-    # singleton enrichment reversed (OR 1.60 -> 0.90), the population-private
-    # gradient collapsed (p 2.8e-228 -> 0.032) and the novelty/frequency
-    # relationship went flat (rho -0.090 -> +0.014). The apparent signal came
-    # from low-confidence calls, which concentrate among singletons. The
-    # functions are kept for reference; see docs/analysis/POPULATION_STRUCTURE.md.
     for name, fig in [("fig1_burden_by_ancestry", fig5_burden_by_ancestry()),
                       ("fig2_rarity_gradient", fig6_rarity_gradient())]:
         for ext in ("png", "pdf"):
             fig.savefig(OUTDIR / f"{name}.{ext}", dpi=200, bbox_inches="tight")
         plt.close(fig)
         print(f"wrote {OUTDIR}/{name}.png / .pdf")
+
+    # Withdrawn figures, kept for reference. These were computed on the
+    # unfiltered call set and do not survive the quality filters the pipeline
+    # applies: singleton enrichment reversed (OR 1.60 -> 0.90), the
+    # population-private gradient collapsed (p 2.8e-228 -> 0.032) and the
+    # novelty/frequency relationship went flat (rho -0.090 -> +0.014). The
+    # apparent signal came from low-confidence calls, which concentrate among
+    # singletons. See docs/analysis/POPULATION_STRUCTURE.md result 3.
+    archive = OUTDIR / "withdrawn"
+    archive.mkdir(parents=True, exist_ok=True)
+    for name, fig in [("withdrawn_sharing_spectrum", fig1_sharing(dfull)),
+                      ("withdrawn_private_loci", fig3_private(dfull)),
+                      ("withdrawn_fixed_frequency", fig4_fixed_frequency(dfull))]:
+        for ext in ("png", "pdf"):
+            fig.savefig(archive / f"{name}.{ext}", dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        print(f"wrote {archive}/{name}.png / .pdf  (withdrawn, unfiltered)")
 
 
 if __name__ == "__main__":

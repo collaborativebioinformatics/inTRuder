@@ -338,6 +338,10 @@ results/*
 !results/figures/
 results/figures/*
 !results/figures/*.pdf
+!results/figures/withdrawn/
+results/figures/withdrawn/*
+!results/figures/withdrawn/*.pdf
+!results/figures/withdrawn/README.md
 !results/locus_carriers.tsv
 !results/locus_carriers_full.tsv
 !results/locus_carriers_filtered.tsv
