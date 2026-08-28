@@ -12,7 +12,7 @@ export CONDA_PLUGINS_AUTO_ACCEPT_TOS="yes"
 ## Sniffles + AWSCLI
 conda create -n sniffles
 conda activate sniffles
-conda install -y bioconda::sniffles
+conda install -y bioconda::sniffles=2.8
 conda install -y conda-forge::awscli
 
 
