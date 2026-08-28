@@ -36,6 +36,7 @@ const SUGGESTIONS = [
   "Show me novel VNTRs in disease genes",
   "Which motif class has the highest novel fraction, and why?",
   "What's in the merged SV VCF, and where does it keep the insertion?",
+  "Find genes related to this patient description: patient presents with a curved spine noted on physical exam.",
 ];
 
 function TextPart({ text }: { text: string }) {
