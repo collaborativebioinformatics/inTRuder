@@ -64,10 +64,29 @@ variable.
 
 ## Where to get them without regenerating
 
-The two `05_` merges are on the shared Drive, linked from the README:
-[HG002 trio](https://drive.google.com/file/d/1ppH3vSswUobjRUMFrTC-4MPwbmW_63L5/view?usp=drive_link),
-[HPRC samples](https://drive.google.com/file/d/10Byv-tfCglKLdArRO9sW8dqmd-rwrh0W/view?usp=drive_link).
-Drop them in `data/plots/` and the plotting scripts can read them directly.
+All of it is in the shared Drive folder
+[`Data_final`](https://drive.google.com/drive/folders/1rJwDrMn_R8tMairIDpdd-mwgHmSVtf2B) —
+the five inputs above plus the two `05_` merges `main.R` writes from them, 750 MiB
+in total. [`scripts/fetch_plot_data.sh`](../../scripts/fetch_plot_data.sh) pulls them
+into `data/plots/`:
+
+```bash
+just plot-data --list        # what is missing, and how much it weighs
+just plot-data               # everything not already there
+just plot-data --only 02_    # just the novelty-filtered pair (58 MiB)
+```
+
+The folder is link-shared, so this needs no Drive credential. Each file is checked
+against a pinned byte count on arrival, because a file that has *stopped* being
+public comes back as an HTML sign-in page with a 200 status rather than an error —
+a size check is what tells those apart. Downloads resume, which matters for
+`05_hprc_multisample.tsv` at 559 MiB.
+
+`02_hprc_multisample.trf.noveltyFiltered.tsv` is byte-identical to the copy the web
+layer reads as `data/web/hprc_multisample.trf.noveltyFiltered.tsv` (DNAnexus
+`file-JB8Xg900pzXPjXvpYXg29fYB`), so the script hard-links it there when that file
+is absent — which is a route to the real HPRC callset for anyone without a
+`DX_API_TOKEN`. Pass `--no-web-link` to skip that.
 
 ## R environment
 
