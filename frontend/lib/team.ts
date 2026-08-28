@@ -71,7 +71,17 @@ const ROSTER: Member[] = [
   { given: "Amit R", family: "Indap" },
   { given: "Garth", family: "Kong" },
   { given: "Sriram", family: "Sudarsanam" },
-  { given: "Andrew", family: "Scouten" },
+  {
+    given: "Andrew",
+    family: "Scouten",
+    image: "/team/scouten.jpg",
+    bio: "Andrew Scouten is an M.S. Computer Science candidate at Texas State University, working on applied machine learning and computer vision. His research runs from TxDOT-funded pavement crack detection with CNNs and transformers to corrosion segmentation on metal samples flown aboard the International Space Station — in both cases as much the data pipeline as the model. At this hackathon he wrote the novelty module that decides which candidates count as new, built the inTRuder web interface and its assistant backend, and ran the repository as an admin, including the layout and CI the pipeline is packaged under.",
+    links: [
+      { label: "Website", href: "https://andrewscouten.com/" },
+      { label: "LinkedIn", href: "https://www.linkedin.com/in/andrewscouten/" },
+      { label: "Email", href: "mailto:andrewscouten@gmail.com" },
+    ],
+  },
   { given: "Jordi", family: "Valls" },
   { given: "Ammara", family: "Saleem" },
   {
@@ -106,7 +116,16 @@ const ROSTER: Member[] = [
     ],
   },
   { given: "Divya", family: "Kalra" },
-  { given: "Chantera", family: "Lazard" },
+  {
+    given: "Chantera",
+    family: "Lazard",
+    bio: "Chantera Lazard worked on the assistant's LangGraph agent and the tools it calls, among them phenotype resolution: free text in, validated HPO terms and the genes behind them out. She also built the Nextflow pipeline that runs inTRuder end to end — the fan-out/fan-in workflow from repeat finding through novelty screening to validation, the container image its steps run in, and the DNAnexus applet build — and documented the UCSC hg38 Simple Repeats track the novelty screen is measured against.",
+    links: [
+      { label: "LinkedIn", href: "https://www.linkedin.com/in/chantera-lazard/" },
+      { label: "GitHub", href: "https://github.com/tera90223" },
+      { label: "Email", href: "mailto:lazard.c@northeastern.com" },
+    ],
+  },
   { given: "Taimoor", family: "Khan" },
   { given: "Medhat", family: "Mahmoud" },
   {
