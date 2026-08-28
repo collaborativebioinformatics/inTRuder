@@ -81,6 +81,9 @@ novelTRs/
 ├── src/
 │   ├── python/        # core TR-detection + novelty annotation pipeline (uv-managed)
 │   └── R/              # R analysis code (renv-managed)
+├── scripts/
+│   ├── dnanexus/      # rent a DNAnexus box, run something on it, terminate it
+│   └── merge-SV/       # Sniffles single- and multi-sample SV merging runs
 ├── notebooks/          # Jupyter and R Markdown / Quarto notebooks
 ├── frontend/            # Next.js web interface (proof of concept)
 ├── backend/              # FastAPI + LangGraph service backing the web interface
@@ -115,7 +118,7 @@ novelTRs/
 | Document | Contents |
 |---|---|
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
-| [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
+| [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dnanexus/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
 

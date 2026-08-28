@@ -3,8 +3,8 @@
 # machine up, runs what you asked for, saves the results, and terminates the
 # box -- no shell, nobody attached, nothing left billing.
 #
-#     scripts/dx-batch-gpu.sh -- nvidia-smi
-#     scripts/dx-batch-gpu.sh -t 6h -o data/dx/evo2 -- \
+#     scripts/dnanexus/dx-batch-gpu.sh -- nvidia-smi
+#     scripts/dnanexus/dx-batch-gpu.sh -t 6h -o data/dx/evo2 -- \
 #         .venv/bin/python src/python/evo2_extract.py --out '$OUT'
 #
 # Everything after `--` is the program. It runs in the checkout with the venv
@@ -26,8 +26,8 @@
 #
 # A command is required, and --shell and --keep are refused: both would leave
 # you attached to, or paying for, a box this script promises to shut down. For
-# a terminal, use scripts/dx-instance-gpu.sh.
+# a terminal, use scripts/dnanexus/dx-instance-gpu.sh.
 DX_WRAP_MODE="batch"
 DX_WRAP_ARCH="gpu"
-# shellcheck source=scripts/dx-wrapper.sh
+# shellcheck source=scripts/dnanexus/dx-wrapper.sh
 . "$(dirname "${BASH_SOURCE[0]:-$0}")/dx-wrapper.sh"

@@ -3,8 +3,8 @@
 # machine up, runs what you asked for, saves the results, and terminates the
 # box -- no shell, nobody attached, nothing left billing.
 #
-#     scripts/dx-batch-cpu.sh -- .venv/bin/python -m pytest -q
-#     scripts/dx-batch-cpu.sh -t 4h -o data/dx/screen1 \
+#     scripts/dnanexus/dx-batch-cpu.sh -- .venv/bin/python -m pytest -q
+#     scripts/dnanexus/dx-batch-cpu.sh -t 4h -o data/dx/screen1 \
 #         -f /survivor/HPRC_SV.survivor.vcf -- \
 #         novelty screen /home/dnanexus/HPRC_SV.survivor.vcf '$OUT/hits.tsv'
 #
@@ -22,8 +22,8 @@
 #
 # A command is required, and --shell and --keep are refused: both would leave
 # you attached to, or paying for, a box this script promises to shut down. For
-# a terminal, use scripts/dx-instance-cpu.sh.
+# a terminal, use scripts/dnanexus/dx-instance-cpu.sh.
 DX_WRAP_MODE="batch"
 DX_WRAP_ARCH="cpu"
-# shellcheck source=scripts/dx-wrapper.sh
+# shellcheck source=scripts/dnanexus/dx-wrapper.sh
 . "$(dirname "${BASH_SOURCE[0]:-$0}")/dx-wrapper.sh"
