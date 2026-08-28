@@ -304,3 +304,6 @@ data/web/strchive/
 data/uploads/*
 !data/uploads/.gitkeep
 data/web/upload-*.yaml
+
+# Generated figure rasters (PDFs are tracked)
+results/figures/*.png
