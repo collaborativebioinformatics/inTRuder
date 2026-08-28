@@ -13,9 +13,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent import sse, stream_agent
+from app.agent.llm import describe_provider
 from app.config import settings
-from app.llm import describe_provider
-from app.registry import registry
+from app.util.registry import registry
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
