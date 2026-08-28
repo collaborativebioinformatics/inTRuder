@@ -114,8 +114,10 @@ a missing CLI says where to get it, and a signed-out CLI says to run `claude`.
 | `app/tools/data.py` | `list_datasets`, `describe_dataset`, `run_sql` |
 | `app/tools/view.py` | `set_view` — moves the frontend |
 | `app/tools/vcf.py` | `describe_vcf` — reads a file, not a table |
+| `app/tools/literature.py` | `search_literature` — reads Europe PMC, not us |
 | `app/util/registry.py` | Manifests → DuckDB tables; the guarded SQL path |
 | `app/util/vcf/` | The VCF reader behind `describe_vcf` |
+| `app/util/europepmc.py` | Europe PMC client: the query ladder, scoring, rate limiting |
 | `scripts/make_demo_data.py` | Generates the synthetic demo dataset |
 | `scripts/fetch_strchive.py` | Downloads + checksums the STRchive disease catalog |
 
@@ -154,7 +156,7 @@ that silently matches everything reads as a result, which is worse than an error
 
 ## The agent
 
-A prebuilt LangGraph ReAct graph over five tools:
+A prebuilt LangGraph ReAct graph over six tools:
 
 - `list_datasets` — what data exists
 - `describe_dataset` — per-column docs from the manifest
@@ -165,6 +167,8 @@ A prebuilt LangGraph ReAct graph over five tools:
   on the disease-locus view.
 - `describe_vcf` — **reads a file rather than a table**, for the one question the
   registry cannot answer: what is this VCF?
+- `search_literature` — **reads a third-party index rather than our own data**,
+  and is the only source of citations.
 
 The count of *data* tools does not grow with the number of datasets. Contributors
 add a manifest; the agent surface is unchanged. See `data/web/README.md`.
@@ -208,6 +212,93 @@ the hole in that wall. A path that does not resolve comes back with the list of
 ones that do, the way `describe_dataset` answers an unknown name with the known
 ones. BCF is refused with the `bcftools` command that converts it.
 
+### `search_literature`
+
+Europe PMC, no API key. It is the only tool whose data nobody here curated, and
+its failure mode is not an empty answer but a confident one built on the wrong
+search: a broken query comes back as a large, plausible, relevance-sorted result
+set rather than an error.
+
+Two ways that happens, both measured against the live API and pinned in
+`tests/test_literature.py`:
+
+**Malformed.** `GENE:` does not survive a boolean `OR`, in either direction:
+
+| Query | Hits | What actually happened |
+|---|---|---|
+| `GENE:"RFC1" OR GENE:"XYLT1"` | 1,260 | `= GENE:"XYLT1"` alone — only the last disjunct survives |
+| `GENE:"RFC1" OR TITLE_ABS:"RFC1"` | 5,634,780 | the GENE clause becomes *any gene-annotated record* |
+| `TITLE_ABS:"RFC1" OR GENE:"RFC1"` | 2,659 | `= ` bare `RFC1` — collapses to unfielded free text |
+| `FOOBAR:"RFC1"` | 0 | unknown field, no error — a typo reads as "no papers exist" |
+
+So `_or_group` takes **one field for the whole group**, which makes a cross-field
+OR unrepresentable rather than merely discouraged, and field names come from a
+frozen allowlist. A regression test parses every composed query and fails if any
+`OR` group mentions two fields.
+
+**Well-formed but wrong**, which is the harder one. `RFC1 AND (tandem repeat OR
+…)` is a perfectly good query returning 227 papers, of which 30% mention RFC1 in
+the title or abstract — the bare term matches full text, so citation-sorting
+floats papers that mention the gene once in passing. On an ambiguous symbol it is
+worse: `AR AND (…)` returns 3,712 whose top hit is about JAK2. Neither hit count
+reveals it.
+
+So the tool does not compose one query. It composes several framings, runs them
+concurrently, and scores each **against the records it returned** — what fraction
+carry the terms the caller said must be there:
+
+```
+AR / CAG / SBMA                       must_mention=["androgen"]
+  WIN strict        hits=    50  spec=4  cov= 90%  pass
+      gene+motif    hits=   259  spec=3  cov= 60%  pass
+      gene+disease  hits=    64  spec=3  cov= 90%  pass
+      gene+context  hits=  3809  spec=2  cov= 10%  off_target
+      gene_fielded  hits=   420  spec=2  cov= 80%  pass
+      gene          hits=942435  spec=1  cov=  0%  degenerate
+```
+
+The most specific framing that passes wins; fewest hits breaks a tie. Specificity
+rather than size leads, because "smallest result set" alone would reward a query
+that is precise about the wrong thing — and more clauses means fewer hits anyway.
+The **whole scoreboard** ships with the answer, so the transcript shows what was
+tried and why one was chosen, the same way `describe_vcf` reports both readings of
+a record instead of asserting one.
+
+`must_mention` is the model's domain knowledge entering as a **falsifiable test**
+rather than a claim — "if these papers do not mention androgen, my query went
+wrong." A self-reported confidence score would not be checkable; this is. It
+defaults to the gene symbol, and coverage reports as `null` rather than as a pass
+when there is nothing to check against.
+
+Finding nothing returns `results: []` with an explicit instruction not to fill in
+from memory. For a project about repeats nobody has catalogued, that is a real
+finding.
+
+#### Rate limiting
+
+Europe PMC publishes **no quota**. The "10 requests/second" figure in circulation
+comes from a forum poster; asked directly, Europe PMC confirmed only that *"the
+API limit is applied per IP address"* and gave no number ([epmc-webservices, Dec
+2024](https://groups.google.com/a/ebi.ac.uk/g/epmc-webservices/c/cZLnV1JhCj8)).
+Responses carry no `RateLimit-*` or `Retry-After` headers, so there is nothing to
+read a budget from at runtime either.
+
+Two consequences, and they are the whole design:
+
+1. **Per IP means per process, not per session.** Every conversation this backend
+   serves shares one address, so the limiter is a module-level singleton and
+   concurrent turns queue behind each other rather than each getting an allowance.
+2. **With no verifiable ceiling, stay far under the unofficial one** and handle
+   rejection properly, rather than pacing up to a number nobody has confirmed.
+   The default 5 rps is half the folklore figure and ~30x what a turn needs: one
+   question is about six requests, cached.
+
+Token bucket at `EUROPEPMC_RATE_LIMIT_RPS`, a separate concurrency semaphore, up
+to 3 attempts with `Retry-After` honoured and jittered exponential backoff
+otherwise, and a TTL cache keyed on the exact query so overlapping ladders share
+rungs. The one policy Europe PMC *does* state — no automated bulk downloading —
+is respected by never paginating: one page, capped at `LITERATURE_MAX_RESULTS`.
+
 ### SQL sandbox
 
 The model writes the SQL, so the query path is narrow by construction:
@@ -225,8 +316,13 @@ switch to views for multi-GB inputs and re-do step 3 accordingly.
 
 ```bash
 uv run ruff check app scripts tests
-uv run pytest
+uv run pytest                 # offline; the network canaries are deselected
+uv run pytest -m network      # the two that call Europe PMC
 ```
+
+The `network` canaries assert that the Europe PMC quirks `app/util/europepmc.py`
+works around are *still* quirks. If upstream fixes its parser they fail, which is
+how we find out the workaround is obsolete instead of leaving it fossilized.
 
 `tests/test_vcf.py` runs against the committed callsets under
 `data/sv_output` — one single-sample Sniffles VCF and one SURVIVOR merge of 69 of

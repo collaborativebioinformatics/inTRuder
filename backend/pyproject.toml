@@ -14,6 +14,7 @@ dependencies = [
     "langgraph>=0.2.60",
     "langchain-anthropic>=0.3",
     "python-dotenv>=1.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -41,6 +42,11 @@ known-first-party = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The literature canaries call Europe PMC. They are the only tests that need a
+# network, and they exist to tell us when the upstream quirks this module works
+# around have been fixed — so they are opt-in: `uv run pytest -m network`.
+markers = ["network: hits a third-party API; deselected by default"]
+addopts = "-m 'not network'"
 # `app` is a top-level package in this directory, not an installed one.
 pythonpath = ["."]
 
