@@ -70,13 +70,8 @@ jobs:
         run: uv run pytest -q
 
   shell:
-    name: Shell scripts (advisory)
+    name: Shell scripts
     runs-on: ubuntu-latest
-    # Advisory on purpose: the scripts under scripts/ predate any linting and
-    # nobody has confirmed they are clean, so making this blocking on day one
-    # would wedge every open PR. Once someone has run it green, drop this line
-    # and it starts enforcing.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

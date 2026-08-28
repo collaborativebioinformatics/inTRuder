@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Download datasets
 aws s3 cp --no-sign-request s3://1000g-ont/working_dir/tr_benchmarking/giab_epi2me/crams/HG004.30x.haplotagged.cram data/
 aws s3 cp --no-sign-request s3://1000g-ont/working_dir/tr_benchmarking/giab_epi2me/crams/HG004.30x.haplotagged.cram.crai data/
