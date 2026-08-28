@@ -12,9 +12,11 @@ agent surface is unchanged. See `data/web/README.md`.
     | `view`       | set_view — moves the frontend                    |
     | `vcf`        | describe_vcf — reads a file, not a table         |
     | `literature` | search_literature — reads Europe PMC, not us     |
+    | `hpo`        | resolve_phenotype — free text to validated genes |
 """
 
 from app.tools.data import describe_dataset, list_datasets, list_uploads, run_sql
+from app.tools.hpo import resolve_phenotype
 from app.tools.literature import search_literature
 from app.tools.vcf import describe_vcf
 from app.tools.view import set_view
@@ -27,6 +29,7 @@ ALL_TOOLS = [
     set_view,
     describe_vcf,
     search_literature,
+    resolve_phenotype,
 ]
 
 __all__ = [
@@ -35,6 +38,7 @@ __all__ = [
     "describe_vcf",
     "list_datasets",
     "list_uploads",
+    "resolve_phenotype",
     "run_sql",
     "search_literature",
     "set_view",

@@ -33,6 +33,7 @@ const LABELS: Record<keyof ViewFilters, (value: unknown) => string> = {
   motif_class: (v) => `${v}`,
   gene: (v) => `${v}`,
   gene_query: (v) => `gene contains “${v}”`,
+  genes: (v) => `gene in ${(v as string[]).join(", ")}`,
   sample: (v) => `${v}`,
   strchive_status: (v) => STRCHIVE_STATUS_LABELS[v as StrchiveStatus] ?? `${v}`,
   strchive_novel_only: () => "Pathogenic motif not in hg38",

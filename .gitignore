@@ -298,6 +298,12 @@ data/dx/
 # pinned, checksummed download, so it is not.
 data/web/strchive/
 
+# HPO gene-phenotype release (fetch_hpo.py) and the term embedding index
+# (build_hpo_index.py, 59 MB) behind resolve_phenotype. Same reasoning as
+# data/web/strchive/ above - the manifest is committed, the pinned download and
+# the generated index are not.
+data/web/hpo/
+
 # Inputs and outputs of the plotting scripts in src/R/plotting/ - the numbered
 # tables (02_ novelty-filtered calls, 03_ catalogue membership, 04_ AnnotSV
 # annotation, 05_ the merge main.R writes). They are 165 MB+ of derived pipeline
