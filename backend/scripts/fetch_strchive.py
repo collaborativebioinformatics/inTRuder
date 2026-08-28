@@ -14,7 +14,7 @@ and `string_split` both handle, and the ranges stay numeric so they can be
 compared against an estimated copy number.
 
 The version and checksum below are deliberately the same pin as
-`src/python/strchive/catalog.py`, so the web layer and the pipeline step cannot
+`src/python/intruder/pipeline/strchive/catalog.py`, so the web layer and the pipeline step cannot
 silently disagree about which release "STRchive says" refers to.
 """
 
@@ -81,7 +81,7 @@ def download(version: str = STRCHIVE_VERSION) -> list[dict]:
     """Download the catalog and verify it against the pinned checksum.
 
     Falls back to the system `curl` where Python has no usable CA bundle — the
-    same failure mode `src/python/strchive/catalog.py` works around, and for the
+    same failure mode `src/python/intruder/pipeline/strchive/catalog.py` works around, and for the
     same reason (python.org builds on macOS, some HPC module stacks).
     """
     url = _URL.format(version=version)
