@@ -346,3 +346,6 @@ reports/
 # pipelines/annotate_from_bed/HOW-TO.md); an 11 MB fat jar has no business in a
 # clone when `mvn package` reproduces it from a pinned upstream commit.
 *.jar
+
+# Generated figure rasters (PDFs are tracked)
+results/figures/*.png
