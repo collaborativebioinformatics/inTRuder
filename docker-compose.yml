@@ -16,9 +16,18 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
+      args:
+        # On Linux the bind mount below keeps its host ownership, so the service
+        # has to run as somebody who can write it — the Upload button does.
+        # Docker Desktop virtualizes this and either value works.
+        UID: ${UID:-10001}
+        GID: ${GID:-10001}
     image: noveltrs-backend:local
     ports:
-      - "8000:8000"
+      # Loopback only. This API accepts file uploads and writes them into the
+      # mount below, with no authentication in front of it; published on all
+      # interfaces it would let anyone on your network put files in ./data.
+      - "127.0.0.1:8000:8000"
     environment:
       # Forced, because a host path from backend/.env would be meaningless in
       # here. Everything the backend reads lives under the /data mount below.
@@ -37,6 +46,13 @@ services:
       - MAX_SQL_ROWS
       - SQL_TIMEOUT_S
       - CORS_ORIGINS
+      # Uploads. UPLOADS_ENABLED=false turns the endpoint off entirely;
+      # UPLOAD_LINK_ROOTS adds directories that "register a file in place" may
+      # read, which only means anything for paths also mounted into the
+      # container.
+      - UPLOADS_ENABLED
+      - MAX_UPLOAD_MB
+      - UPLOAD_LINK_ROOTS
     env_file:
       # Optional: a fresh clone has no backend/.env and still comes up, with the
       # data API working and chat reporting a configuration error.
@@ -53,6 +69,10 @@ services:
       # Read-write so the dataset scripts can run in the container too:
       #   docker compose run --rm backend python scripts/make_demo_data.py
       #   docker compose run --rm backend python scripts/fetch_strchive.py
+      #
+      # This is also where the Upload button puts files: /data/uploads, which is
+      # ./data/uploads on your machine. Nothing about that path is Docker-
+      # specific, which is why uploading works identically with `just dev`.
       - ./data:/data
       # Data you keep outside the repository. Uncomment, point at it, and have
       # the manifest's `path:` say /mnt/extra/... :
@@ -70,7 +90,7 @@ services:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
     image: noveltrs-frontend:local
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         # Waits for /api/health, so the first page load never races the registry.

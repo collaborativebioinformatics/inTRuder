@@ -7,11 +7,13 @@ import re
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app import uploads
 from app.agent import sse, stream_agent
 from app.config import settings
 from app.llm import describe_provider
@@ -89,13 +91,28 @@ def _rows(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
-def _require_loci() -> None:
-    if not _available("demo_loci"):
+def _loci_table() -> str:
+    """The table the candidate-locus surface reads.
+
+    Resolved by role rather than named, so registering an uploaded callset with
+    `role: loci` repoints every query below it without a code change. Falls back
+    to the committed demo fixture, which is what a fresh clone has.
+    """
+    table = registry.table_for("loci")
+    if table is None:
         raise HTTPException(
             status_code=503,
-            detail="The 'demo_loci' dataset is not available. Run: "
-                   "cd backend && uv run python scripts/make_demo_data.py",
+            detail="No candidate-locus dataset is available. Generate the demo "
+                   "fixtures with `cd backend && uv run python "
+                   "scripts/make_demo_data.py`, or upload a locus table and "
+                   "register it with role 'loci'.",
         )
+    return table
+
+
+def _segments_table() -> str | None:
+    """The per-allele table, when one is registered. Optional everywhere."""
+    return registry.table_for("segments")
 
 
 # --------------------------------------------------------------------------- #
@@ -141,7 +158,7 @@ def parse_region(region: str) -> tuple[str, int, int]:
 
 #: Filters that depend on a column the current table may not carry. Each maps to
 #: the column that supplies it; when that column is absent the filter is reported
-#: back as ignored rather than silently matching everything. `demo_loci` carries
+#: back as ignored rather than silently matching everything. The demo table carries
 #: the reference-screen columns, so today only `sample` (it is one row per locus,
 #: not per call) and `strchive_status` actually land here.
 _SCREENED_ONLY = {
@@ -281,7 +298,7 @@ _SORTS: dict[str, tuple[tuple[str, ...], str]] = {
     "purity": (("mean_purity",), "DESC"),
     # How many separate repeat arrays the drawn allele is built from — a
     # compound locus is several tandem repeats inside one insertion. Computed
-    # from demo_segments rather than read off a column; see `_order_by`.
+    # from the segments table rather than read off a column; see `_order_by`.
     "arrays": (("n_arrays",), "DESC"),
 }
 
@@ -309,7 +326,7 @@ def _order_by(sort: str, sort_dir: str | None) -> str:
 _REPRESENTATIVE_ALLELE = """
     allele AS (
         SELECT locus_id, sample, max("end") AS allele_len
-        FROM demo_segments {where}
+        FROM {segments} {where}
         GROUP BY 1, 2
     ),
     ranked AS (
@@ -331,12 +348,17 @@ _REPRESENTATIVE_ALLELE = """
     )
 """
 
-_ARRAY_COUNTS = f"""WITH {_REPRESENTATIVE_ALLELE.format(where="")},
+def _representative_allele(segments: str, where: str = "") -> str:
+    return _REPRESENTATIVE_ALLELE.format(segments=segments, where=where)
+
+
+def _array_counts(segments: str) -> str:
+    return f"""WITH {_representative_allele(segments)},
     arrays AS (
         SELECT r.locus_id,
                count(*) FILTER (WHERE s.seg_type = 'repeat') AS n_arrays
         FROM representative r
-        JOIN demo_segments s
+        JOIN {segments} s
           ON s.locus_id = r.locus_id AND s.sample = r.sample
         GROUP BY 1
     )
@@ -392,28 +414,28 @@ def loci(
     reports the order the list is really in rather than the one that was asked
     for.
     """
-    _require_loci()
+    loci_table = _loci_table()
+    segments_table = _segments_table()
     where, params, ignored = _filter_clause(
         novel_only, chrom, motif_class, min_motif_len,
         min_samples, min_purity, disease_gene_only, gene,
         region, gene_query,
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
-        available=_columns("demo_loci"),
+        available=_columns(loci_table),
     )
 
-    needs_segments = sort in _SEGMENT_SORTS
-    if needs_segments and not _available("demo_segments"):
+    needs_segments = sort in _SEGMENT_SORTS and segments_table is not None
+    if sort in _SEGMENT_SORTS and not needs_segments:
         sort = "position"
-        needs_segments = False
-    prefix = _ARRAY_COUNTS if needs_segments else ""
+    prefix = _array_counts(segments_table) if needs_segments else ""
     source = (
-        "demo_loci l LEFT JOIN arrays a ON a.locus_id = l.locus_id"
+        f"{loci_table} l LEFT JOIN arrays a ON a.locus_id = l.locus_id"
         if needs_segments
-        else "demo_loci l"
+        else f"{loci_table} l"
     )
 
     con = registry.cursor()
-    total = con.execute(f"SELECT count(*) FROM demo_loci {where}", params).fetchone()[0]
+    total = con.execute(f"SELECT count(*) FROM {loci_table} {where}", params).fetchone()[0]
     cursor = con.execute(
         f"""{prefix}
             SELECT l.* FROM {source} {where}
@@ -425,16 +447,16 @@ def loci(
     rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     strips: dict[str, list[dict[str, Any]]] = {}
-    if include_strips and rows and _available("demo_segments"):
+    if include_strips and rows and segments_table:
         locus_ids = [r["locus_id"] for r in rows]
         placeholders = ",".join("?" for _ in locus_ids)
         strip_cursor = con.execute(
-            f"""WITH {_REPRESENTATIVE_ALLELE.format(
-                    where=f"WHERE locus_id IN ({placeholders})"
+            f"""WITH {_representative_allele(
+                    segments_table, f"WHERE locus_id IN ({placeholders})"
                 )}
                 SELECT s.locus_id, s.sample, s.seg_index, s.seg_type,
                        s.start, s."end", s.motif, s.purity, s.units
-                FROM demo_segments s
+                FROM {segments_table} s
                 JOIN representative r ON r.locus_id = s.locus_id AND r.sample = s.sample
                 ORDER BY s.locus_id, s.seg_index""",
             locus_ids,
@@ -459,20 +481,21 @@ def loci(
 @app.get("/api/loci/{locus_id}")
 def locus_detail(locus_id: str) -> dict[str, Any]:
     """One locus plus every carrier's segment structure — this drives the barcode."""
-    _require_loci()
+    loci_table = _loci_table()
+    segments_table = _segments_table()
     con = registry.cursor()
-    cursor = con.execute("SELECT * FROM demo_loci WHERE locus_id = ?", [locus_id])
+    cursor = con.execute(f"SELECT * FROM {loci_table} WHERE locus_id = ?", [locus_id])
     row = cursor.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"No locus {locus_id!r}")
     locus = dict(zip([d[0] for d in cursor.description], row))
 
     segments: list[dict[str, Any]] = []
-    if _available("demo_segments"):
+    if segments_table:
         seg_cursor = con.execute(
-            """SELECT sample, seg_index, seg_type, start, "end", motif, purity, units
-               FROM demo_segments WHERE locus_id = ?
-               ORDER BY sample, seg_index""",
+            f"""SELECT sample, seg_index, seg_type, start, "end", motif, purity, units
+                FROM {segments_table} WHERE locus_id = ?
+                ORDER BY sample, seg_index""",
             [locus_id],
         )
         seg_columns = [d[0] for d in seg_cursor.description]
@@ -493,18 +516,23 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
 @app.get("/api/summary")
 def summary() -> dict[str, Any]:
     """Cohort funnel plus the breakdowns the landing page renders."""
-    _require_loci()
+    loci_table = _loci_table()
+    synthetic_tables = [
+        table
+        for table in (loci_table, _segments_table())
+        if table is not None and registry.datasets[table].synthetic
+    ]
     con = registry.cursor()
 
     total, non_homopolymer, confident, novel, novel_disease = con.execute(
-        """SELECT
+        f"""SELECT
              count(*),
              count(*) FILTER (WHERE motif_class <> 'homopolymer'),
              count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8),
              count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8 AND novel),
              count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8
                               AND novel AND disease_gene)
-           FROM demo_loci"""
+           FROM {loci_table}"""
     ).fetchone()
 
     def rows(sql: str) -> list[dict[str, Any]]:
@@ -526,19 +554,31 @@ def summary() -> dict[str, Any]:
              "note": "Novel and overlapping a known repeat-expansion gene"},
         ],
         "by_class": rows(
-            """SELECT motif_class,
-                      count(*) AS n,
-                      count(*) FILTER (WHERE novel) AS novel
-               FROM demo_loci GROUP BY 1 ORDER BY n DESC"""
+            f"""SELECT motif_class,
+                       count(*) AS n,
+                       count(*) FILTER (WHERE novel) AS novel
+                FROM {loci_table} GROUP BY 1 ORDER BY n DESC"""
         ),
         "by_chrom": rows(
             f"""SELECT chrom,
                        count(*) AS n,
                        count(*) FILTER (WHERE novel) AS novel
-                FROM demo_loci GROUP BY 1
+                FROM {loci_table} GROUP BY 1
                 ORDER BY {_CHROM_ORDER}"""
         ),
-        "synthetic": any(d.synthetic for d in registry.available_datasets()),
+        # The tables this page is actually drawn from, not "is anything
+        # registered synthetic". Once the loci table is resolved by role, a real
+        # uploaded callset sits alongside the committed demo fixtures — and a
+        # badge reading "synthetic demo data" over somebody's real results is a
+        # worse failure than no badge at all.
+        #
+        # Both tables count, because both feed what is on screen, and they are
+        # named rather than collapsed into the flag: registering a real locus
+        # table without a matching segments table leaves real rows drawn with
+        # fixture barcodes, and "one of these two" is the only honest way to say
+        # so.
+        "synthetic": bool(synthetic_tables),
+        "synthetic_tables": synthetic_tables,
     }
 
 
@@ -710,6 +750,200 @@ def strchive_matches(
         [*params, limit],
     )
     return {"available": True, "note": "", "total": total, "matches": matches}
+
+
+# --------------------------------------------------------------------------- #
+# Uploads
+#
+# A file handed to the interface lands in `settings.data_dir/uploads`, which is
+# the same directory the registry already resolves manifest paths against — the
+# /data bind mount under Docker, the repository's data/ without it. That is the
+# whole trick: no branch in this file knows which one it is running under.
+#
+# Everything is addressed by upload id. A path never arrives from the network
+# except through `link_path`, which confines it to the configured roots.
+# --------------------------------------------------------------------------- #
+
+def _upload_error(exc: uploads.UploadError) -> HTTPException:
+    return HTTPException(status_code=exc.status, detail=str(exc))
+
+
+def _upload_payload(upload: uploads.Upload) -> dict[str, Any]:
+    """One upload as the interface needs it: the record, plus what could be done
+    with it. The suggestions are computed here rather than in the browser so the
+    dialog and the registration endpoint cannot disagree about what is legal."""
+    payload = upload.public()
+    payload["present"] = uploads.exists_on_disk(upload)
+    if upload.kind == uploads.KIND_TABLE:
+        columns = [c["name"] for c in upload.inspect.get("columns", [])]
+        payload["suggested_name"] = uploads.suggest_dataset_name(upload.filename)
+        payload["roles"] = {
+            role: uploads.missing_for_role(columns, role)
+            for role in ("loci", "segments")
+        }
+    return payload
+
+
+@app.get("/api/uploads")
+def list_uploads() -> dict[str, Any]:
+    return {
+        "enabled": settings.uploads_enabled,
+        "directory": str(settings.uploads_dir),
+        "max_upload_mb": settings.max_upload_mb,
+        "accepted": list(uploads.ACCEPTED_EXTENSIONS),
+        "uploads": [_upload_payload(u) for u in uploads.listing()],
+    }
+
+
+@app.post("/api/uploads", status_code=201)
+async def create_upload(
+    request: Request,
+    filename: str = Query(..., description="The file's name, used for its type and label."),
+) -> dict[str, Any]:
+    """Stream one file to disk and report what it turned out to be.
+
+    The body is the file itself, not a multipart form. Multipart would have
+    Starlette spool the whole request to a temporary file before this function
+    ever sees it, and then we would copy it again to its destination — 80 GB of
+    disk traffic for a 40 GB VCF. Reading `request.stream()` writes it once.
+
+    Blocking writes go to a worker thread so a slow disk cannot stall the event
+    loop while the rest of the API is serving the page the upload is happening on.
+    """
+    try:
+        writer = await run_in_threadpool(uploads.UploadWriter, filename)
+    except uploads.UploadError as exc:
+        raise _upload_error(exc) from exc
+
+    try:
+        async for chunk in request.stream():
+            await run_in_threadpool(writer.write, chunk)
+        upload = await run_in_threadpool(writer.finish)
+    except uploads.UploadError as exc:
+        await run_in_threadpool(writer.abort)
+        raise _upload_error(exc) from exc
+    except Exception:
+        # Includes the client disconnecting mid-upload, which is what pressing
+        # Cancel in the dialog does. Nothing partial is left behind.
+        await run_in_threadpool(writer.abort)
+        raise
+
+    return _upload_payload(upload)
+
+
+class LinkRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/uploads/link", status_code=201)
+def link_upload(request: LinkRequest) -> dict[str, Any]:
+    """Register a file that is already on this machine, without copying it.
+
+    The answer to a 40 GB VCF sitting beside the repository, and to running
+    without Docker at all — where copying a file into a directory two levels up
+    from where it already is would be the only thing "upload" meant.
+    """
+    try:
+        return _upload_payload(uploads.link_path(request.path))
+    except uploads.UploadError as exc:
+        raise _upload_error(exc) from exc
+
+
+@app.get("/api/uploads/{upload_id}")
+def get_upload(upload_id: str) -> dict[str, Any]:
+    try:
+        return _upload_payload(uploads.get(upload_id))
+    except uploads.UploadError as exc:
+        raise _upload_error(exc) from exc
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    title: str = ""
+    description: str = ""
+    #: "loci" or "segments" to drive the catalog surface; "" to register a table
+    #: the assistant can query but that no page reads.
+    role: str = Field("", pattern="^(loci|segments)?$")
+
+
+@app.post("/api/uploads/{upload_id}/register")
+def register_upload(upload_id: str, request: RegisterRequest) -> dict[str, Any]:
+    """Write the manifest for an upload and reload the registry.
+
+    The reload is the point: a dataset becomes queryable without restarting the
+    backend, which is what makes this an upload rather than a file copy plus a
+    `docker compose restart`.
+    """
+    try:
+        upload = uploads.get(upload_id)
+        existing = registry.datasets.get(request.name)
+        # Re-registering under the same name overwrites our own manifest, which
+        # is how you fix a typo in a description. Colliding with someone else's
+        # is a different thing: silently replacing a hand-written manifest from a
+        # file upload would be the wrong call.
+        if existing and existing.manifest_file != uploads.manifest_path(request.name).name:
+            raise uploads.UploadError(
+                f"{request.name!r} is already registered by "
+                f"{existing.manifest_file}. Pick another name.",
+                status=409,
+            )
+        uploads.write_manifest(
+            upload, request.name, request.title, request.description, request.role
+        )
+    except uploads.UploadError as exc:
+        raise _upload_error(exc) from exc
+
+    registry.reload()
+    uploads.set_dataset(upload_id, request.name)
+
+    dataset = registry.datasets.get(request.name)
+    if dataset is None or not dataset.available:
+        # The manifest is written but the table did not load. Say why rather than
+        # reporting success — the file is on disk either way.
+        detail = dataset.error if dataset else "the manifest did not load"
+        raise HTTPException(
+            status_code=422,
+            detail=f"Registered {request.name!r}, but it could not be read: {detail}",
+        )
+    return {"dataset": dataset.detail(), "upload": _upload_payload(uploads.get(upload_id))}
+
+
+@app.delete("/api/uploads/{upload_id}")
+def delete_upload(upload_id: str) -> dict[str, Any]:
+    """Forget an upload, and unregister the dataset it produced.
+
+    A linked upload's original file is never touched — we only ever held a
+    record pointing at it.
+    """
+    try:
+        upload = uploads.delete(upload_id)
+    except uploads.UploadError as exc:
+        raise _upload_error(exc) from exc
+
+    unregistered = None
+    if upload.dataset:
+        manifest = uploads.manifest_path(upload.dataset)
+        if manifest.exists():
+            manifest.unlink()
+            unregistered = upload.dataset
+            registry.reload()
+    return {"deleted": upload.id, "unregistered": unregistered}
+
+
+@app.post("/api/registry/reload")
+def reload_registry() -> dict[str, Any]:
+    """Re-read the manifests. Also the escape hatch for a file dropped into
+    `data/` by hand, which used to mean restarting the backend."""
+    registry.reload()
+    return {
+        "available": [d.name for d in registry.available_datasets()],
+        "unavailable": [
+            {"name": d.name, "error": d.error}
+            for d in registry.datasets.values()
+            if not d.available
+        ],
+        "roles": {role: registry.table_for(role) for role in ("loci", "segments")},
+    }
 
 
 # --------------------------------------------------------------------------- #

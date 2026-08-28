@@ -296,3 +296,11 @@ data/dx/
 # describes this file IS committed (data/web/strchive-loci.yaml); the data is a
 # pinned, checksummed download, so it is not.
 data/web/strchive/
+
+# Files handed to the web interface through the Upload button, plus the
+# manifests generated for them. Somebody else's callset is exactly the thing
+# that should not ride along in a clone; the directory itself is kept so the
+# bind mount has something to attach to.
+data/uploads/*
+!data/uploads/.gitkeep
+data/web/upload-*.yaml

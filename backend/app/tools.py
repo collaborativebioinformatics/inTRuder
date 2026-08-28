@@ -1,9 +1,15 @@
 """Tools exposed to the agent.
 
-There are four, and the count does not grow with the number of datasets. Three are
-generic data access over the registry; the fourth drives the visualization. A tool
-per dataset would mean editing agent code every time somebody contributes a
-manifest, and would grow the tool list without bound — see `data/web/README.md`.
+There are five, and the count does not grow with the number of datasets. Three are
+generic data access over the registry; the fourth drives the visualization; the
+fifth lists files someone has handed the interface. A tool per dataset would mean
+editing agent code every time somebody contributes a manifest, and would grow the
+tool list without bound — see `data/web/README.md`.
+
+Note what is absent: nothing here takes a filesystem path. `run_sql` runs on a
+connection with external file access disabled, and an upload is named by its id,
+which is resolved to a path inside the uploads directory by `app.uploads` and
+nowhere else. The model names handles; the server owns paths.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from typing import Annotated, Any, Literal
 
 from langchain_core.tools import tool
 
+from app import uploads
 from app.registry import RegistryError, registry
 
 
@@ -66,6 +73,27 @@ def run_sql(
     except RegistryError as exc:
         return _dump({"error": str(exc), "query": query})
     return _dump(result)
+
+
+@tool
+def list_uploads() -> str:
+    """List the files someone has uploaded to this interface.
+
+    Use this when the user refers to a file they have just given you — "the VCF I
+    uploaded", "the callset I dropped in". Returns each file's id, name, size and
+    what could be read from it: for a VCF that is its sample names, the callers
+    named in its header and whether it is a merged callset; for a table, its
+    columns.
+
+    A file listed here with a `dataset` name is already queryable with `run_sql`
+    under that name. One without is not a table yet — a VCF becomes candidate loci
+    by running the TR-detection pipeline, which is not something you can do from
+    here. Say that plainly rather than implying the data is available.
+    """
+    records = uploads.listing()
+    if not records:
+        return _dump({"uploads": [], "note": "Nobody has uploaded a file."})
+    return _dump({"uploads": [u.public() for u in records]})
 
 
 @tool
@@ -198,4 +226,4 @@ def set_view(
     return _dump({"applied": view})
 
 
-ALL_TOOLS = [list_datasets, describe_dataset, run_sql, set_view]
+ALL_TOOLS = [list_datasets, describe_dataset, run_sql, list_uploads, set_view]
