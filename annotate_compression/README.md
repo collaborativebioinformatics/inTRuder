@@ -7,6 +7,7 @@ Simply tests how compressible the insertion sequences are - the more they are co
 
 Replies on the following: python3 pysam zlib argparse pandas
 
+`mamba env create -f tr_annotation_env.yml`
 `mamba activate tr_annotation`
 
 ```
