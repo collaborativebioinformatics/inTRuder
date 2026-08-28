@@ -9,7 +9,7 @@ cell output.
 Usage:
     python src/python/reporting/population_report.py \\
         --input data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv \\
-        --outdir docs/visualizations
+        --outdir docs/figures
 """
 
 from __future__ import annotations
@@ -249,7 +249,7 @@ def main() -> None:
         help="Novelty-annotated TRF calls TSV (output of `novelty annotate`).",
     )
     parser.add_argument(
-        "--outdir", type=Path, default=Path("docs/visualizations"),
+        "--outdir", type=Path, default=Path("docs/figures"),
         help="Directory to write population_distributions.md and its assets/ subfolder into.",
     )
     args = parser.parse_args()
