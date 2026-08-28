@@ -1,0 +1,41 @@
+# Build context for both images is the repository root (docker/*.Dockerfile).
+# Keeping it small matters here: the checkout is ~2 GB, almost all of it data
+# and local environments that the images must not contain.
+
+# Version control and editor noise
+.git/
+.github/
+**/.DS_Store
+
+# Data is BIND-MOUNTED at runtime, never baked into an image. See
+# docker-compose.yml — this is what lets someone swap in their own callset
+# without rebuilding.
+data/
+
+# Local environments and build output — all rebuilt inside the image
+.venv/
+backend/.venv/
+backend/.cache/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+renv/library/
+renv/staging/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.tsbuildinfo
+
+# Secrets. Configuration reaches the container through the environment, never
+# through an image layer; the templates stay so the docs still make sense.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.local.example
+
+# Not needed to build or run either service
+docs/
+notebooks/
+src/R/
+tests/

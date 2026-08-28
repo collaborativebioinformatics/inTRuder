@@ -1,0 +1,90 @@
+name: strchive_calls
+title: Candidate repeats screened against catalogs and STRchive
+synthetic: false
+path: ${NOVELTRS_DATA_DIR}/sv_output/survivor_multi_sample_vcf/first_500_INS.strchive.tsv
+format: tsv
+
+description: >
+  The real callset, screened. One row per (locus x sample x TRF call) - NOT one
+  row per locus. A single recurrent locus contributes one row per carrier, so a
+  percentage computed over rows tracks how often a locus recurs, not how often a
+  locus is novel. Always aggregate to loci with COUNT(DISTINCT chrom || ':' ||
+  ins_coord) before quoting a novelty fraction.
+  Each row carries three layers of verdict. First, novelty against reference TR
+  catalogs: known, novel_motif (the reference has repeats here but not this one),
+  or novel_locus (the reference annotates nothing here). Second, the same verdict
+  from each catalog independently - ucsc_novelty and trexplorer_novelty - which
+  disagree on a meaningful fraction of rows, and where they agree the call is a
+  property of the data rather than of a threshold. Third, the STRchive comparison:
+  whether the call lands on a known disease locus, whether its motif is one
+  catalogued there, and whether the estimated copy number reaches the pathogenic
+  range.
+  Produced by `novelty annotate` then `strchive annotate` - see
+  docs/tools/NOVELTY_SCREEN.md and docs/tools/STRCHIVE_COMPARE.md. This manifest
+  is registered ahead of the data: until those pipeline steps are merged and run,
+  the backend reports the dataset as unavailable and the interface degrades to
+  the demo tables rather than failing.
+
+columns:
+  chrom: Chromosome of the insertion site.
+  ins_coord: Insertion-site position, 1-based, as VCF POS.
+  SVID: Structural-variant call identifier from Sniffles, e.g. Sniffles2.INS.2S0.
+  sample: Sample carrying this insertion. 68 samples in the cohort.
+  depth: Read depth as written by the caller. Bracketed text, e.g. "[0 0]" - TRY_CAST before doing arithmetic.
+  insert_size: Inserted sequence length in bp. Bracketed text, e.g. "[138]" - TRY_CAST before doing arithmetic.
+  rep_start: Start of this repeat block within the inserted sequence, 0-based.
+  rep_end: End of this repeat block within the inserted sequence.
+  motif: Repeat motif called by TRF inside the insertion.
+  canonical_motif: The motif reduced to its primitive unit, then to the smallest rotation of that unit or its reverse complement. This is the form comparisons use.
+  purity: TRF identity to a perfect repeat for this block, 0-1.
+  motif_length: Motif length in bp.
+  rep_length: Length of this repeat block in bp.
+  rep_units: Copies of the motif in this block. Feeds the STRchive copy-number estimate.
+  insertion_repeat_bases: Total bp of the insertion covered by any repeat block, counted as a union so overlapping TRF calls are not double-counted.
+  insertion_purity: Fraction of the whole insertion that is tandem repeat at all, 0-1. Low means the insertion is mostly something else.
+  filter: PASS, or which threshold this row failed.
+  novelty: Combined verdict across all catalogs - known, novel_motif, or novel_locus. A locus is only novel when no catalog knows it.
+  ucsc_novelty: The same verdict from the UCSC simpleRepeat track alone (1.05M entries).
+  ucsc_n_nearby: Reference repeats from UCSC within the window of this insertion point.
+  ucsc_distance: bp from the insertion point to the nearest UCSC repeat. 0 means overlapping.
+  ucsc_motif: Motif of the matched UCSC repeat.
+  ucsc_canonical: Canonical form of that motif.
+  ucsc_motif_edits: Edit distance between our motif and the UCSC one. 0 means equivalent. A value of 1 on a novel_motif call is a near miss, not a discovery.
+  ucsc_period: TRF period of the matched UCSC repeat.
+  ucsc_copy_num: TRF copy number of the matched UCSC repeat.
+  ucsc_per_match: TRF percent identity of the matched UCSC repeat, 0-100.
+  trexplorer_novelty: The same verdict from the TRExplorer catalog alone (5.6M entries, position and motif only).
+  trexplorer_n_nearby: TRExplorer repeats within the window.
+  trexplorer_distance: bp to the nearest TRExplorer repeat.
+  trexplorer_motif: Motif of the matched TRExplorer repeat.
+  trexplorer_canonical: Canonical form of that motif.
+  trexplorer_motif_edits: Edit distance to the TRExplorer motif.
+  strchive_status: Rollup disease verdict - pathogenic_expansion, pathogenic_motif, locus_novel_motif, locus_known_motif, or no_locus_match. no_locus_match on nearly every row is the expected result - 82 disease loci in 3 Gb means the base rate is essentially zero.
+  strchive_id: Matched STRchive locus identifier. Joins to strchive_loci.id.
+  strchive_gene: Gene of the matched disease locus.
+  strchive_disease: Disease name for the matched locus.
+  strchive_inheritance: Inheritance pattern of the matched locus.
+  strchive_evidence: Curation confidence for the matched locus.
+  strchive_distance_bp: bp from the insertion point to the disease locus. 0 means overlapping. A no_locus_match at 12 bp and one at 12 Mb are very different results.
+  strchive_n_nearby: Disease loci within the window.
+  strchive_motif_class: How our motif classifies at the matched locus - pathogenic, reference, benign, unknown, interruption, or none.
+  strchive_motif_edits: Edit distance between our motif and the STRchive motif it matched.
+  strchive_matched_motif: Which STRchive motif matched.
+  strchive_ref_copies: Copies already present in the reference at the disease locus.
+  strchive_est_copies: Estimated total copies, ref_copies + rep_units. An estimate that assumes the insertion extends the reference array rather than replacing it - a triage signal, not a genotype.
+  strchive_allele_class: Where the estimate falls - benign, intermediate, pathogenic, or unknown.
+  strchive_pathogenic_min: Smallest pathogenic copy number at the matched locus.
+  strchive_pathogenic_max: Largest pathogenic copy number at the matched locus.
+  strchive_novel_in_ref: STRchive's own flag for whether the pathogenic motif exists in hg38 at all.
+  strchive_gene_agrees: Whether the upstream gene annotation matches STRchive's gene.
+  strchive_catalog: Pinned STRchive release this row was screened against.
+
+provenance:
+  source: SURVIVOR-merged Sniffles INS calls across 68 HPRC long-read genomes
+  pipeline: novelty annotate --platform ucsc,trexplorer | strchive annotate --window 10
+  build: GRCh38
+  note: >
+    The committed slice covers only the first 500 insertions of the merge, which
+    span chr1:121,069-3,583,350. That is 3.5 Mb containing one STRchive locus, so
+    the STRchive columns are a pipeline test rather than a screen. A real screen
+    needs the full insertion set.
