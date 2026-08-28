@@ -117,8 +117,9 @@ process INTERSECT_REPEAT_CATALOG {
         | cut -f5- \\
         | gzip > intersections.bed.gz
 
-    # Join original file with hits
-    uv run ${projecctDir}/scripts/check_repeat_catalog/join-hits.py \\
+    # Join original file with hits. `join-hits` is the console script for
+    # intruder.analysis.benchmark.join_hits; it needs `uv sync --group analysis`.
+    uv run join-hits \\
         --query "${tr_results}" \\
         --hits intersections.bed.gz \\
         --output HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz

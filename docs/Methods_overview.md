@@ -42,7 +42,7 @@ This is the primary contribution of the project — detecting TRs that fall with
 2. **02 – Assess novelty** — screen each candidate against reference TR catalogues (UCSC `simpleRepeat`, TRExplorer) and flag it `known`, `novel_motif` or `novel_locus`. *Implemented* — see [Novelty screen](tools/NOVELTY_SCREEN.md).
 3. **02B – Filter low-confidence calls** — drop insertions where TR content covers too little of the insertion or overlapping repeat calls disagree. *Planned, not yet a separate step* — filtering by purity/coverage currently happens inline in stage 01 (see below).
 
-**Implementation:** `src/python/sv_trfcaller.py` implements stage 01 — it takes an SV VCF as input, runs `pytrf.ATRFinder` on each sample's inserted sequence, uses `parasail` alignment to score repeat purity, and outputs a TSV of repeat calls per sample (chrom, position, motif, purity, repeat length, etc.). `src/python/novelty` implements stage 02 as a CLI (`uv run novelty ... annotate`) that takes that TSV and adds the novelty verdict column.
+**Implementation:** `src/python/intruder/pipeline/trf/sv_trfcaller.py` implements stage 01 — it takes an SV VCF as input, runs `pytrf.ATRFinder` on each sample's inserted sequence, uses `parasail` alignment to score repeat purity, and outputs a TSV of repeat calls per sample (chrom, position, motif, purity, repeat length, etc.). `src/python/intruder/pipeline/novelty` implements stage 02 as a CLI (`uv run novelty ... annotate`) that takes that TSV and adds the novelty verdict column.
 
 ## 3. Datasets & Validation
 
@@ -78,7 +78,7 @@ into `main` yet — both live on feature branches.
   Preprocessing (converting insertions to a format AnnotSV accepts) is real and wired in; the
   AnnotSV call itself is still a placeholder in the main orchestration pipeline.
 - **STRchive disease-locus comparison** — implemented and documented separately:
-  `src/python/strchive`, run directly as its own CLI rather than through the orchestration
+  `src/python/intruder/pipeline/strchive`, run directly as its own CLI rather than through the orchestration
   pipeline — see [STRchive comparison](tools/STRCHIVE_COMPARE.md).
 
 **Features AnnotSV is intended to annotate**, once wired in:

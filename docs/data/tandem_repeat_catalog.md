@@ -11,5 +11,6 @@ In [Step 4 of the pipeline](https://docs.google.com/document/d/1Vs5xVBGYMwYAiHFN
 
 This dataset will be used by the following scripts in the codebase:
 
-* scripts/check_repeat_catalog/intersect.sh
-* scripts/check_repeat_catalog/join-hits.py
+* `scripts/check_repeat_catalog/intersect.sh`
+* `src/python/intruder/analysis/benchmark/join_hits.py` — run it as `uv run join-hits`
+  (needs `uv sync --group analysis`)

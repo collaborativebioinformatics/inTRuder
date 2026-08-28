@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # input files
 TR_RESULTS_FILE="Data/HPRC_SV.survivor.ins.trf.tsv"
@@ -33,5 +33,5 @@ echo ""
 
 # join original tsv with hits in the catalog
 echo "Joining original file with intersections to label which motifs are in or out of catalog."
-uv run scripts/check_repeat_catalog/join-hits.py --query $TR_RESULTS_FILE --hits $INTERSECTIONS_FILE --output $OUTPUT
+uv run join-hits --query $TR_RESULTS_FILE --hits $INTERSECTIONS_FILE --output $OUTPUT
 echo "Finished. Final output file is in $OUTPUT"

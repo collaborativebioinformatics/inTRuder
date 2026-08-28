@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  Dataset,
   LociResponse,
   LocusDetail,
   StrchiveLociResponse,
@@ -65,6 +66,10 @@ export interface Health {
 }
 
 export const fetchHealth = (signal?: AbortSignal) => getJSON<Health>("/api/health", signal);
+
+/** Every registered dataset, including the ones whose file is missing. */
+export const fetchDatasets = (signal?: AbortSignal) =>
+  getJSON<{ datasets: Dataset[] }>("/api/datasets", signal);
 
 /* -------------------------------------------------------------------------- */
 /* STRchive                                                                    */

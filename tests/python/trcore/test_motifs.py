@@ -11,7 +11,7 @@ from itertools import product
 
 import pytest
 
-from trcore.motifs import (
+from intruder.trcore.motifs import (
     DEFAULT_EQUIVALENCE,
     DEFAULT_TOLERANCE,
     MATCH_EXACT,
