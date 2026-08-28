@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { AboutView } from "@/components/AboutView";
 import { CatalogView } from "@/components/CatalogView";
@@ -12,6 +12,7 @@ import { FilterBar } from "@/components/FilterBar";
 import { Funnel } from "@/components/Funnel";
 import { Inspector, type Selection } from "@/components/Inspector";
 import { LocusView } from "@/components/LocusView";
+import { PaneDivider } from "@/components/PaneDivider";
 import { PresentationView } from "@/components/PresentationView";
 import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -93,6 +94,38 @@ function StrchiveRail({ summary }: { summary: StrchiveSummary | null }) {
       </section>
     </div>
   );
+}
+
+/* Column widths, in px. The defaults are the 19rem/22rem the layout shipped
+   with, so an untouched workspace looks exactly as it did. */
+const RAIL_DEFAULT = 304;
+const CHAT_DEFAULT = 352;
+const PANE_MIN = 224;
+/** What the middle column keeps for itself — a drag cannot squeeze it away. */
+const MAIN_MIN = 400;
+/** The two 1px seam tracks, which come out of the frame before the panes do. */
+const SEAMS = 2;
+/** Tailwind's `lg`, below which the columns stack and the widths do not apply. */
+const LG = 1024;
+const WIDTHS_KEY = "noveltrs-pane-widths";
+
+interface PaneWidths {
+  rail: number;
+  chat: number;
+}
+
+const DEFAULT_WIDTHS: PaneWidths = { rail: RAIL_DEFAULT, chat: CHAT_DEFAULT };
+
+/** How wide one pane may get, given the frame and what the other one holds. */
+function paneMax(frame: number, other: number) {
+  // Before the frame has been measured, let the stored width through: the
+  // observer re-clamps both panes as soon as it reports a size.
+  if (frame <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(PANE_MIN, frame - other - MAIN_MIN - SEAMS);
+}
+
+function clampPane(width: number, frame: number, other: number) {
+  return Math.round(Math.min(Math.max(width, PANE_MIN), paneMax(frame, other)));
 }
 
 /** Left rail on the datasets surface — where the data lives and how to add more. */
@@ -245,6 +278,16 @@ function WorkspaceInner() {
   // it is what one person clicked, not a description of the data on screen, so
   // the agent has no business setting it and it does not belong in a URL.
   const [selection, setSelection] = useState<Selection | null>(null);
+  // How wide the rail and the assistant are, and how much room the three
+  // columns have between them. Kept here rather than in the view store: it is
+  // one reader's window, not a description of the data, so the agent has no
+  // business setting it and it does not belong in a URL.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
+  const [widths, setWidths] = useState<PaneWidths>(DEFAULT_WIDTHS);
+  // True only while a seam is being dragged, to suppress the text selection a
+  // drag across the middle column would otherwise start.
+  const [dragging, setDragging] = useState(false);
 
   // Uploads. `dropped` is the file that opened the dialog, and it is set to null
   // on close so dropping the same file again is a new upload rather than a
@@ -257,6 +300,9 @@ function WorkspaceInner() {
   const [registryVersion, setRegistryVersion] = useState(0);
 
   const page = filters.page ?? "catalog";
+  // The two document surfaces replace the three-column grid rather than sitting
+  // inside it, so the resizable frame is unmounted while either is open.
+  const isDocument = page === "presentation" || page === "about";
 
   const openUpload = useCallback((file?: File) => {
     setDropped(file ?? null);
@@ -266,8 +312,72 @@ function WorkspaceInner() {
   const onRegistryChanged = useCallback(() => setRegistryVersion((n) => n + 1), []);
 
   // Dragging a file anywhere over the window arms the upload, which is what
-  // everyone tries first. The dialog opens already uploading.
-  const dragging = useWindowFileDrop(openUpload, listing?.enabled ?? true);
+  // everyone tries first. The dialog opens already uploading. Named apart from
+  // the seam `dragging` above: one is a file over the page, the other a pointer
+  // on a divider, and they can be true at the same time.
+  const fileDragging = useWindowFileDrop(openUpload, listing?.enabled ?? true);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(WIDTHS_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<PaneWidths>;
+      setWidths({
+        rail: typeof parsed.rail === "number" ? parsed.rail : RAIL_DEFAULT,
+        chat: typeof parsed.chat === "number" ? parsed.chat : CHAT_DEFAULT,
+      });
+    } catch {
+      // Private windows, blocked site data, a half-written value — defaults hold.
+    }
+  }, []);
+
+  useEffect(() => {
+    // Not mid-drag: a pointermove fires far more often than a width is worth
+    // writing down, and releasing the seam runs this with the final value.
+    if (dragging) return;
+    try {
+      localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths));
+    } catch {
+      // Non-fatal.
+    }
+  }, [widths, dragging]);
+
+  // Re-run when the grid comes back: a document surface unmounts the frame, so
+  // an observer bound once on mount would be watching a node that is gone, and
+  // `frameWidth` would sit at whatever it was when the reader left.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setFrameWidth(entry.contentRect.width),
+    );
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [isDocument]);
+
+  // A narrowed window has to take the room back from the panes, or the fixed
+  // columns push the middle one to nothing and the row overflows.
+  useEffect(() => {
+    if (frameWidth < LG) return; // Stacked: the widths are not in play.
+    setWidths((current) => {
+      const rail = clampPane(current.rail, frameWidth, current.chat);
+      const chat = clampPane(current.chat, frameWidth, rail);
+      return rail === current.rail && chat === current.chat ? current : { rail, chat };
+    });
+  }, [frameWidth]);
+
+  const resizePane = useCallback(
+    (pane: keyof PaneWidths, width: number) =>
+      setWidths((current) => ({
+        ...current,
+        [pane]: clampPane(
+          width,
+          frameWidth,
+          pane === "rail" ? current.chat : current.rail,
+        ),
+      })),
+    [frameWidth],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -430,13 +540,24 @@ function WorkspaceInner() {
       {/* The presentation and the About page are documents, not workspace
           surfaces: no cohort rail to orient them and nothing for the assistant to
           query, so they get the whole width and one scroll of their own. */}
-      {page === "presentation" || page === "about" ? (
+      {isDocument ? (
         <main className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
           {page === "about" ? <AboutView /> : <PresentationView />}
         </main>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
-          <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
+        <div
+          ref={frameRef}
+          className={`workspace-grid grid min-h-0 flex-1 ${
+            dragging ? "cursor-col-resize select-none" : ""
+          }`}
+          style={
+            {
+              "--rail-w": `${widths.rail}px`,
+              "--chat-w": `${widths.chat}px`,
+            } as CSSProperties
+          }
+        >
+          <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto p-4">
             {/* The pinned block goes at the top of the rail, above the cohort
                 context: it is the most recent thing the reader asked for, and the
                 rail is the one column that never moves under them. */}
@@ -461,6 +582,17 @@ function WorkspaceInner() {
               <p className="text-sm text-ink-muted">Loading summary…</p>
             )}
           </aside>
+
+          <PaneDivider
+            side="left"
+            label="Resize the discovery rail"
+            width={widths.rail}
+            min={PANE_MIN}
+            max={paneMax(frameWidth, widths.chat)}
+            onResize={(width) => resizePane("rail", width)}
+            onDraggingChange={setDragging}
+            onReset={() => resizePane("rail", RAIL_DEFAULT)}
+          />
 
           {/* Drilled into one locus, the middle column becomes a single scroll:
               the detail page is taller than the viewport and the reference band
@@ -521,7 +653,18 @@ function WorkspaceInner() {
             )}
           </main>
 
-          <aside className="flex min-h-0 flex-col border-hairline lg:border-l">
+          <PaneDivider
+            side="right"
+            label="Resize the assistant"
+            width={widths.chat}
+            min={PANE_MIN}
+            max={paneMax(frameWidth, widths.rail)}
+            onResize={(width) => resizePane("chat", width)}
+            onDraggingChange={setDragging}
+            onReset={() => resizePane("chat", CHAT_DEFAULT)}
+          />
+
+          <aside className="flex min-h-0 flex-col">
             <div className="shrink-0 border-b border-hairline px-3 py-2.5">
               <h2 className="text-sm font-medium text-ink">Assistant</h2>
               <p className="text-[11px] text-ink-muted">
@@ -538,7 +681,7 @@ function WorkspaceInner() {
           page says it will accept the drop before you let go. Pointer events off:
           it must not become the drop target itself, or the event would land on an
           overlay that appeared mid-drag. */}
-      {dragging && !uploadOpen && (
+      {fileDragging && !uploadOpen && (
         <div
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"

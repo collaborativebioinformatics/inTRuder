@@ -49,7 +49,7 @@ columns:
   ucsc_distance: bp from the insertion point to the nearest UCSC repeat. 0 means overlapping.
   ucsc_motif: Motif of the matched UCSC repeat.
   ucsc_canonical: Canonical form of that motif.
-  ucsc_motif_edits: Edit distance between our motif and the UCSC one. 0 means equivalent. A value of 1 on a novel_motif call is a near miss, not a discovery.
+  ucsc_motif_edits: Edit distance between our motif and the UCSC one. 0 means equivalent. Weigh a value of 1 against motif_length - on a long VNTR motif it is usually a near miss rather than a discovery, on a 2-6 bp STR it is a substantial difference.
   ucsc_period: TRF period of the matched UCSC repeat.
   ucsc_copy_num: TRF copy number of the matched UCSC repeat.
   ucsc_per_match: TRF percent identity of the matched UCSC repeat, 0-100.
