@@ -19,7 +19,7 @@ Usage:
         --multisample-tsv /path/to/05_hprc_multisample.tsv \\
         --raw-vcf /path/to/hprc_multisample.INS_comp.vcf \\
         --ancestry data/ancestry/HPRC_samples_ancestry.tsv \\
-        --outdir docs/visualizations
+        --outdir docs/figures
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def main() -> None:
                          help="Merged multi-sample VCF before TR annotation, e.g. hprc_multisample.INS_comp.vcf")
     parser.add_argument("--ancestry", type=Path, default=Path("data/ancestry/HPRC_samples_ancestry.tsv"),
                          help="TSV: sample, sex, superpopulation (no header).")
-    parser.add_argument("--outdir", type=Path, default=Path("docs/visualizations"))
+    parser.add_argument("--outdir", type=Path, default=Path("docs/figures"))
     parser.add_argument("--per-sample-out", type=Path, default=Path("data/ancestry/insertions_per_sample.tsv"),
                          help="Where to write the small derived per-sample counts table.")
     args = parser.parse_args()
