@@ -46,6 +46,8 @@ chr1    876001  Sniffles2.INS.65S0      C       CACTCCCCACGCTTCCACCCCCACACTCCCCA
 
 ## Thresholds
 
+Histograms made with comp_histograms.ipynb
+
 1. Histogram of compression ratios from the above hprc merged file:
 
    <img width="592" height="437" alt="image" src="https://github.com/user-attachments/assets/c7f2c5b3-7a72-4c86-918d-0ad59dc3477b" />
