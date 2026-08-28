@@ -14,7 +14,7 @@ params.run_validation = false
 params.tr_catalogue_bed = null
 params.min_overlap_b = null
 
-params.default_vcf_path = "${projectDir}/../data/HPRC_SV.survivor.ins.vcf"
+params.default_vcf_path = params.default_vcf_path ?: "${projectDir}/../data/HPRC_SV.survivor.ins.vcf"
 
 
 // ---------------------------------------------------------------------
@@ -88,11 +88,17 @@ process FILTER_BY_COVERAGE {
     path novelty_tsv
 
     output:
-    path "novelty_filtered.tsv"
+    path "novelty_filtered.tsv", emit: filtered
+    path "novelty_filtered.stats.tsv", emit: stats
 
     script:
     """
-    echo "TODO: real filtering script goes here, using ${novelty_tsv}" > novelty_filtered.tsv
+    python3 /opt/scripts/filter_ins_trf.py \
+        -i ${novelty_tsv} \
+        -o novelty_filtered.tsv \
+        -s novelty_filtered.stats.tsv \
+        --min-repeat-coverage 0.8 \
+        --min-depth 0
     """
 }
 
