@@ -75,3 +75,4 @@ chr1    876001  Sniffles2.INS.65S0      C       CACTCCCCACGCTTCCACCCCCACACTCCCCA
 	106843	chr22	16380916	<INS>	0.384615
 ```
 
+So anything above 5 may be nicely repetitive
