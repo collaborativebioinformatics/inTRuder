@@ -1,6 +1,6 @@
 """The LangGraph agent and its event stream.
 
-Deliberately small: a prebuilt ReAct graph over the four tools in `app.tools`. It
+Deliberately small: a prebuilt ReAct graph over the five tools in `app.tools`. It
 is a real LangGraph graph, so replacing `create_react_agent` with a custom
 `StateGraph` later is a change to this file only — the tools, the streaming
 protocol, and the frontend stay as they are.
