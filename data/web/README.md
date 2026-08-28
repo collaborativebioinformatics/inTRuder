@@ -126,6 +126,8 @@ it is literally what the agent sees when deciding how to answer a question.
 | `hprc-loci.yaml` | `hprc_loci` | `loci` | 17,270 | **Real** — 67 HPRC genomes |
 | `hprc-segments.yaml` | `hprc_segments` | `segments` | 232,583 | **Real** |
 | `hprc-calls.yaml` | `hprc_calls` | — | 221,405 | **Real** — the screen at its native grain |
+| `trio-loci.yaml` | `trio_loci` | `loci` | 4,541 | **Real** — GIAB HG002/03/04 |
+| `trio-segments.yaml` | `trio_segments` | `segments` | 10,287 | **Real** |
 | `demo-loci.yaml` | `demo_loci` | — | 1,200 | Synthetic — off once real data is loaded |
 | `demo-segments.yaml` | `demo_segments` | — | 95,840 | Synthetic — off once real data is loaded |
 | `strchive-loci.yaml` | `strchive_loci` | — | 82 | Real (curated reference) |
@@ -135,29 +137,34 @@ it is literally what the agent sees when deciding how to answer a question.
 ```bash
 just demo-data      # the synthetic demo tables
 just strchive-data  # the disease-locus catalog
-just hprc-data      # the real HPRC tables (needs the TSV below)
+just web-data       # the real hprc and trio tables (needs the data below)
 ```
 
 ## The real callset
 
 `hprc_loci` and `hprc_segments` claim the two roles, so the interface draws the
 real cohort — and the demo fixtures switch themselves off, since real data is now
-driving both surfaces (see *Switching a dataset off*). All three `hprc-*.yaml`
-manifests are committed; none of the data is. To get it:
+driving both surfaces (see *Switching a dataset off*). The `hprc-*.yaml` and
+`trio-*.yaml` manifests are committed; none of the data is. To get it:
 
 ```bash
-# 57 MB, DNAnexus project Group2_2026 (needs DX_API_TOKEN — see docs/DNANexus.md)
-dx download file-JB8Xg900pzXPjXvpYXg29fYB \
-  -o data/web/hprc_multisample.trf.noveltyFiltered.tsv
-just strchive-data && just hprc-data
+just plot-data          # the Drive folder, 750 MiB, into data/plots
+just plot-parquet       # cache it as parquet — 586 MB of TSV becomes 7 MB
+just strchive-data      # the disease-locus catalog, for the strchive_* columns
+just web-data           # build data/hprc and data/trio
 ```
 
-Without it the three datasets report themselves unavailable, no role is claimed,
-and the interface falls back to the demo fixtures — a fresh clone still runs.
+Without it the datasets report themselves unavailable, no role is claimed, and
+the interface falls back to the demo fixtures — a fresh clone still runs.
 
-Three things about this callset are worth knowing before quoting a number off it,
-and each is argued at length in the manifests and in
-`backend/scripts/build_hprc_web.py`:
+Two cohorts come out of this, from one build path: **hprc** (67 unrelated
+genomes, 17,270 loci) and **trio** (GIAB HG002/03/04, 4,541 loci). They are
+separate tables rather than one table with a `cohort` column, because a family
+and a population are not two views of one thing.
+
+Four things about these callsets are worth knowing before quoting a number off
+them, and each is argued at length in the manifests and in
+`backend/scripts/build_web_tables.py`:
 
 * **A locus is an insertion site**, keyed `(chrom, pos)`, not an SV record. 21,424
   Sniffles records collapse to 17,270 sites; co-located records are alleles of
@@ -168,6 +175,12 @@ and each is argued at length in the manifests and in
 * **The input carries 58,964 exact duplicate rows** (221,405 total, 162,441
   distinct). The build de-duplicates; `hprc_calls`, which is the raw file, does
   not — count it with `DISTINCT`.
+* **AnnotSV's multi-value fields have three different shapes** and mixing them up
+  silently mislabels genes. `Gene_name` is `;`-joined per gene; the
+  transcript-level `*_merged` columns are `, `-joined and repeat per transcript;
+  the gene-level ones are `, `-joined per gene and their free text contains `, `
+  itself. The build has one helper per shape, and drops per-gene free text on
+  multi-gene loci rather than risk captioning one gene with another's disease.
 
 ## Manifests committed ahead of their data
 

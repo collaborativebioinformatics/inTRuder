@@ -353,13 +353,18 @@ class Registry:
                 continue
             datasets[dataset.name] = dataset
 
+        # Several claimants is a supported configuration, not a mistake: hprc and
+        # trio both claim `loci`, and switching the first one off is how a caller
+        # moves the whole interface onto the second. Logged at info because the
+        # resolution order is still worth being able to see; it is only a warning
+        # when nothing can claim the role at all.
         for role in ROLES:
             claimants = [d.name for d in datasets.values() if d.role == role]
             if len(claimants) > 1:
-                logger.warning(
-                    "%d datasets claim role %r (%s); table_for() will pick the "
-                    "first available one",
-                    len(claimants), role, ", ".join(claimants),
+                logger.info(
+                    "role %r claimed by %s; the first available one drives the "
+                    "surface, the rest take over as it is switched off",
+                    role, ", ".join(claimants),
                 )
         return datasets
 

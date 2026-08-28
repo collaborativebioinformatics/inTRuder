@@ -58,6 +58,10 @@ function toQuery(filters: ViewFilters, extra: Record<string, string | number> = 
   const params = new URLSearchParams();
   if (filters.novel_only) params.set("novel_only", "true");
   if (filters.disease_gene_only) params.set("disease_gene_only", "true");
+  if (filters.genic_only) params.set("genic_only", "true");
+  if (filters.exonic_only) params.set("exonic_only", "true");
+  if (filters.constrained_only) params.set("constrained_only", "true");
+  if (filters.gene_region) params.set("gene_region", filters.gene_region);
   if (filters.chrom) params.set("chrom", filters.chrom);
   if (filters.region) params.set("region", filters.region);
   if (filters.motif_class) params.set("motif_class", filters.motif_class);

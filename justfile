@@ -47,12 +47,16 @@ demo-data:
 strchive-data:
     cd backend && uv run python scripts/fetch_strchive.py
 
-# Needs data/web/hprc_multisample.trf.noveltyFiltered.tsv (see
-# data/web/README.md for how to fetch it), and strchive-data run first, or
-# gene/disease_gene come out empty.
-# Rebuild the real HPRC tables in data/hprc from the screened callset.
-hprc-data:
-    cd backend && uv run python scripts/build_hprc_web.py
+# Cache data/plots/*.tsv as parquet in data/plots/parquet. Needed by web-data,
+# and worth it on its own: 05_hprc_multisample.tsv is 586 MB of text.
+plot-parquet *args:
+    cd backend && uv run python scripts/plots_to_parquet.py {{args}}
+
+# Rebuild the real loci/segments tables from the gene-annotated callsets.
+# Needs `just plot-data && just plot-parquet` first, and `just strchive-data`
+# or the strchive_* columns come out empty. Pass a cohort to build just one.
+web-data *cohorts:
+    cd backend && uv run python scripts/build_web_tables.py {{cohorts}}
 
 # Download the shared Drive tables (750 MiB) into data/plots. `--list` first to
 # see what is missing; `--only 02_` for just the novelty-filtered pair.

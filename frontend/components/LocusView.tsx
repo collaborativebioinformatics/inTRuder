@@ -4,16 +4,19 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AlleleHistogram } from "@/components/AlleleHistogram";
 import { AlleleStructures, groupStructures } from "@/components/AlleleStructures";
+import { GeneTrack } from "@/components/GeneTrack";
 import { type Selection, segmentKey } from "@/components/Inspector";
 import { MotifBarcode, SegmentTooltip } from "@/components/MotifBarcode";
 import { MotifText } from "@/components/MotifText";
 import { NoveltyBadge, PlatformAgreement, noveltyOf } from "@/components/NoveltyBadge";
 import { ReferenceComparison, referenceHits, trackScale } from "@/components/ReferenceTrack";
 import { fetchLocus } from "@/lib/api";
+import { buildLinks } from "@/lib/links";
 import { buildMotifScale, formatBp, formatPos, motifColor } from "@/lib/palette";
 import {
   NOVELTY_NOTES,
   STRCHIVE_STATUS_LABELS,
+  type Locus,
   type LocusDetail,
   type Segment,
 } from "@/lib/types";
@@ -27,6 +30,35 @@ import { useView } from "@/lib/viewStore";
  * sorted by allele length, which turns copy-number variation between samples
  * into a shape you read down the left edge rather than a column of numbers.
  */
+
+/**
+ * Where a code is looked up, for every code this locus carries.
+ *
+ * One row of links rather than a per-field affordance: these are all the same
+ * kind of thing — an identifier and the page that defines it — and scattering
+ * them through the panel would make each look like a separate feature. See
+ * `lib/links.ts` for why a link is only ever built where the id is present.
+ */
+function ExternalLinks({ locus }: { locus: Locus }) {
+  const links = buildLinks(locus);
+  if (links.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+      {links.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={link.title}
+          className="tabular text-ink-secondary underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
+        >
+          {link.label}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 function Stat({
   label,
@@ -248,7 +280,10 @@ export function LocusView({
           {locus.gene && (
             <span className="text-xs text-ink-secondary">
               {locus.gene}
-              {locus.disease_gene && " · known expansion gene"}
+              {/* "in a gene with an OMIM disease entry" — deliberately weaker
+                  than the STRchive badge above, which means a curated
+                  repeat-expansion locus. Two different claims, two labels. */}
+              {locus.disease_gene && " · disease gene"}
             </span>
           )}
         </div>
@@ -281,6 +316,8 @@ export function LocusView({
             value={`${formatBp(locus.min_len)} – ${formatBp(locus.max_len)}`}
           />
         </dl>
+
+        <ExternalLinks locus={locus} />
       </header>
 
       {/* The reference scrolls with everything else. It is read once, against
@@ -288,6 +325,13 @@ export function LocusView({
           to the top of the column costs a third of the viewport for the whole
           time you are reading rows you have already placed it against. */}
       <ReferenceComparison locus={locus} maxLen={maxLen} verdict={noveltyOf(locus)} />
+
+      {/* Gene context sits under the reference rather than above it: the
+          reference answers "is this new", which is the finding, and the gene
+          answers "does it matter", which is the interpretation of it. */}
+      <div className="mt-2">
+        <GeneTrack locus={locus} />
+      </div>
 
       <AlleleHistogram
         alleles={alleles}

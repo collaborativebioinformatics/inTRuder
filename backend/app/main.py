@@ -228,7 +228,19 @@ _SCREENED_ONLY = {
     "min_insertion_purity": "insertion_purity",
     "sample": "sample",
     "strchive_status": "strchive_status",
+    # The AnnotSV block. Present on the real callsets, absent from the demo
+    # fixtures, so these go through `needs()` like the rest — a gene filter on a
+    # table with no gene annotation must report itself ignored rather than
+    # quietly matching every row.
+    "genic_only": "genic",
+    "exonic_only": "exonic",
+    "constrained_only": "pli",
+    "gene_region": "region",
 }
+
+#: pLI above which a gene is called intolerant of loss of function. gnomAD's own
+#: threshold, and the one the constraint filter means by "constrained".
+PLI_CONSTRAINED = 0.9
 
 
 def _columns(table: str) -> set[str]:
@@ -268,6 +280,10 @@ def _filter_clause(
     min_insertion_purity: float | None = None,
     sample: str | None = None,
     strchive_status: str | None = None,
+    genic_only: bool = False,
+    exonic_only: bool = False,
+    constrained_only: bool = False,
+    gene_region: str | None = None,
     available: set[str] | None = None,
 ) -> tuple[str, list[Any], list[str]]:
     """Build the WHERE clause, and report which filters the table cannot honour."""
@@ -332,6 +348,16 @@ def _filter_clause(
     if strchive_status and needs("strchive_status"):
         clauses.append("strchive_status = ?")
         params.append(strchive_status)
+    if genic_only and needs("genic_only"):
+        clauses.append("genic")
+    if exonic_only and needs("exonic_only"):
+        clauses.append("exonic")
+    if constrained_only and needs("constrained_only"):
+        clauses.append("pli >= ?")
+        params.append(PLI_CONSTRAINED)
+    if gene_region and needs("gene_region"):
+        clauses.append("region = ?")
+        params.append(gene_region)
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params, ignored
@@ -477,6 +503,10 @@ def loci(
     min_insertion_purity: float | None = None,
     sample: str | None = None,
     strchive_status: str | None = None,
+    genic_only: bool = False,
+    exonic_only: bool = False,
+    constrained_only: bool = False,
+    gene_region: str | None = Query(None, pattern="^(CDS|UTR|5'UTR|3'UTR)$"),
     limit: int = Query(300, le=2000),
     offset: int = 0,
     include_strips: bool = False,
@@ -514,6 +544,7 @@ def loci(
         min_samples, min_purity, disease_gene_only, gene,
         region, gene_query,
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
+        genic_only, exonic_only, constrained_only, gene_region,
         available=_columns(loci_table),
     )
 
@@ -628,16 +659,32 @@ def summary() -> dict[str, Any]:
     ]
     con = registry.cursor()
 
-    total, non_homopolymer, confident, novel, novel_disease = con.execute(
+    # The funnel's tail depends on what the table can answer. A callset carrying
+    # the AnnotSV block narrows "novel" through the gene context — in a gene, then
+    # in a disease gene — which is the argument this project actually makes. A
+    # table without it stops at "absent from all catalogs" rather than showing a
+    # stage of zeros, because a funnel stage reading 0 looks like a negative
+    # result and not a missing column.
+    columns = _columns(loci_table)
+    has_genes = "genic" in columns
+
+    kept = "motif_class <> 'homopolymer' AND mean_purity >= 0.8"
+    gene_counts = (
+        f""",
+             count(*) FILTER (WHERE {kept} AND novel AND genic),
+             count(*) FILTER (WHERE {kept} AND novel AND disease_gene)"""
+        if has_genes
+        else ""
+    )
+    counts = con.execute(
         f"""SELECT
              count(*),
              count(*) FILTER (WHERE motif_class <> 'homopolymer'),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8 AND novel),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8
-                              AND novel AND disease_gene)
+             count(*) FILTER (WHERE {kept}),
+             count(*) FILTER (WHERE {kept} AND novel){gene_counts}
            FROM {loci_table}"""
     ).fetchone()
+    total, non_homopolymer, confident, novel = counts[:4]
 
     def rows(sql: str) -> list[dict[str, Any]]:
         cursor = con.execute(sql)
@@ -656,20 +703,27 @@ def summary() -> dict[str, Any]:
         else f"SELECT max(n_samples) FROM {loci_table}"
     ).fetchone()[0]
 
+    funnel = [
+        {"stage": "Candidate insertion loci", "count": total,
+         "note": "Merged INS calls carrying a detected repeat"},
+        {"stage": "Non-homopolymer", "count": non_homopolymer,
+         "note": "Drop 1bp motifs"},
+        {"stage": "Confident repeats", "count": confident,
+         "note": "Mean purity ≥ 0.80"},
+        {"stage": "Absent from all catalogs", "count": novel,
+         "note": "No equivalent motif in UCSC simpleRepeat or TRExplorer"},
+    ]
+    if has_genes:
+        funnel += [
+            {"stage": "In a gene", "count": counts[4],
+             "note": "Novel and inside an annotated gene"},
+            {"stage": "In a disease gene", "count": counts[5],
+             "note": "Novel and in a gene with an OMIM disease entry"},
+        ]
+
     return {
         "cohort_size": cohort_size,
-        "funnel": [
-            {"stage": "Candidate insertion loci", "count": total,
-             "note": "Merged INS calls carrying a detected repeat"},
-            {"stage": "Non-homopolymer", "count": non_homopolymer,
-             "note": "Drop 1bp motifs"},
-            {"stage": "Confident repeats", "count": confident,
-             "note": "Mean purity ≥ 0.80"},
-            {"stage": "Absent from all catalogs", "count": novel,
-             "note": "No equivalent motif in UCSC simpleRepeat or TRExplorer"},
-            {"stage": "In a disease gene", "count": novel_disease,
-             "note": "Novel and overlapping a known repeat-expansion gene"},
-        ],
+        "funnel": funnel,
         "by_class": rows(
             f"""SELECT motif_class,
                        count(*) AS n,
