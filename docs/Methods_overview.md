@@ -107,7 +107,7 @@ The generated BED file was retained as an intermediate output.
 
 Structural variants were annotated against the **GRCh38** genome build using **AnnotSV v3.5.8**. The fourth BED column was designated as the structural variant type, and the original `SVID` was preserved in the AnnotSV output. AnnotSV was configured without a minimum SV size threshold and used locally installed annotation resources.
 
-The AnnotSV output was subsequently processed using **htsSidra**, a previously developed Java-based structural variant processing utility ([Aliyev et al., 2026](https://doi.org/10.1038/s41467-025-67763-9)), to generate the final processed annotation table.
+The AnnotSV output was subsequently processed using **htsSidra**, a previously developed Java-based structural variant processing utility ([Aliyev et al., 2026](https://doi.org/10.1038/s41467-025-67763-9); source at [idraktt/qgp_sv_paper](https://github.com/idraktt/qgp_sv_paper/tree/main/htsSidra)), to generate the final processed annotation table. The jar is built from that source rather than committed here — see `pipelines/annotate_from_bed/HOW-TO.md`.
 
 The workflow was implemented using **Nextflow DSL2** and executed in a **SLURM-managed high-performance computing environment** using a **Singularity container**.
 
