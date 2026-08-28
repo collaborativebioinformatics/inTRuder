@@ -8,7 +8,7 @@ cell output.
 
 Usage:
     python src/python/reporting/population_report.py \\
-        --input data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv \\
+        --input /path/to/05_hprc_multisample.tsv \\
         --outdir docs/figures
 """
 
@@ -268,9 +268,9 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--input", type=Path,
-        default=Path("data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv"),
-        help="Novelty-annotated TRF calls TSV (output of `novelty annotate`).",
+        "--input", type=Path, required=True,
+        help="Novelty-annotated TRF calls TSV (output of `novelty annotate`), "
+             "e.g. 05_hprc_multisample.tsv.",
     )
     parser.add_argument(
         "--outdir", type=Path, default=Path("docs/figures"),
