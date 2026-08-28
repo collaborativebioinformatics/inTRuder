@@ -66,7 +66,12 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 # Overridable so the shutdown path can be tested against a stub instead of a
 # real GPU box; there is no other reason to change it.
-BACKEND="${DX_SHARD_BACKEND:-$REPO/scripts/dx-batch-gpu.sh}"
+# Detached runs use dx-instance.sh --keep rather than dx-batch-gpu.sh. Batch
+# mode refuses --keep because it promises to stop the box -- but the payload now
+# stops the box ITSELF when the work ends, so that promise is already kept from
+# the worker side, and having the launcher also terminate is what killed the
+# 00:26 smoke test 30 minutes into a 70-minute run.
+BACKEND="${DX_SHARD_BACKEND:-}"
 
 log()  { echo "[$(date +%H:%M:%S)] $*" >&2; }
 
@@ -186,6 +191,10 @@ done
        'python -m evo.embeddings ... --dry-run' prints it (--help)"
 [ "$START" -ge 0 ] 2>/dev/null || die "--start must not be negative"
 [ ${#COMMAND[@]} -gt 0 ] || die "no program given; put it after '--'"
+if [ -z "$BACKEND" ]; then
+    if [ "$DETACH" = 1 ]; then BACKEND="$REPO/scripts/dx-instance.sh"
+    else BACKEND="$REPO/scripts/dx-batch-gpu.sh"; fi
+fi
 [ -x "$BACKEND" ] || die "$BACKEND is missing or not executable"
 [ "$PARALLEL" -gt 0 ] 2>/dev/null || PARALLEL="$SHARDS"
 [ "$SHARDS" -le "$CALLS" ] || die "--shards $SHARDS exceeds --calls $CALLS"
@@ -267,6 +276,16 @@ PIDS=()
 STATES=()
 STATUS=()      # exit code per shard once reaped; empty while it is still running
 FAILED=0
+# Whether shutting down should also stop the GPU boxes.
+#
+# Ctrl-C means "abort this" -- stop them. A SIGHUP or SIGTERM means the terminal
+# closed or the session ended, which is NOT the same instruction: the work is
+# detached and will finish on its own, and the box terminates itself when it
+# does. Killing it there would throw away exactly the run this script was
+# rewritten to protect. That is not hypothetical -- it is what ended the 00:26
+# smoke test at 30 minutes of a 70-minute run.
+STOP_BOXES=1
+[ "$DETACH" = 1 ] && STOP_BOXES=0
 
 # Every job this run created, as recorded in the shard logs by dx-instance.sh's
 # own "job          job-xxxx" line.
@@ -276,6 +295,9 @@ harvest() {
 
 sweep() {
     [ "$DRY" = 1 ] && return 0
+    # In detach mode a still-running box is expected, not a leak: it is finishing
+    # work and will stop itself. Only an explicit abort sweeps.
+    [ "$STOP_BOXES" = 0 ] && return 0
     local job state found=0
     for job in $(harvest); do
         state="$(uv run --group dx --no-sync dx describe "$job" 2>/dev/null \
@@ -299,6 +321,15 @@ cleanup() {
     for pid in ${PIDS+"${PIDS[@]}"}; do
         kill -0 "$pid" 2>/dev/null && live=$(( live + 1 ))
     done
+
+    if [ "$live" -gt 0 ] && [ "$STOP_BOXES" = 0 ]; then
+        log "leaving $live detached shard(s) running -- they finish without this"
+        log "  terminal and stop their own boxes. Watch $NTFY_URL/${NTFY_TOPIC:-<off>}"
+        for job in $(harvest); do log "  still running: $job"; done
+        log "  to stop them anyway: uv run dx terminate \$(job ids above)"
+        exit "$rc"
+    fi
+
     if [ "$live" -gt 0 ]; then
         log "stopping $live shard(s); each terminates its own box ..."
         for pid in ${PIDS+"${PIDS[@]}"}; do
@@ -320,7 +351,11 @@ cleanup() {
     sweep
     exit "$rc"
 }
-trap cleanup EXIT INT TERM
+on_int()  { STOP_BOXES=1; cleanup; }   # Ctrl-C: abort, and stop paying.
+on_hup()  { cleanup; }                 # closed terminal: leave detached work be.
+trap cleanup EXIT
+trap on_int INT
+trap on_hup HUP TERM
 
 # --- launch -------------------------------------------------------------------
 # Job control on, so every background child leads its own process group and can
@@ -372,7 +407,14 @@ launch() {
 
     log "shard $k: calls [$off, $((off + lim))) -> $out"
     STATUS[$k]=""
-    "$BACKEND" \
+    # --gpu --keep: the box is stopped by its own payload, not from here. Without
+    # --keep the child's EXIT trap terminates it the moment this laptop goes
+    # away, which makes detaching the work pointless.
+    local -a backend_flags
+    backend_flags=()
+    [ "$DETACH" = 1 ] && [ -z "${DX_SHARD_BACKEND:-}" ] && backend_flags=(--gpu --keep)
+
+    "$BACKEND" ${backend_flags+"${backend_flags[@]}"} \
         --run "$RUN-$k" \
         --output-dir "$out" \
         ${dest:+--destination "$dest"} \
