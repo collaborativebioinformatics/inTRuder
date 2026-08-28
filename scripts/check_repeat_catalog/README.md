@@ -6,9 +6,11 @@ This script will find intersection between internal tandem repeats can be found 
 bash intersect.sh
 ```
 
-## join-hits.py
+## join-hits
 
-The above script contains a supporting script to label which internal TRs are found in the catalog. It adds an extra field to the input TSV file as described below:
+The above script calls `join-hits`, the console script for
+[`intruder.analysis.benchmark.join_hits`](../../src/python/intruder/analysis/benchmark/join_hits.py),
+to label which internal TRs are found in the catalog. It adds an extra field to the input TSV file as described below:
 
 ```
 ...
@@ -18,7 +20,8 @@ The above script contains a supporting script to label which internal TRs are fo
 Briefly, the TRs found in the catalog (hits) are joined back to the original file. If unsuccessful join then the internally-found TR isn't in the catalog and vice-versa. This script is being called from 'intersect.sh' like so:
 
 ```bash
-uv run scripts/check_repeat_catalog/join-hits.py --query $TR_RESULTS_FILE --hits $INTERSECTIONS_FILE --output $OUTPUT
+uv sync --group analysis   # join-hits needs polars, which lives in the analysis group
+uv run join-hits --query $TR_RESULTS_FILE --hits $INTERSECTIONS_FILE --output $OUTPUT
 ```
 
 ## example output

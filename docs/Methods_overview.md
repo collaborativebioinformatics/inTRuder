@@ -1,16 +1,21 @@
-# Methods Outline — Thursday Presentation
+# Methods Outline
 
-Outline of the novelTR methods
+How inTRuder turns long-read SV insertion calls into annotated, validated novel-TR candidates,
+stage by stage — noting what's implemented today versus still in progress on feature branches.
 
 ## 1. Pipeline Overview
 
 Reference-based tandem repeat (TR) genotypers require a predefined catalog of loci, typically derived from a reference genome — making them blind to novel, individual- or population-specific TR loci. This project builds a pipeline to detect those novel TRs directly from structural variant calls.
 
-**Top-level flow:**
+**Top-level flow, and the stage numbers used throughout this doc:**
 
 ```
-Data Acquisition → Preprocessing → Novel TR Detection → Downstream Annotation + Validation
+Data Acquisition → Preprocessing → 01 Find TRs → 02 Novelty (optional) → 03 Annotation (optional) → 04 Validation (optional) → 05 Merge
 ```
+
+Stages 02–04 branch independently off different inputs and can each be switched on or off; 05
+only runs if at least one of them did. This numbering matches the
+[Nextflow orchestration](#5-pipeline-orchestration) that wires the stages together.
 
 **Preprocessing steps:**
 
@@ -23,7 +28,7 @@ These are assumed to be completed prior to the start of this workflow.
 - SV merging (Sniffles2) - optional
 
 Final product:
-SV VCF (this VCF feeds into Novel TR Detection)
+SV VCF (this VCF feeds into stage 01)
 
 
 
@@ -33,11 +38,11 @@ This is the primary contribution of the project — detecting TRs that fall with
 
 **Steps:**
 
-1. **Find TRs within SV insertions** — run tandem-repeat finding (`pytrf`) on each inserted ALT allele from the SV VCF
-2. **Filter / deal with overlaps** — resolve overlapping repeat calls
-3. **Figure out which are novel** — flag loci or motifs not present in the reference genome (HG38 TRF annotation - UCSC SimpleRepeats track)
+1. **01 – Find TRs within SV insertions** — run tandem-repeat finding (`pytrf`) on each inserted ALT allele from the SV VCF. *Implemented.*
+2. **02 – Assess novelty** — screen each candidate against reference TR catalogues (UCSC `simpleRepeat`, TRExplorer) and flag it `known`, `novel_motif` or `novel_locus`. *Implemented* — see [Novelty screen](tools/NOVELTY_SCREEN.md).
+3. **02B – Filter low-confidence calls** — drop insertions where TR content covers too little of the insertion or overlapping repeat calls disagree. *Planned, not yet a separate step* — filtering by purity/coverage currently happens inline in stage 01 (see below).
 
-**Implementation:** `src/python/sv_trfcaller.py` implements step 1 — it takes an SV VCF as input, runs `pytrf.ATRFinder` on each sample's inserted sequence, uses `parasail` alignment to score repeat purity, and outputs a TSV of repeat calls per sample (chrom, position, motif, purity, repeat length, etc.).
+**Implementation:** `src/python/intruder/pipeline/trf/sv_trfcaller.py` implements stage 01 — it takes an SV VCF as input, runs `pytrf.ATRFinder` on each sample's inserted sequence, uses `parasail` alignment to score repeat purity, and outputs a TSV of repeat calls per sample (chrom, position, motif, purity, repeat length, etc.). `src/python/intruder/pipeline/novelty` implements stage 02 as a CLI (`uv run novelty ... annotate`) that takes that TSV and adds the novelty verdict column.
 
 ## 3. Datasets & Validation
 
@@ -50,7 +55,8 @@ Optional:
 - Family / trio-based data
 - CHM13 cell line reads + CHM13-T2T assembly
 
-**Validation approaches:** checkpoint after novel TR detection, before results are used further.
+**Validation approaches:** 
+This is stage **04** in the pipeline numbering above.
 
 Primary approach:
 - Use high-quality annotated HPRC assemblies from [this paper](https://www.nature.com/articles/s41467-025-66153-5) as truth.
@@ -59,11 +65,23 @@ Alternate approaches if needed:
 - Use CHM13 reads as a sample, with the CHM13-T2T reference genome TRF annotation as "truth"
 - Trio validation — if we find a novel TR in a kid, do we also find it in one of the parents? Samples: HG001-7
 
+*Implementation status:* not yet wired up — stage 04 in the orchestration pipeline is currently a
+placeholder pending a Python/R script that runs one of the approaches above against a TR
+catalogue BED file (see [Pipeline orchestration](#5-pipeline-orchestration)).
+
 ## 4. Annotation
 
-Characterize TR insertions in their genomic context using annotSV.
+Two annotation efforts feed candidate TRs with genomic and clinical context. Neither is merged
+into `main` yet — both live on feature branches.
 
-**Features to annotate:**
+- **AnnotSV genomic/clinical annotation** (stage **03**) — being built on `feature/annotate-SV`.
+  Preprocessing (converting insertions to a format AnnotSV accepts) is real and wired in; the
+  AnnotSV call itself is still a placeholder in the main orchestration pipeline.
+- **STRchive disease-locus comparison** — implemented and documented separately:
+  `src/python/intruder/pipeline/strchive`, run directly as its own CLI rather than through the orchestration
+  pipeline — see [STRchive comparison](tools/STRCHIVE_COMPARE.md).
+
+**Features AnnotSV is intended to annotate**, once wired in:
 
 - Genes
 - Coding and non-coding regions
@@ -71,15 +89,50 @@ Characterize TR insertions in their genomic context using annotSV.
 - Regulatory elements
 - TADs
 
+## 5. Pipeline Orchestration
 
+A Nextflow pipeline (`workflows/main.nf`) wires stages 01–05 together. It lives on the
+not-yet-merged `nextflow-pipeline` branch — it is not present on `main` or in this checkout.
 
-## 5. Analyze Novel TR Variation in HPRC
+**Usage** (once merged):
+
+```bash
+# baseline only — just stage 01
+nextflow run workflows/main.nf --input_vcf path/to/insertions.vcf
+
+# with the optional stages turned on
+nextflow run workflows/main.nf \
+    --input_vcf path/to/insertions.vcf \
+    --run_novelty \
+    --run_annotation \
+    --run_validation \
+    --tr_catalogue_bed path/to/tandem_repeats.bed   # required if --run_validation is set
+```
+
+Each optional stage reads from a different input — 02 (novelty) consumes stage 01's TSV output,
+03 (annotation) consumes the *original* VCF, and 04 (validation) consumes stage 01's output plus
+a TR catalogue BED. Stage 05 merges whichever of 02/03/04 ran with stage 01's output, keyed on
+`CHROM_POS_END_SVTYPE_SVLEN`.
+
+| Stage | Process | Status |
+|---|---|---|
+| 01 Find TRs | `FIND_TRS` | Real — calls `sv_trfcaller.py` |
+| 02 Novelty | `FIND_NOVEL` | Real — calls the `novelty` CLI |
+| 03a Preprocess | `PREPROCESS` | Real — calls `pipelines/sv_preprocess` from `feature/annotate-SV` |
+| 03b Annotate | `ANNOTATE` | Placeholder — real AnnotSV call not yet wired in |
+| 04 Validate | `VALIDATE` | Placeholder — no validation script wired in yet |
+| 05 Merge | `MERGE` | Placeholder — no merge script wired in yet |
+
+Until 05 lands, per-sample results from stages 01–04 are combined manually — see
+[`notebooks/novel_tr_results.ipynb`](../notebooks/novel_tr_results.ipynb).
+
+## 6. Analyze Novel TR Variation in HPRC
 
 Apply the pipeline across the Human Pangenome Reference Consortium (HPRC) cohort to move from single-sample discovery to describing how novel TR loci behave across individuals and populations.
 
 **Steps:**
 
-1. **Run pipeline per-sample** — apply Sections 2–4 to each HPRC sample's SV VCF to get per-sample novel TR + annotation calls
+1. **Run pipeline per-sample** — apply stages 01–04 to each HPRC sample's SV VCF to get per-sample novel TR + annotation calls
 2. **Merge calls across samples** — reconcile the same novel locus detected in multiple individuals (match by position + motif, as in Section 4)
 3. **Compute population-level stats** — presence/absence frequency, allele-length distribution, breakdown by population/ancestry
 4. **Visualize** — per-locus frequency and length distributions across samples/populations

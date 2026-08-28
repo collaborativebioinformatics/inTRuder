@@ -138,7 +138,10 @@ process JOIN_REPEAT_CATALOG_HITS {
 
     script:
     """
-    uv run join-hits.py \\
+    
+    # Join original file with hits. `join-hits` is the console script for
+    # intruder.analysis.benchmark.join_hits; it needs `uv sync --group analysis`.
+    uv run join-hits \\
         --query "${tr_results}" \\
         --hits "${intersections_bed}" \\
         --output HPRC_SV.survivor.ins.trf.in_catalog.tsv.gz
