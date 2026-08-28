@@ -37,7 +37,7 @@ WORKDIR /app
 # pinned versions already resolved, not a fresh re-resolution.
    COPY pyproject.toml uv.lock README.md ./
 
-# `novelty` is declared as a real installable package built from
+# `intruder` is declared as a real installable package built from
 # src/python (see [tool.uv.build-backend] in pyproject.toml), so the
 # source needs to be present before `uv sync` runs - it's not just
 # installing third-party deps, it's building this project too.
@@ -48,7 +48,7 @@ RUN uv sync --locked
 # Bundle sv_trfcaller.py at a stable, simple path for FIND_TRS to call
 # (in addition to it already being installed as part of the novelty
 # package above).
-COPY src/python/sv_trfcaller.py /opt/scripts/sv_trfcaller.py
+COPY src/python/intruder/pipeline/trf/sv_trfcaller.py /opt/scripts/sv_trfcaller.py
 
 # Bundle normalize_svtype.py (from the annotation team's sv_preprocess
 # pipeline - not yet merged to their main branch, so this is a local
@@ -61,7 +61,7 @@ COPY pipelines/sv_preprocess/scripts/normalize_svtype.py /opt/scripts/normalize_
 # filtering stage) for the FILTER_BY_COVERAGE process to call directly.
 # It's pure standard-library Python (no external dependencies), so no
 # extra packages are needed for it.
-COPY src/python/filter/filter_ins_trf.py /opt/scripts/filter_ins_trf.py
+COPY src/python/intruder/pipeline/trf/filter_ins_trf.py /opt/scripts/filter_ins_trf.py
 
 # --- Pre-bake novelty's reference catalogs (UCSC simpleRepeat ~30MB,
 # TRExplorer ~45MB) at build time, so runs never need network access
