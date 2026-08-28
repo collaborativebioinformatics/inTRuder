@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "novelTRs",
+  title: "inTRuder",
   description:
     "Discover tandem repeat loci absent from the reference genome, from structural-variant insertion calls.",
 };

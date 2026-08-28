@@ -1,6 +1,6 @@
 """The LangGraph agent and its event stream.
 
-Deliberately small: a prebuilt ReAct graph over the four tools in `app.tools`. It
+Deliberately small: a prebuilt ReAct graph over the five tools in `app.tools`. It
 is a real LangGraph graph, so replacing `create_react_agent` with a custom
 `StateGraph` later is a change to this file only — the tools, the streaming
 protocol, and the frontend stay as they are.
@@ -16,7 +16,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
-from app import uploads
+from app import switches, uploads
 from app.config import settings
 from app.llm import build_chat_model
 from app.registry import registry
@@ -25,7 +25,7 @@ from app.tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are the analysis assistant for novelTRs, a tool that discovers tandem repeat
+You are the analysis assistant for inTRuder, a tool that discovers tandem repeat
 (TR) loci from structural-variant insertion calls in long-read genomes.
 
 The scientific point of this project: most TR genotypers only look at loci in a
@@ -114,9 +114,15 @@ def build_agent():
 
 
 def _system_message() -> SystemMessage:
+    """The prompt for one turn, describing the data *this caller* can see.
+
+    Built per turn rather than once, because the schema block depends on which
+    datasets the person asking has switched off — see `app.switches`.
+    """
     return SystemMessage(
         content=SYSTEM_PROMPT.format(
-            schema=registry.schema_prompt(), uploads=_uploads_prompt()
+            schema=registry.schema_prompt(registry.switched_off(switches.current())),
+            uploads=_uploads_prompt(),
         )
     )
 

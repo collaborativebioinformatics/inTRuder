@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Workspace } from "@/components/Workspace";
 
 export const metadata: Metadata = {
-  title: "Datasets · novelTRs",
+  title: "Datasets · inTRuder",
   description:
     "The tables this deployment can read, the files uploaded to it, and which of them drive the views.",
 };

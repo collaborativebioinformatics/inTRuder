@@ -1,0 +1,99 @@
+name: hprc_calls
+title: HPRC carrier-alleles, screened against reference catalogs and gene-annotated
+synthetic: false
+path: ${NOVELTRS_DATA_DIR}/plots/parquet/05_hprc_multisample.parquet
+format: parquet
+
+description: >
+  The real screened callset at its native grain: ONE ROW PER (insertion site x SV
+  record x sample), not one row per locus. A recurrent locus contributes one row
+  per carrier, so any percentage computed over rows here tracks how often a locus
+  RECURS, not how often a locus is novel. For locus-level questions query
+  hprc_loci, which is this table already aggregated correctly. Come here for
+  per-carrier questions: which samples carry a locus, how a sample's calls
+  distribute, what the screen said about one specific SV record.
+  WARNING - this file carries exact duplicate rows: 221,405 rows, 162,441
+  distinct. Every count over it must be SELECT DISTINCT or COUNT(DISTINCT ...) or
+  it will be inflated by 26%. hprc_loci and hprc_segments are built from the
+  de-duplicated view and do not have this problem.
+  Two layers of verdict per row. First, novelty against reference TR catalogs:
+  known, novel_motif (the reference has repeats here but not this one), or
+  novel_locus (the reference annotates nothing here). Second, the same verdict
+  from each catalog independently - ucsc_novelty and trexplorer_novelty - which
+  disagree on a meaningful fraction of rows, and where they agree the call is a
+  property of the data rather than of one catalog's coverage. There is no STRchive
+  layer in this file; the disease-locus overlap lives on hprc_loci instead.
+  The last 120 columns are the raw AnnotSV block - gene, transcript, OMIM, GenCC,
+  constraint. Prefer hprc_loci for any of it: these columns pack several values
+  into one field with THREE different separators (Gene_name is ';'-joined per
+  gene; the transcript-level *_merged columns are ', '-joined and repeat per
+  transcript; the gene-level ones are ', '-joined per gene and their free text
+  contains ', ' itself), and hprc_loci is that already parsed into one clean
+  column each. Twenty-five of them are entirely empty - the AnnotSV ranking was
+  not run - including AnnotSV_ranking_score, ACMG_class and every P_gain_/P_loss_
+  column. AnnotSV's own `Intronic` column is computed as NOT Exonic and so is
+  true at intergenic sites too; hprc_loci.intronic is the corrected version.
+  Already filtered: every row is filter = PASS, purity >= 0.80, insertion_purity
+  >= 0.80, repeat_coverage >= 0.80, depth >= 30. Both `filter` and `allele` are
+  constant across the whole file and discriminate nothing.
+  Numeric columns really are numeric here. The upstream TSV writes the literal
+  string 'NA' wherever a value is absent - which used to make every ucsc_* and
+  trexplorer_* column TEXT and needed a TRY_CAST before any arithmetic -
+  but scripts/plots_to_parquet.py turns that sentinel into a real NULL at
+  conversion time, so they arrive as BIGINT and DOUBLE. NULL means "no reference
+  repeat exists at this position", which is absence, not a distance of zero.
+
+columns:
+  chrom: Chromosome of the insertion site (GRCh38).
+  ins_coord: Insertion-site position, 1-based as VCF POS. (chrom, ins_coord) is hprc_loci.locus_id.
+  SVID: Sniffles structural-variant record identifier, e.g. Sniffles2.INS.0M1. Unique to one site.
+  depth: Read depth for this call. 30 or above by construction.
+  insert_size: >
+    Inserted sequence length in bp, 50-9930. Constant across all carriers of one
+    SVID - the multisample VCF stores one ALT sequence per record - so allele-size
+    variation appears only between co-located SVIDs.
+  sample: Sample carrying this insertion. 67 samples in the cohort.
+  allele: Allele index as written by the caller. Always 1 in this file.
+  rep_start: Start of this repeat block within the inserted sequence, 0-based.
+  rep_end: End of this repeat block within the inserted sequence.
+  motif: Repeat motif called by TRF inside the insertion, at the rotation TRF reported.
+  purity: TRF identity to a perfect repeat for this block, 0-1.
+  motif_length: Motif length in bp, 1-392.
+  rep_length: Length of this repeat block in bp.
+  rep_units: Copies of the motif in this block.
+  novelty: Combined verdict across all catalogs - known, novel_motif, or novel_locus.
+  canonical_motif: The motif reduced to its primitive unit, then to the smallest rotation of that unit or its reverse complement. This is the form comparisons use.
+  insertion_repeat_bases: Total bp of the insertion covered by any repeat block, counted as a union.
+  insertion_purity: Fraction of the whole insertion that is tandem repeat at all, 0-1. Low means the insertion is mostly something else.
+  filter: PASS, or which threshold this row failed. Always PASS here - the file is post-filter.
+  ucsc_novelty: The same verdict from the UCSC simpleRepeat track alone (1.05M entries).
+  ucsc_n_nearby: UCSC repeats within 10 bp of the insertion point. 0 means novel_locus.
+  ucsc_start: Start of the best-matching UCSC repeat, GRCh38.
+  ucsc_end: End of that repeat.
+  ucsc_distance: bp from the insertion point to that repeat; 0 means overlapping.
+  ucsc_motif: Motif of that repeat.
+  ucsc_canonical: Canonical form of that motif.
+  ucsc_motif_edits: 0 when the motifs are equivalent, 1 when not. Binary, not a distance.
+  ucsc_match: How the match was made - exact, or the relaxation that found it.
+  ucsc_period: TRF period of that repeat.
+  ucsc_copy_num: TRF copy number of that repeat.
+  ucsc_consensus_size: TRF consensus size of that repeat.
+  ucsc_per_match: TRF percent identity of that repeat, 0-100.
+  ucsc_per_indel: TRF percent indel of that repeat, 0-100.
+  trexplorer_novelty: The same verdict from the TRExplorer catalog alone (5.6M entries, position and motif only).
+  trexplorer_n_nearby: TRExplorer repeats within 10 bp.
+  trexplorer_start: Start of the best-matching TRExplorer repeat, GRCh38.
+  trexplorer_end: End of that repeat.
+  trexplorer_distance: bp to that repeat; 0 means overlapping.
+  trexplorer_motif: Motif of that repeat.
+  trexplorer_canonical: Canonical form of that motif.
+  trexplorer_motif_edits: 0 when equivalent to ours, 1 when not.
+  trexplorer_match: How the match was made.
+  repeat_coverage: Fraction of the insertion covered by the called repeat block, 0-1.
+
+provenance:
+  source: Sniffles multisample INS calls across 67 HPRC long-read genomes (hprc_multisample.vcf)
+  pipeline: pyTRF identification | novelty annotate --platform ucsc,trexplorer | novelty filter | AnnotSV
+  build: GRCh38
+  upstream_file: data/plots/05_hprc_multisample.tsv (Drive folder Data_final; see scripts/fetch_plot_data.sh)
+  license: HPRC data use terms

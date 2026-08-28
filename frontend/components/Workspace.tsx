@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { AboutView } from "@/components/AboutView";
 import { CatalogView } from "@/components/CatalogView";
 import { Chat } from "@/components/Chat";
 import { ClassBreakdown } from "@/components/ClassBreakdown";
@@ -11,10 +12,12 @@ import { FilterBar } from "@/components/FilterBar";
 import { Funnel } from "@/components/Funnel";
 import { Inspector, type Selection } from "@/components/Inspector";
 import { LocusView } from "@/components/LocusView";
+import { PresentationView } from "@/components/PresentationView";
 import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UploadDialog } from "@/components/UploadDialog";
 import {
+  ApiError,
   fetchHealth,
   fetchLoci,
   fetchStrchiveSummary,
@@ -101,6 +104,7 @@ function DatasetsRail({
   health: Health | null;
 }) {
   const unavailable = health?.datasets.unavailable ?? [];
+  const disabled = health?.datasets.disabled ?? [];
 
   return (
     <div className="space-y-6">
@@ -141,6 +145,25 @@ function DatasetsRail({
         </section>
       )}
 
+      {disabled.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-ink">Switched off</h2>
+          <p className="text-[11px] leading-relaxed text-ink-muted">
+            No page draws these and the assistant is never told they exist. The
+            demo fixtures do this to themselves once real data is driving a
+            surface; every switch is yours to move, and yours alone — they live
+            in this browser.
+          </p>
+          <ul className="space-y-0.5">
+            {disabled.map((name) => (
+              <li key={name} className="tabular text-[11px] text-ink-secondary">
+                {name}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {listing && !listing.enabled && (
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--novel)" }}>
           Uploads are turned off on this server (UPLOADS_ENABLED).
@@ -150,40 +173,60 @@ function DatasetsRail({
   );
 }
 
-const TABS: { page: PageName; href: string; label: string }[] = [
+interface Tab {
+  page: PageName;
+  href: string;
+  label: string;
+}
+
+const TABS: Tab[] = [
   { page: "catalog", href: "/", label: "Candidate loci" },
   { page: "strchive", href: "/strchive", label: "Disease loci" },
   // Nouns, like its neighbours: each tab names the data you are looking at.
   // Uploading is the verb, and it lives on the right as a control rather than
   // as a place you navigate to.
   { page: "datasets", href: "/datasets", label: "Datasets" },
+  // Last, and the odd one out: not a view of the data but the write-up of what
+  // the data showed. It sits in the same row because during a talk it is one of
+  // the places you switch to, and a link somewhere else is a link nobody finds.
+  { page: "presentation", href: "/presentation", label: "Hackathon Presentation" },
 ];
 
-function Nav() {
+/**
+ * Sits at the other end of the header, apart from the row above: every tab there
+ * names data you are looking at, and this one names the people who made it. Kept
+ * a nav pill rather than restyled as a control, because it is still a place you
+ * go — it just is not one of the places you work.
+ */
+const ABOUT_TAB: Tab = { page: "about", href: "/about", label: "About" };
+
+function NavTab({ tab }: { tab: Tab }) {
   const { filters, patch } = useView();
-  const current = filters.page ?? "catalog";
+  const active = (filters.page ?? "catalog") === tab.page;
 
   return (
+    <Link
+      href={tab.href}
+      onClick={() => patch({ page: tab.page })}
+      aria-current={active ? "page" : undefined}
+      className="rounded-full px-2.5 py-1 text-xs transition-colors"
+      style={{
+        background: active ? "var(--surface-raised)" : "transparent",
+        color: active ? "var(--ink)" : "var(--ink-muted)",
+        border: `1px solid ${active ? "var(--hairline)" : "transparent"}`,
+      }}
+    >
+      {tab.label}
+    </Link>
+  );
+}
+
+function Nav() {
+  return (
     <nav className="flex items-center gap-1" aria-label="Surfaces">
-      {TABS.map((tab) => {
-        const active = current === tab.page;
-        return (
-          <Link
-            key={tab.page}
-            href={tab.href}
-            onClick={() => patch({ page: tab.page })}
-            aria-current={active ? "page" : undefined}
-            className="rounded-full px-2.5 py-1 text-xs transition-colors"
-            style={{
-              background: active ? "var(--surface-raised)" : "transparent",
-              color: active ? "var(--ink)" : "var(--ink-muted)",
-              border: `1px solid ${active ? "var(--hairline)" : "transparent"}`,
-            }}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+      {TABS.map((tab) => (
+        <NavTab key={tab.page} tab={tab} />
+      ))}
     </nav>
   );
 }
@@ -195,7 +238,9 @@ function WorkspaceInner() {
   const [health, setHealth] = useState<Health | null>(null);
   const [data, setData] = useState<LociResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Kept as the Error rather than its message: a 503 the API answered and a
+  // network failure need different advice, and only the object knows which.
+  const [error, setError] = useState<Error | null>(null);
   // The block pinned out of a barcode. Deliberately not part of the view store:
   // it is what one person clicked, not a description of the data on screen, so
   // the agent has no business setting it and it does not belong in a URL.
@@ -226,14 +271,24 @@ function WorkspaceInner() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([fetchSummary(controller.signal), fetchHealth(controller.signal)])
-      .then(([s, h]) => {
+    // Three independent fetches, deliberately not gathered into one Promise.all.
+    // The cohort summary fails outright when no table holds `role: loci` — which
+    // is a state you can reach by switching the locus tables off — and a
+    // combined promise would take health down with it, freezing the very page
+    // that shows you which switch to put back.
+    fetchSummary(controller.signal)
+      .then((s) => {
         setSummary(s);
-        setHealth(h);
+        setError(null);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        setSummary(null);
+        setError(err);
       });
+    fetchHealth(controller.signal)
+      .then(setHealth)
+      .catch(() => undefined);
     // The disease catalog is independent of the cohort tables, so a missing
     // callset must not stop it loading — and vice versa.
     fetchStrchiveSummary(controller.signal)
@@ -262,7 +317,12 @@ function WorkspaceInner() {
         setError(null);
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        // Dropped rather than left on screen: rows fetched under different
+        // filters, or from a table that has since been switched off, are not an
+        // answer to the request that just failed.
+        setData(null);
+        setError(err);
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -278,10 +338,11 @@ function WorkspaceInner() {
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-hairline px-4 py-2.5">
         <div className="flex items-center gap-4">
-          <h1 className="text-sm font-semibold tracking-tight text-ink">novelTRs</h1>
+          <h1 className="text-sm font-semibold tracking-tight text-ink">inTRuder</h1>
           <Nav />
         </div>
         <div className="flex items-center gap-2">
+          <NavTab tab={ABOUT_TAB} />
           {page === "catalog" && summary?.synthetic && (
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -343,98 +404,135 @@ function WorkspaceInner() {
         </div>
       </header>
 
+      {/* A 503 is the API answering, and it answers with a reason — most often
+          that no table holds `role: loci`, which is a switch away from being
+          fixed. Telling someone to start a server that is plainly running would
+          send them looking in the wrong place, so the two cases read
+          differently and the server's own sentence is the one shown. */}
       {error && page === "catalog" && (
         <div
           className="shrink-0 px-4 py-2 text-xs"
           style={{ background: "var(--novel-soft)", color: "var(--novel)" }}
         >
-          Cannot reach the API — {error}. Start it with:{" "}
-          <span className="tabular">cd backend &amp;&amp; uv run uvicorn app.main:app --reload</span>
+          {error instanceof ApiError ? (
+            <>Nothing to draw — {error.message}</>
+          ) : (
+            <>
+              Cannot reach the API — {error.message}. Start it with:{" "}
+              <span className="tabular">
+                cd backend &amp;&amp; uv run uvicorn app.main:app --reload
+              </span>
+            </>
+          )}
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
-        <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
-          {/* The pinned block goes at the top of the rail, above the cohort
-              context: it is the most recent thing the reader asked for, and the
-              rail is the one column that never moves under them. */}
-          {page === "catalog" && selection && (
-            <Inspector selection={selection} onClear={() => setSelection(null)} />
-          )}
-          {page === "datasets" ? (
-            <DatasetsRail listing={listing} health={health} />
-          ) : page === "strchive" ? (
-            <StrchiveRail summary={strchive} />
-          ) : summary ? (
-            <>
-              <Funnel stages={summary.funnel} />
-              <ClassBreakdown summary={summary} />
-            </>
-          ) : (
-            <p className="text-sm text-ink-muted">Loading summary…</p>
-          )}
-        </aside>
-
-        {/* Drilled into one locus, the middle column becomes a single scroll:
-            the detail page is taller than the viewport and the reference band
-            pins itself to the top of it (see LocusView). The catalog keeps its
-            own inner scroll instead, so its header and filter row stay put
-            while only the list of loci moves.
-
-            The scrolling variant carries no top padding. Sticky offsets are
-            measured from the scrollport's *content* box, so a padded column
-            pins the band 16px down and leaves a gap for allele rows to show
-            through as they scroll past. The padding moves inside the scroll
-            content instead, where it scrolls away like everything else. */}
-        <main
-          className={
-            page === "catalog" && focused
-              ? "scroll-quiet min-h-0 overflow-y-auto px-4 pb-4"
-              : "flex min-h-0 flex-col gap-3 p-4"
-          }
-        >
-          {page === "datasets" ? (
-            <DatasetsView
-              listing={listing}
-              onUpload={openUpload}
-              onChanged={onRegistryChanged}
-            />
-          ) : page === "strchive" ? (
-            <StrchiveView />
-          ) : focused ? (
-            <div className="space-y-3 pt-4">
-              <FilterBar ignored={data?.ignored_filters ?? []} />
-              <LocusView
-                locusId={focused}
-                selection={selection}
-                onSelect={setSelection}
-              />
-            </div>
-          ) : (
-            <>
-              <FilterBar ignored={data?.ignored_filters ?? []} />
-              <CatalogView
-                loci={data?.loci ?? []}
-                strips={data?.strips ?? {}}
-                total={data?.total ?? 0}
-                loading={loading}
-                sort={data?.sort}
-              />
-            </>
-          )}
+      {/* The presentation and the About page are documents, not workspace
+          surfaces: no cohort rail to orient them and nothing for the assistant to
+          query, so they get the whole width and one scroll of their own. */}
+      {page === "presentation" || page === "about" ? (
+        <main className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
+          {page === "about" ? <AboutView /> : <PresentationView />}
         </main>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
+          <aside className="scroll-quiet min-h-0 space-y-6 overflow-y-auto border-hairline p-4 lg:border-r">
+            {/* The pinned block goes at the top of the rail, above the cohort
+                context: it is the most recent thing the reader asked for, and the
+                rail is the one column that never moves under them. */}
+            {page === "catalog" && selection && (
+              <Inspector selection={selection} onClear={() => setSelection(null)} />
+            )}
+            {page === "datasets" ? (
+              <DatasetsRail listing={listing} health={health} />
+            ) : page === "strchive" ? (
+              <StrchiveRail summary={strchive} />
+            ) : summary ? (
+              <>
+                <Funnel stages={summary.funnel} />
+                <ClassBreakdown summary={summary} />
+              </>
+            ) : error ? (
+              // The banner above already says what happened. Saying "loading"
+              // under it would be the page insisting on something it has been told
+              // is not true.
+              <p className="text-sm text-ink-muted">No cohort to summarize.</p>
+            ) : (
+              <p className="text-sm text-ink-muted">Loading summary…</p>
+            )}
+          </aside>
 
-        <aside className="flex min-h-0 flex-col border-hairline lg:border-l">
-          <div className="shrink-0 border-b border-hairline px-3 py-2.5">
-            <h2 className="text-sm font-medium text-ink">Assistant</h2>
-            <p className="text-[11px] text-ink-muted">
-              {health?.llm.provider ?? "…"}
-              {health?.agent_enabled === false && " · not configured"}
-            </p>
-          </div>
-          <Chat agentEnabled={health?.agent_enabled ?? false} />
-        </aside>
-      </div>
+          {/* Drilled into one locus, the middle column becomes a single scroll:
+              the detail page is taller than the viewport and the reference band
+              pins itself to the top of it (see LocusView). The catalog keeps its
+              own inner scroll instead, so its header and filter row stay put
+              while only the list of loci moves.
+
+              The scrolling variant carries no top padding. Sticky offsets are
+              measured from the scrollport's *content* box, so a padded column
+              pins the band 16px down and leaves a gap for allele rows to show
+              through as they scroll past. The padding moves inside the scroll
+              content instead, where it scrolls away like everything else. */}
+          <main
+            className={
+              page === "catalog" && focused
+                ? "scroll-quiet min-h-0 overflow-y-auto px-4 pb-4"
+                : "flex min-h-0 flex-col gap-3 p-4"
+            }
+          >
+            {page === "datasets" ? (
+              <DatasetsView
+                listing={listing}
+                onUpload={openUpload}
+                onChanged={onRegistryChanged}
+              />
+            ) : page === "strchive" ? (
+              <StrchiveView />
+            ) : focused ? (
+              <div className="space-y-3 pt-4">
+                <FilterBar ignored={data?.ignored_filters ?? []} />
+                <LocusView
+                  locusId={focused}
+                  selection={selection}
+                  onSelect={setSelection}
+                  cohortSize={summary?.cohort_size}
+                />
+              </div>
+            ) : error instanceof ApiError && !data ? (
+              // Drawing the filter row and an empty list here would read as "your
+              // filters matched nothing" — the wrong diagnosis, and one that sends
+              // the reader clearing controls that were never the problem. The
+              // banner above carries the real reason.
+              <p className="pt-4 text-sm text-ink-muted">
+                Switch a locus table back on from the Datasets page, or add one.
+              </p>
+            ) : (
+              <>
+                <FilterBar ignored={data?.ignored_filters ?? []} />
+                <CatalogView
+                  loci={data?.loci ?? []}
+                  strips={data?.strips ?? {}}
+                  total={data?.total ?? 0}
+                  loading={loading}
+                  sort={data?.sort}
+                  cohortSize={summary?.cohort_size}
+                />
+              </>
+            )}
+          </main>
+
+          <aside className="flex min-h-0 flex-col border-hairline lg:border-l">
+            <div className="shrink-0 border-b border-hairline px-3 py-2.5">
+              <h2 className="text-sm font-medium text-ink">Assistant</h2>
+              <p className="text-[11px] text-ink-muted">
+                {health?.llm.provider ?? "…"}
+                {health?.agent_enabled === false && " · not configured"}
+              </p>
+            </div>
+            <Chat agentEnabled={health?.agent_enabled ?? false} />
+          </aside>
+        </div>
+      )}
 
       {/* Drawn over everything while a file is in flight over the window, so the
           page says it will accept the drop before you let go. Pointer events off:
