@@ -47,16 +47,15 @@ settings, and :meth:`MotifTolerance.compare` reports which one fired:
     sides can describe one repeat at different periods.
 
 Nothing here knows about a particular repeat catalogue -- see
-:mod:`novelty.platforms` for that.
+:mod:`novelty.platforms` for that -- and nothing here needs numpy, so a
+pure-stdlib step can compare motifs without taking on pandas. The vectorised
+wrapper for catalogue-scale data is :func:`novelty.platforms.canonical_motifs`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import NamedTuple
-
-import numpy as np
-import pandas as pd
 
 # Full IUPAC, not just ACGTN: a catalogue is entitled to write an ambiguous base
 # in a consensus, and translating only ACGTN would *reverse* R/Y/S/W/K/M/B/D/H/V
@@ -210,25 +209,6 @@ def canonical_motif(motif: str,
         return forward
     rc = reverse_complement(unit)
     return min(forward, least_rotation(rc) if equivalence.circular else rc)
-
-
-def canonical_motifs(values,
-                     equivalence: MotifEquivalence = DEFAULT_EQUIVALENCE) -> np.ndarray:
-    """Vectorised :func:`canonical_motif` over an array-like of motif strings.
-
-    Catalogues repeat their motifs heavily (hg38 ``simpleRepeat`` has 1.05M rows
-    but only 516k distinct sequences), so each distinct string is canonicalised
-    exactly once and the result is broadcast back through the factor codes.
-    Returns an object-dtype array so motifs of different lengths are not padded.
-    """
-    series = pd.Series(values, dtype=object).fillna("")
-    codes, uniques = pd.factorize(series, sort=False)
-    if len(uniques) == 0:
-        return np.empty(len(series), dtype=object)
-    table = np.empty(len(uniques) + 1, dtype=object)
-    table[:-1] = [canonical_motif(str(u), equivalence) for u in uniques]
-    table[-1] = ""                      # factorize marks missing values as -1
-    return table[np.where(codes < 0, len(uniques), codes)]
 
 
 def _edit_distance(a: str, b: str, cutoff: int) -> int:

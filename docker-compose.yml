@@ -1,0 +1,98 @@
+# novelTRs web interface: FastAPI backend + Next.js frontend.
+#
+#   docker compose up --build      # frontend on :3000, API on :8000
+#   docker compose down
+#
+# Chat needs a model credential; the data views do not. Put one in backend/.env
+# (cp backend/.env.example backend/.env) or export it before `up`.
+#
+# Dockerfiles live in docker/. Your data stays on the host and is bind-mounted —
+# see the `volumes` block below and docker/README.md.
+
+name: noveltrs
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        # On Linux the bind mount below keeps its host ownership, so the service
+        # has to run as somebody who can write it — the Upload button does.
+        # Docker Desktop virtualizes this and either value works.
+        UID: ${UID:-10001}
+        GID: ${GID:-10001}
+    image: noveltrs-backend:local
+    ports:
+      # Loopback only. This API accepts file uploads and writes them into the
+      # mount below, with no authentication in front of it; published on all
+      # interfaces it would let anyone on your network put files in ./data.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Forced, because a host path from backend/.env would be meaningless in
+      # here. Everything the backend reads lives under the /data mount below.
+      - NOVELTRS_DATA_DIR=/data
+      - NOVELTRS_REGISTRY_DIR=/data/web
+      # Passed through only when set, so backend/.env stays authoritative and an
+      # exported shell variable can still override it for one run.
+      - LLM_PROVIDER
+      - LLM_MODEL
+      - LLM_EFFORT
+      - LLM_MAX_TOKENS
+      - ANTHROPIC_API_KEY
+      - GOOGLE_API_KEY
+      - OPENAI_API_KEY
+      - OLLAMA_BASE_URL
+      - MAX_SQL_ROWS
+      - SQL_TIMEOUT_S
+      - CORS_ORIGINS
+      # Uploads. UPLOADS_ENABLED=false turns the endpoint off entirely;
+      # UPLOAD_LINK_ROOTS adds directories that "register a file in place" may
+      # read, which only means anything for paths also mounted into the
+      # container.
+      - UPLOADS_ENABLED
+      - MAX_UPLOAD_MB
+      - UPLOAD_LINK_ROOTS
+    env_file:
+      # Optional: a fresh clone has no backend/.env and still comes up, with the
+      # data API working and chat reporting a configuration error.
+      - path: backend/.env
+        required: false
+    volumes:
+      # YOUR DATA. Manifests are read from /data/web and their `path:` resolves
+      # against /data, so the whole registry is swappable without a rebuild:
+      #
+      #   1. drop your parquet/csv/tsv anywhere under ./data
+      #   2. copy data/web/demo-loci.yaml to ./data/web/my-dataset.yaml and edit
+      #   3. docker compose restart backend
+      #
+      # Read-write so the dataset scripts can run in the container too:
+      #   docker compose run --rm backend python scripts/make_demo_data.py
+      #   docker compose run --rm backend python scripts/fetch_strchive.py
+      #
+      # This is also where the Upload button puts files: /data/uploads, which is
+      # ./data/uploads on your machine. Nothing about that path is Docker-
+      # specific, which is why uploading works identically with `just dev`.
+      - ./data:/data
+      # Data you keep outside the repository. Uncomment, point at it, and have
+      # the manifest's `path:` say /mnt/extra/... :
+      # - /absolute/path/on/your/machine:/mnt/extra:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        # Inlined into the browser bundle at build time, so it is the URL your
+        # BROWSER uses — not `backend:8000`, which only resolves inside this
+        # network. Serving from another host means rebuilding the frontend.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    image: noveltrs-frontend:local
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        # Waits for /api/health, so the first page load never races the registry.
+        condition: service_healthy
+    restart: unless-stopped
