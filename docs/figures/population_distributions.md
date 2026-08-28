@@ -1,8 +1,8 @@
 # Population-level TR distributions by novelty class
 
-*Generated 2026-08-28 16:09 UTC by `src/python/reporting/population_report.py` from `data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv` (4,518 TRF calls across 296 SVs).*
+*Generated 2026-08-28 17:57 UTC by `src/python/reporting/population_report.py` from `data/sv_output/survivor_multi_sample_vcf/first_500_INS.novelty.tsv` (4,518 TRF calls across 221 loci; locus = chrom+position, not SVID -- see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*
 
-Colours follow the same fixed palette as [`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): one novelty class, one colour, everywhere. Distributions are shown as raw counts (not density) — class sizes differ by ~4x, so absolute magnitude matters here, not just shape.
+Colours follow the same fixed palette as [`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): one novelty class, one colour, everywhere. Distributions below the summary chart are `novel_motif` vs `novel_locus` only (`known` excluded, not of interest here), shown as raw counts (not density) — the two classes differ by ~3x in size, so absolute magnitude matters, not just shape.
 
 ## Summary
 
@@ -16,19 +16,19 @@ Colours follow the same fixed palette as [`notebooks/novel_tr_results.ipynb`](..
 
 ## Motif length
 
-Values at or above 30bp are pooled into the `30+` bucket and called out with an annotation — the underlying summary table above is exact. An earlier version of this chart used a fixed axis range that cut the view off at 32bp without pooling the overflow, which silently dropped 8.3% of all calls (actual motif lengths run up to 77bp) from the plot entirely.
+Values at or above 30bp are pooled into the `30+` bucket and called out with an annotation (203 calls, 9.2% of all calls, actual motif lengths run up to 77bp) — the underlying summary table above is exact. An earlier version of this chart used a fixed axis range that cut the view off at 32bp without pooling the overflow, which silently dropped that many calls from the plot entirely.
 
 ![Motif length by novelty class](assets/population_distributions/motif_length.png)
 
 ## Repeat tract length
 
-Values at or above 3000bp are pooled into the `3000+` bucket the same way (here the overflow is small: 11 rows, 0.2% of all calls).
+Values at or above 3000bp are pooled into the `3000+` bucket the same way (5 calls, 0.2% of all calls; actual repeat tract lengths run up to 4,385bp).
 
 ![Repeat tract length by novelty class](assets/population_distributions/rep_length.png)
 
 ## Purity
 
-`known` calls concentrate sharply around 0.67-0.85 purity; novel calls (both classes) are flatter and skew higher. This matters for interpreting the purity filter used downstream (`src/python/filter/filter_ins_trf.py`): it removes a disproportionate share of `novel_locus` calls relative to `known` ones.
+Median purity by class is in the summary table above. This matters for interpreting the purity filter used downstream (`src/python/filter/filter_ins_trf.py`, min purity 0.7): the shape of each class's distribution near that threshold determines how much of it survives filtering, not just the median.
 
 ![Purity by novelty class](assets/population_distributions/purity.png)
 
