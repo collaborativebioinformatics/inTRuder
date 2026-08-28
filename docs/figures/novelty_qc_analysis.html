@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Novelty QC Analysis</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 24px; color: #222; line-height: 1.6; }
+  h1 { font-size: 1.8em; border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+  h2 { font-size: 1.3em; margin-top: 2em; border-bottom: 1px solid #eee; padding-bottom: 4px; color: #333; }
+  h3 { font-size: 1.05em; margin-top: 1.4em; color: #444; }
+  code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+  .fig-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .fig-row img { flex: 1 1 45%; min-width: 280px; }
+  .note { background: #f8f9fa; border-left: 4px solid #6c8ebf; padding: 10px 16px; border-radius: 4px; margin: 12px 0; font-size: 0.95em; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 32px 0; }
+  strong { color: #111; }
+</style>
+</head>
+<body>
+
+<h1>Novelty QC Analysis</h1>
+<p>Dataset: HPRC 67 samples merged with Sniffles, run with TRF, filtered to generate novel tandem repeats.
+Catalog of every plot and table produced by <code>analyze_novelty.py</code>.
+For methodology decisions, caveats, and the full analysis log, see <code>data_summary_notes.md</code>.</p>
+
+<h2>Background</h2>
+<div class="note">
+<ul>
+  <li><strong>Data:</strong> ONT long-read SV calls (Sniffles2) for 67 HPRC/1000G samples, aligned to GRCh38, filtered to insertions and run through TRF. 221,369 TR calls across chr1-22/X/Y.</li>
+  <li><strong>Novelty:</strong> Each TR call is checked by <strong>two independent methods</strong> — UCSC Simple Repeats and TRExplorer — yielding <code>known</code>, <code>novel_motif</code>, or <code>novel_locus</code>. The two methods agree only 73.5% of the time and are reported side by side throughout.</li>
+  <li><strong>Ancestry:</strong> Samples labeled with IGSR/1000G superpopulation (AFR/AMR/EAS/EUR/SAS). Group sizes unequal (AFR n=20 to EUR n=9).</li>
+  <li><strong>Locus identity</strong> is <code>(chrom, ins_coord)</code>, not <code>SVID</code> — 261 unique SVIDs map to only 229 unique positions within <code>novel_locus</code>.</li>
+</ul>
+</div>
+
+<hr>
+
+<h2>1. Novelty burden by ancestry</h2>
+
+<h3>01 — Novelty by ancestry (stacked)</h3>
+<p>Stacked bar chart, one panel per novelty method (UCSC, TRExplorer), showing pooled raw TR-call counts per ancestry group broken down by novelty category. Each bar is annotated with its group's sample count.</p>
+<img src="assets/01_novelty_by_ancestry_stacked.png" alt="01 novelty by ancestry stacked" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>novelty_by_ancestry_loci_table — Distinct loci by ancestry</h3>
+<p>Distinct loci (<code>chrom:ins_coord</code>) per ancestry group × novelty method. <strong>Not additive across populations</strong>: a locus carried by samples from more than one group is counted once per group.</p>
+<table style="border-collapse:collapse;width:100%;font-size:0.9em;margin:12px 0;">
+<thead><tr style="background:#f0f0f0;">
+  <th style="border:1px solid #ccc;padding:6px 10px;text-align:left;">novelty_source</th>
+  <th style="border:1px solid #ccc;padding:6px 10px;">population</th>
+  <th style="border:1px solid #ccc;padding:6px 10px;">n_samples</th>
+  <th style="border:1px solid #ccc;padding:6px 10px;">known_n_loci</th>
+  <th style="border:1px solid #ccc;padding:6px 10px;">novel_locus_n_loci</th>
+  <th style="border:1px solid #ccc;padding:6px 10px;">novel_motif_n_loci</th>
+</tr></thead>
+<tbody><tr><td style='border:1px solid #ccc;padding:6px 10px;'>ucsc_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>AFR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>20</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>7,099</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>689</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>5,480</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>ucsc_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>AMR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>12</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>4,771</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>446</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,649</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>ucsc_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>EAS</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>14</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>4,614</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>448</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,473</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>ucsc_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>EUR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>9</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,876</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>390</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,042</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>ucsc_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>SAS</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>12</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>4,513</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>441</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,540</td></tr>
+<tr style="border-top:2px solid #aaa;"><td style='border:1px solid #ccc;padding:6px 10px;'>trexplorer_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>AFR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>20</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>10,045</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>162</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>3,045</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>trexplorer_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>AMR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>12</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>6,697</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>104</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>2,060</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>trexplorer_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>EAS</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>14</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>6,512</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>103</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>1,920</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>trexplorer_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>EUR</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>9</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>5,536</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>90</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>1,673</td></tr>
+<tr><td style='border:1px solid #ccc;padding:6px 10px;'>trexplorer_novelty</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>SAS</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:center;'>12</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>6,406</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>111</td><td style='border:1px solid #ccc;padding:6px 10px;text-align:right;'>1,958</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>2. Locus/motif landscape overview</h2>
+<p><em>Whole dataset, all three novelty categories combined — not ancestry-specific.</em></p>
+
+<h3>03 — Motif length distribution</h3>
+<p>Distribution of <code>motif_length</code> (bp): 1-6bp on a linear axis (where nearly all calls live) and 7bp+ on a linear axis, showing the true right-skew shape (sharp peak ~20-40bp, long tail to 392bp).</p>
+<img src="assets/03_motif_length_hist_linear.png" alt="03 motif length hist linear" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>04 — Repeat length and copy number</h3>
+<p>Repeat tract length (<code>rep_length</code>, bp) and copy number (<code>rep_units</code>), both log-binned. Tract length peaks ~60-150bp; copy number peaks ~20-40 repeats.</p>
+<img src="assets/04_rep_length_and_units_hist.png" alt="04 rep length and units" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>05 — Purity</h3>
+<p><code>purity</code> (TRF's measure of repeat-motif match quality) and <code>insertion_purity</code> (fraction of insertion that is repeat sequence). Purity is floored at 0.800 by an upstream filter — that's a real cutoff, not truncated data.</p>
+<img src="assets/05_purity_hist.png" alt="05 purity" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>06 — Top canonical motifs by unique loci</h3>
+<p>Most frequent <code>canonical_motif</code> values ranked by distinct loci. <code>AT</code> dominates; some motifs recur heavily at few positions while others spread thinly across many.</p>
+<img src="assets/06b_top_canonical_motifs_by_unique_loci.png" alt="06b top canonical motifs by loci" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>07 — Overall novelty split</h3>
+<p>Whole-dataset novelty proportions (donut), UCSC vs TRExplorer side by side.</p>
+<img src="assets/07_overall_novelty_split.png" alt="07 overall novelty split" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>08 — Calls per chromosome</h3>
+<p>Raw TR-call counts per chromosome (chr1-22, X, Y). Roughly tracks chromosome length; chrY is low because not all 67 samples are male.</p>
+<img src="assets/08_calls_per_chromosome.png" alt="08 calls per chromosome" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<h3>09 — Repeat coverage</h3>
+<p><code>repeat_coverage</code> — the fraction of each insertion's sequence explained by the identified repeat. Strongly right-skewed toward 1.0.</p>
+<img src="assets/09_repeat_coverage_hist.png" alt="09 repeat coverage" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+<hr>
+
+<h2>3. <code>novel_locus</code> deep dive (TRExplorer)</h2>
+<p><em>TRExplorer's <code>novel_locus</code> category: 2,906 calls across 229 unique loci — positions TRExplorer's reference catalog doesn't contain at all.</em></p>
+<table style="border-collapse:collapse;width:100%;font-size:0.88em;margin:12px 0;"><thead><tr><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">metric</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">known</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">novel_locus</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">novel_motif</th></tr></thead><tbody><tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>n_calls</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">167,082</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">2,906</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">51,381</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>pct_of_total</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">75.48</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">1.31</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">23.21</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>n_unique_samples</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">67</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">67</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">67</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>n_unique_loci</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">13,450</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">229</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">4,080</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>n_unique_canonical_motif</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">2,743</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">155</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">2,760</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>motif_length_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">8.2</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">15.2</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">20.5</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>motif_length_median</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">4.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">5.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">20.0</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>purity_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.893</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.887</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.902</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>purity_median</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.882</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.873</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.901</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>insertion_purity_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.995</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.983</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.996</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>rep_length_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">449.6</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">844.9</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">675.4</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>rep_length_median</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">154.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">217.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">307.0</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>rep_units_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">110.6</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">150.6</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">50.7</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>rep_units_median</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">37.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">27.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">20.0</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>repeat_coverage_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.995</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.973</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">0.994</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>depth_mean</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">38.7</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">43.1</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">40.6</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>depth_median</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">36.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">36.0</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:right;">36.0</td></tr>
+</tbody></table>
+
+<p><strong>Key contrasts vs <code>known</code>:</strong> <code>novel_locus</code> repeat tracts run longer (median 217bp vs 154bp) with slightly lower purity (0.887 vs 0.893). Top motifs skew toward longer/more complex sequences. The top recurrent locus (chr7:62,272,393, <code>ATTTC</code> motif) appears in 65 of 67 samples.</p>
+
+<h3>Most recurrent loci</h3>
+<p>Top 10 loci by number of samples carrying them within <code>novel_locus</code>.</p>
+<table style="border-collapse:collapse;width:100%;font-size:0.88em;margin:12px 0;"><thead><tr><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">locus</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">canonical_motif</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">motif_len</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">n_samples</th><th style="border:1px solid #ccc;padding:5px 9px;background:#f0f0f0;text-align:left;">n_calls</th></tr></thead><tbody><tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr7:62272393</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>ATTTC</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">5</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">65</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">65</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr16:34066322</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>AATGG</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">5</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">64</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">91</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr3:37708652</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>AACAAGGAATTATCCAACAATGCACAGGACAGCTCCCCACAC</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">42</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">61</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">149</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr3:28238930</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>AATAT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">5</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">58</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">116</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chrX:128469427</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>AT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">2</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">53</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">106</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr4:14726288</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>ACATTT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">6</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">50</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">97</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr1:108689608</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>AT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">2</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">50</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">90</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr13:24052836</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>C</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">1</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">48</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">96</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr10:2562627</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>ACATATATAT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">10</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">44</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">70</td></tr>
+<tr><td style="border:1px solid #ccc;padding:5px 9px;"><code>chr9:121895759</code></td><td style="border:1px solid #ccc;padding:5px 9px;"><code>GT</code></td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">2</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">44</td><td style="border:1px solid #ccc;padding:5px 9px;text-align:center;">87</td></tr>
+</tbody></table>
+
+<h3>Depth outliers (per call)</h3>
+<p>Histogram + boxplot of sequencing depth per call. 292 of 2,906 calls fall outside the whiskers; one extreme case hits 5,730x (median 36x), flagging likely repetitive/multi-mapping regions.</p>
+<div class="fig-row">
+  <img src="assets/novel_locus_trexplorer_depth_outliers.png" alt="depth outliers log" style="max-width:100%;border-radius:6px;margin:12px 0;">
+  <img src="assets/novel_locus_trexplorer_depth_outliers_linear.png" alt="depth outliers linear" style="max-width:100%;border-radius:6px;margin:12px 0;">
+</div>
+
+<h3>Depth distribution (per locus)</h3>
+<p>Depth aggregated per locus (median depth per unique position). Depth outliers concentrate among low-recurrence loci; loci shared across 40-65 samples all sit at normal depth (~30-50x). Supports treating outliers as technical artifacts.</p>
+<img src="assets/novel_locus_trexplorer_depth_distribution_linear.png" alt="depth distribution linear" style="max-width:100%;border-radius:6px;margin:12px 0;">
+
+</body>
+</html>
