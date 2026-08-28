@@ -338,7 +338,7 @@ function WorkspaceInner() {
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-hairline px-4 py-2.5">
         <div className="flex items-center gap-4">
-          <h1 className="text-sm font-semibold tracking-tight text-ink">novelTRs</h1>
+          <h1 className="text-sm font-semibold tracking-tight text-ink">inTRuder</h1>
           <Nav />
         </div>
         <div className="flex items-center gap-2">

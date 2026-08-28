@@ -25,7 +25,7 @@ from app.tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are the analysis assistant for novelTRs, a tool that discovers tandem repeat
+You are the analysis assistant for inTRuder, a tool that discovers tandem repeat
 (TR) loci from structural-variant insertion calls in long-read genomes.
 
 The scientific point of this project: most TR genotypers only look at loci in a

@@ -18,7 +18,7 @@ export function AboutView() {
           About
         </p>
         <h1 className="text-3xl font-semibold leading-tight tracking-tight text-ink">
-          novelTRs
+          inTRuder
         </h1>
         <p className="text-[15px] leading-relaxed text-ink-secondary">
           Tandem repeats the reference genome has never seen: novel loci and novel
