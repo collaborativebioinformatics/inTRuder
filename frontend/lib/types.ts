@@ -434,7 +434,7 @@ export interface Dataset {
  * to `presentation`, which is a document rather than a view of the data and so
  * is not one of the pages `set_view` offers.
  */
-export type PageName = "catalog" | "strchive" | "datasets" | "presentation";
+export type PageName = "catalog" | "strchive" | "datasets" | "presentation" | "about";
 
 /**
  * How the catalog list is ordered. Ordering is not filtering — it changes which

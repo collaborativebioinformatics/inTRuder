@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { TEAM, fullName } from "@/lib/team";
+
 /**
  * The write-up surface: what we did and what we found, in the order a reader
  * meets it rather than in the order the pipeline runs.
@@ -474,40 +476,19 @@ function Demo() {
 }
 
 function Team() {
-  const members = [
-    "Harriet Dashnow",
-    "Akshay Kumar Avvaru",
-    "Bharati Jadhav",
-    "Amit R Indap",
-    "Garth Kong",
-    "Achisha Saikia",
-    "Sriram Sudarsanam",
-    "Andrew Scouten",
-    "Jordi Valls",
-    "Ammara Saleem",
-    "Elbay Aliyev",
-    "Garrison Arner",
-    "Gavin Monahan",
-    "Anukrati Sharma",
-    "Liedewei Van de Vondel",
-    "Ramakrishnan Rajagopalan",
-    "Divya Kalra",
-    "Chantera Lazard",
-    "Taimoor Khan",
-    "Medhat Mahmoud",
-  ];
-
+  // Shared with the About surface and imported already alphabetised, so the two
+  // places this list appears can never drift or disagree about the order.
   return (
     <div className="space-y-8">
       <Section kicker="Team & links" title="Who built it">
         <ul className="flex flex-wrap gap-x-2 gap-y-1.5 text-[13px] text-ink-secondary">
-          {members.map((name) => (
+          {TEAM.map((member) => (
             <li
-              key={name}
+              key={fullName(member)}
               className="rounded-full px-2.5 py-0.5"
               style={{ background: "var(--surface-raised)" }}
             >
-              {name}
+              {fullName(member)}
             </li>
           ))}
         </ul>

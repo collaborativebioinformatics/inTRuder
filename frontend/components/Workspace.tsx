@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { AboutView } from "@/components/AboutView";
 import { CatalogView } from "@/components/CatalogView";
 import { Chat } from "@/components/Chat";
 import { ClassBreakdown } from "@/components/ClassBreakdown";
@@ -172,7 +173,13 @@ function DatasetsRail({
   );
 }
 
-const TABS: { page: PageName; href: string; label: string }[] = [
+interface Tab {
+  page: PageName;
+  href: string;
+  label: string;
+}
+
+const TABS: Tab[] = [
   { page: "catalog", href: "/", label: "Candidate loci" },
   { page: "strchive", href: "/strchive", label: "Disease loci" },
   // Nouns, like its neighbours: each tab names the data you are looking at.
@@ -185,31 +192,41 @@ const TABS: { page: PageName; href: string; label: string }[] = [
   { page: "presentation", href: "/presentation", label: "Hackathon Presentation" },
 ];
 
-function Nav() {
+/**
+ * Sits at the other end of the header, apart from the row above: every tab there
+ * names data you are looking at, and this one names the people who made it. Kept
+ * a nav pill rather than restyled as a control, because it is still a place you
+ * go — it just is not one of the places you work.
+ */
+const ABOUT_TAB: Tab = { page: "about", href: "/about", label: "About" };
+
+function NavTab({ tab }: { tab: Tab }) {
   const { filters, patch } = useView();
-  const current = filters.page ?? "catalog";
+  const active = (filters.page ?? "catalog") === tab.page;
 
   return (
+    <Link
+      href={tab.href}
+      onClick={() => patch({ page: tab.page })}
+      aria-current={active ? "page" : undefined}
+      className="rounded-full px-2.5 py-1 text-xs transition-colors"
+      style={{
+        background: active ? "var(--surface-raised)" : "transparent",
+        color: active ? "var(--ink)" : "var(--ink-muted)",
+        border: `1px solid ${active ? "var(--hairline)" : "transparent"}`,
+      }}
+    >
+      {tab.label}
+    </Link>
+  );
+}
+
+function Nav() {
+  return (
     <nav className="flex items-center gap-1" aria-label="Surfaces">
-      {TABS.map((tab) => {
-        const active = current === tab.page;
-        return (
-          <Link
-            key={tab.page}
-            href={tab.href}
-            onClick={() => patch({ page: tab.page })}
-            aria-current={active ? "page" : undefined}
-            className="rounded-full px-2.5 py-1 text-xs transition-colors"
-            style={{
-              background: active ? "var(--surface-raised)" : "transparent",
-              color: active ? "var(--ink)" : "var(--ink-muted)",
-              border: `1px solid ${active ? "var(--hairline)" : "transparent"}`,
-            }}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+      {TABS.map((tab) => (
+        <NavTab key={tab.page} tab={tab} />
+      ))}
     </nav>
   );
 }
@@ -325,6 +342,7 @@ function WorkspaceInner() {
           <Nav />
         </div>
         <div className="flex items-center gap-2">
+          <NavTab tab={ABOUT_TAB} />
           {page === "catalog" && summary?.synthetic && (
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -409,12 +427,12 @@ function WorkspaceInner() {
         </div>
       )}
 
-      {/* The presentation is a document, not a workspace surface: no cohort rail
-          to orient it and nothing for the assistant to query, so it gets the whole
-          width and one scroll of its own. */}
-      {page === "presentation" ? (
+      {/* The presentation and the About page are documents, not workspace
+          surfaces: no cohort rail to orient them and nothing for the assistant to
+          query, so they get the whole width and one scroll of their own. */}
+      {page === "presentation" || page === "about" ? (
         <main className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-          <PresentationView />
+          {page === "about" ? <AboutView /> : <PresentationView />}
         </main>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)_22rem]">
