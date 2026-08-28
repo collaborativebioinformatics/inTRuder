@@ -298,6 +298,15 @@ data/dx/
 # pinned, checksummed download, so it is not.
 data/web/strchive/
 
+# The real callsets and the loci/segments tables built from them - hprc (67
+# unrelated genomes) and trio (GIAB HG002/03/04). The manifests that describe
+# them ARE committed (data/web/hprc-*.yaml, data/web/trio-*.yaml); the data is
+# somebody else's cohort, so it is fetched and rebuilt rather than cloned:
+#   just plot-data && just plot-parquet && just strchive-data && just web-data
+# See data/web/README.md for what each step is for.
+data/web/hprc_multisample.trf.noveltyFiltered.tsv
+data/hprc/
+data/trio/
 # Inputs and outputs of the plotting scripts in src/R/plotting/ - the numbered
 # tables (02_ novelty-filtered calls, 03_ catalogue membership, 04_ AnnotSV
 # annotation, 05_ the merge main.R writes). They are 165 MB+ of derived pipeline
@@ -329,3 +338,11 @@ work/
 
 # Run reports configured in nextflow.config (timeline/report/trace/dag)
 reports/
+
+#### BUILT BINARIES
+
+# Third-party JARs. htsSidra is built from source at
+# https://github.com/idraktt/qgp_sv_paper/tree/main/htsSidra (see
+# pipelines/annotate_from_bed/HOW-TO.md); an 11 MB fat jar has no business in a
+# clone when `mvn package` reproduces it from a pinned upstream commit.
+*.jar

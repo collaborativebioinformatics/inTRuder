@@ -12,12 +12,13 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.datastructures import Headers
 
-from app import uploads
+from app import switches, uploads
 from app.agent import sse, stream_agent
 from app.agent.llm import describe_provider
 from app.config import settings
-from app.util.registry import registry
+from app.util.registry import ROLES, registry
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,15 +40,54 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="novelTRs API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="inTRuder API", version="0.1.0", lifespan=lifespan)
+
+
+class SwitchesMiddleware:
+    """Carry the caller's dataset switches for the length of one request.
+
+    Pure ASGI rather than `@app.middleware("http")`: that decorator's
+    BaseHTTPMiddleware runs the endpoint in a child task and streams the response
+    body after returning, so a context variable set there would already be gone
+    by the time the agent's tools ran on the SSE path. This runs in the same task
+    as everything it wraps.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header = Headers(scope=scope).get(switches.HEADER)
+        token = switches.bind(switches.parse(header))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            switches.reset(token)
+
+
+app.add_middleware(SwitchesMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
+    # Includes switches.HEADER, which is a custom header and so is preflighted.
     allow_headers=["*"],
 )
+
+
+def _off() -> frozenset[str]:
+    """The datasets this caller does not want read, defaults applied.
+
+    Every handler that resolves a table goes through here, so a switch reaches
+    the whole API — the surfaces, the funnel, and the assistant — without any of
+    them knowing where the value came from.
+    """
+    return registry.switched_off(switches.current())
 
 
 # --------------------------------------------------------------------------- #
@@ -56,15 +96,20 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    off = _off()
     return {
         "status": "ok",
         "datasets": {
-            "available": [d.name for d in registry.available_datasets()],
+            "available": [d.name for d in registry.available_datasets(off)],
+            # A switched-off dataset is not reported here: it is not *missing*,
+            # and putting it beside a manifest whose file never arrived would
+            # give it an empty reason where the others have a real one.
             "unavailable": [
                 {"name": d.name, "error": d.error}
                 for d in registry.datasets.values()
-                if not d.available
+                if not d.available and d.name not in off
             ],
+            "disabled": sorted(off),
         },
         "llm": describe_provider(settings.llm_provider),
         "agent_enabled": settings.agent_enabled,
@@ -73,7 +118,20 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/datasets")
 def datasets() -> dict[str, Any]:
-    return {"datasets": [d.detail() for d in registry.datasets.values()]}
+    """Every registered dataset, with where its switch starts and where it is.
+
+    `default_enabled` is the server's — it depends on what data exists here.
+    `enabled` folds in the caller's own switches, so this is the one place the
+    interface has to look to draw the row and the switch together.
+    """
+    off = _off()
+    return {
+        "datasets": [
+            {**d.detail(), "enabled": d.name not in off}
+            for d in registry.datasets.values()
+        ],
+        "roles": {role: registry.table_for(role, off) for role in ROLES},
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -81,7 +139,7 @@ def datasets() -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 def _available(name: str) -> bool:
-    return name in {d.name for d in registry.available_datasets()}
+    return name in {d.name for d in registry.available_datasets(_off())}
 
 
 def _rows(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
@@ -96,23 +154,26 @@ def _loci_table() -> str:
 
     Resolved by role rather than named, so registering an uploaded callset with
     `role: loci` repoints every query below it without a code change. Falls back
-    to the committed demo fixture, which is what a fresh clone has.
+    to the committed demo fixture, which is what a fresh clone has — and skips
+    whatever the caller has switched off, which is how one browser can look at
+    the fixtures while another looks at the real cohort.
     """
-    table = registry.table_for("loci")
+    table = registry.table_for("loci", _off())
     if table is None:
         raise HTTPException(
             status_code=503,
             detail="No candidate-locus dataset is available. Generate the demo "
                    "fixtures with `cd backend && uv run python "
-                   "scripts/make_demo_data.py`, or upload a locus table and "
-                   "register it with role 'loci'.",
+                   "scripts/make_demo_data.py`, upload a locus table and "
+                   "register it with role 'loci', or switch one back on from the "
+                   "Datasets page.",
         )
     return table
 
 
 def _segments_table() -> str | None:
     """The per-allele table, when one is registered. Optional everywhere."""
-    return registry.table_for("segments")
+    return registry.table_for("segments", _off())
 
 
 # --------------------------------------------------------------------------- #
@@ -167,7 +228,19 @@ _SCREENED_ONLY = {
     "min_insertion_purity": "insertion_purity",
     "sample": "sample",
     "strchive_status": "strchive_status",
+    # The AnnotSV block. Present on the real callsets, absent from the demo
+    # fixtures, so these go through `needs()` like the rest — a gene filter on a
+    # table with no gene annotation must report itself ignored rather than
+    # quietly matching every row.
+    "genic_only": "genic",
+    "exonic_only": "exonic",
+    "constrained_only": "pli",
+    "gene_region": "region",
 }
+
+#: pLI above which a gene is called intolerant of loss of function. gnomAD's own
+#: threshold, and the one the constraint filter means by "constrained".
+PLI_CONSTRAINED = 0.9
 
 
 def _columns(table: str) -> set[str]:
@@ -207,6 +280,10 @@ def _filter_clause(
     min_insertion_purity: float | None = None,
     sample: str | None = None,
     strchive_status: str | None = None,
+    genic_only: bool = False,
+    exonic_only: bool = False,
+    constrained_only: bool = False,
+    gene_region: str | None = None,
     available: set[str] | None = None,
 ) -> tuple[str, list[Any], list[str]]:
     """Build the WHERE clause, and report which filters the table cannot honour."""
@@ -271,6 +348,16 @@ def _filter_clause(
     if strchive_status and needs("strchive_status"):
         clauses.append("strchive_status = ?")
         params.append(strchive_status)
+    if genic_only and needs("genic_only"):
+        clauses.append("genic")
+    if exonic_only and needs("exonic_only"):
+        clauses.append("exonic")
+    if constrained_only and needs("constrained_only"):
+        clauses.append("pli >= ?")
+        params.append(PLI_CONSTRAINED)
+    if gene_region and needs("gene_region"):
+        clauses.append("region = ?")
+        params.append(gene_region)
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params, ignored
@@ -325,18 +412,20 @@ def _order_by(sort: str, sort_dir: str | None) -> str:
 #: it, because the ordering is what decides which loci that page holds.
 _REPRESENTATIVE_ALLELE = """
     allele AS (
-        SELECT locus_id, sample, max("end") AS allele_len
+        SELECT locus_id, sample, {allele} AS allele, max("end") AS allele_len
         FROM {segments} {where}
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3
     ),
     ranked AS (
         -- `sample` breaks ties. Carriers routinely share an allele length, and
         -- without a total order row_number() is free to pick a different one of
         -- them per query — which would let the strip a row draws disagree with
         -- the array count that row is sorted by, and change between requests.
-        SELECT locus_id, sample,
+        -- `allele` joins that tiebreak so a diploid carrier's two haplotypes
+        -- stay separable from each other.
+        SELECT locus_id, sample, allele,
                row_number() OVER (
-                   PARTITION BY locus_id ORDER BY allele_len, sample
+                   PARTITION BY locus_id ORDER BY allele_len, sample, allele
                ) AS rn,
                count(*) OVER (PARTITION BY locus_id) AS n
         FROM allele
@@ -344,15 +433,44 @@ _REPRESENTATIVE_ALLELE = """
     representative AS (
         -- Integer division: DuckDB's `/` is float, so an even carrier count
         -- would match no row at all.
-        SELECT locus_id, sample FROM ranked WHERE rn = (n + 1) // 2
+        SELECT locus_id, sample, allele FROM ranked WHERE rn = (n + 1) // 2
     )
 """
 
+
+#: How to address one allele in a segments table.
+#:
+#: A carrier is not always one allele. In the real HPRC callset 4,110 (locus,
+#: sample) pairs hold two or three co-located insertion records — a diploid
+#: sample whose haplotypes differ in length — and folding those onto the sample
+#: would concatenate two haplotypes into one strip and draw it as though it were
+#: a compound repeat, which is a different biological claim.
+#:
+#: A table that carries an `allele` column is therefore keyed on (sample,
+#: allele); one that does not is keyed on the sample with a constant, which is
+#: what the demo fixtures and any one-allele-per-carrier upload need. Resolving
+#: it per table rather than requiring the column keeps `SEGMENTS_REQUIRED` as it
+#: was, so a segments table written before this existed still registers.
+def _allele_key(segments: str, alias: str = "") -> str:
+    """The expression addressing one allele, `alias`-qualified where needed.
+
+    Qualification is for the queries that join the segments table to
+    `representative`, where a bare `allele` is ambiguous. It applies only to the
+    real column — qualifying the constant would produce `s.1`.
+    """
+    if "allele" not in _columns(segments):
+        return "1"
+    return f"{alias}.allele" if alias else "allele"
+
+
 def _representative_allele(segments: str, where: str = "") -> str:
-    return _REPRESENTATIVE_ALLELE.format(segments=segments, where=where)
+    return _REPRESENTATIVE_ALLELE.format(
+        segments=segments, where=where, allele=_allele_key(segments)
+    )
 
 
 def _array_counts(segments: str) -> str:
+    allele = _allele_key(segments, "s")
     return f"""WITH {_representative_allele(segments)},
     arrays AS (
         SELECT r.locus_id,
@@ -360,6 +478,7 @@ def _array_counts(segments: str) -> str:
         FROM representative r
         JOIN {segments} s
           ON s.locus_id = r.locus_id AND s.sample = r.sample
+         AND {allele} = r.allele
         GROUP BY 1
     )
 """
@@ -384,6 +503,10 @@ def loci(
     min_insertion_purity: float | None = None,
     sample: str | None = None,
     strchive_status: str | None = None,
+    genic_only: bool = False,
+    exonic_only: bool = False,
+    constrained_only: bool = False,
+    gene_region: str | None = Query(None, pattern="^(CDS|UTR|5'UTR|3'UTR)$"),
     limit: int = Query(300, le=2000),
     offset: int = 0,
     include_strips: bool = False,
@@ -421,6 +544,7 @@ def loci(
         min_samples, min_purity, disease_gene_only, gene,
         region, gene_query,
         novelty, platform_agreement, min_insertion_purity, sample, strchive_status,
+        genic_only, exonic_only, constrained_only, gene_region,
         available=_columns(loci_table),
     )
 
@@ -457,7 +581,9 @@ def loci(
                 SELECT s.locus_id, s.sample, s.seg_index, s.seg_type,
                        s.start, s."end", s.motif, s.purity, s.units
                 FROM {segments_table} s
-                JOIN representative r ON r.locus_id = s.locus_id AND r.sample = s.sample
+                JOIN representative r
+                  ON r.locus_id = s.locus_id AND r.sample = s.sample
+                 AND {_allele_key(segments_table, "s")} = r.allele
                 ORDER BY s.locus_id, s.seg_index""",
             locus_ids,
         )
@@ -493,23 +619,31 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
     segments: list[dict[str, Any]] = []
     if segments_table:
         seg_cursor = con.execute(
-            f"""SELECT sample, seg_index, seg_type, start, "end", motif, purity, units
+            f"""SELECT sample, {_allele_key(segments_table)} AS allele,
+                       seg_index, seg_type, start, "end", motif, purity, units
                 FROM {segments_table} WHERE locus_id = ?
-                ORDER BY sample, seg_index""",
+                ORDER BY sample, allele, seg_index""",
             [locus_id],
         )
         seg_columns = [d[0] for d in seg_cursor.description]
         segments = [dict(zip(seg_columns, r)) for r in seg_cursor.fetchall()]
 
-    by_sample: dict[str, dict[str, Any]] = {}
+    # Keyed on (sample, allele), not sample: a diploid carrier of two co-located
+    # insertions has two alleles here, and merging them would splice two
+    # haplotypes into one strip. `sample` stays on each entry unchanged, so
+    # highlighting a carrier still lights up both of its alleles.
+    by_allele: dict[tuple[str, int], dict[str, Any]] = {}
     for segment in segments:
-        entry = by_sample.setdefault(
-            segment["sample"], {"sample": segment["sample"], "segments": [], "allele_len": 0}
+        key = (segment["sample"], segment["allele"])
+        entry = by_allele.setdefault(
+            key,
+            {"sample": segment["sample"], "allele": segment["allele"],
+             "segments": [], "allele_len": 0},
         )
         entry["segments"].append(segment)
         entry["allele_len"] = max(entry["allele_len"], segment["end"])
 
-    alleles = sorted(by_sample.values(), key=lambda a: a["allele_len"], reverse=True)
+    alleles = sorted(by_allele.values(), key=lambda a: a["allele_len"], reverse=True)
     return {"locus": locus, "alleles": alleles}
 
 
@@ -517,42 +651,79 @@ def locus_detail(locus_id: str) -> dict[str, Any]:
 def summary() -> dict[str, Any]:
     """Cohort funnel plus the breakdowns the landing page renders."""
     loci_table = _loci_table()
+    segments_table = _segments_table()
     synthetic_tables = [
         table
-        for table in (loci_table, _segments_table())
+        for table in (loci_table, segments_table)
         if table is not None and registry.datasets[table].synthetic
     ]
     con = registry.cursor()
 
-    total, non_homopolymer, confident, novel, novel_disease = con.execute(
+    # The funnel's tail depends on what the table can answer. A callset carrying
+    # the AnnotSV block narrows "novel" through the gene context — in a gene, then
+    # in a disease gene — which is the argument this project actually makes. A
+    # table without it stops at "absent from all catalogs" rather than showing a
+    # stage of zeros, because a funnel stage reading 0 looks like a negative
+    # result and not a missing column.
+    columns = _columns(loci_table)
+    has_genes = "genic" in columns
+
+    kept = "motif_class <> 'homopolymer' AND mean_purity >= 0.8"
+    gene_counts = (
+        f""",
+             count(*) FILTER (WHERE {kept} AND novel AND genic),
+             count(*) FILTER (WHERE {kept} AND novel AND disease_gene)"""
+        if has_genes
+        else ""
+    )
+    counts = con.execute(
         f"""SELECT
              count(*),
              count(*) FILTER (WHERE motif_class <> 'homopolymer'),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8 AND novel),
-             count(*) FILTER (WHERE motif_class <> 'homopolymer' AND mean_purity >= 0.8
-                              AND novel AND disease_gene)
+             count(*) FILTER (WHERE {kept}),
+             count(*) FILTER (WHERE {kept} AND novel){gene_counts}
            FROM {loci_table}"""
     ).fetchone()
+    total, non_homopolymer, confident, novel = counts[:4]
 
     def rows(sql: str) -> list[dict[str, Any]]:
         cursor = con.execute(sql)
         columns = [d[0] for d in cursor.description]
         return [dict(zip(columns, r)) for r in cursor.fetchall()]
 
+    # How many genomes are behind these numbers. Sent rather than hardcoded in
+    # the interface, because "3 / 68" printed over a 67-genome cohort is simply
+    # wrong, and which cohort is loaded is exactly the thing a registered dataset
+    # is allowed to change. Counted off the per-allele table where there is one,
+    # since that is the only place every sample appears; otherwise the busiest
+    # locus is the best lower bound available.
+    cohort_size = con.execute(
+        f"SELECT count(DISTINCT sample) FROM {segments_table}"
+        if segments_table
+        else f"SELECT max(n_samples) FROM {loci_table}"
+    ).fetchone()[0]
+
+    funnel = [
+        {"stage": "Candidate insertion loci", "count": total,
+         "note": "Merged INS calls carrying a detected repeat"},
+        {"stage": "Non-homopolymer", "count": non_homopolymer,
+         "note": "Drop 1bp motifs"},
+        {"stage": "Confident repeats", "count": confident,
+         "note": "Mean purity ≥ 0.80"},
+        {"stage": "Absent from all catalogs", "count": novel,
+         "note": "No equivalent motif in UCSC simpleRepeat or TRExplorer"},
+    ]
+    if has_genes:
+        funnel += [
+            {"stage": "In a gene", "count": counts[4],
+             "note": "Novel and inside an annotated gene"},
+            {"stage": "In a disease gene", "count": counts[5],
+             "note": "Novel and in a gene with an OMIM disease entry"},
+        ]
+
     return {
-        "funnel": [
-            {"stage": "Candidate insertion loci", "count": total,
-             "note": "Merged INS calls carrying a detected repeat"},
-            {"stage": "Non-homopolymer", "count": non_homopolymer,
-             "note": "Drop 1bp motifs"},
-            {"stage": "Confident repeats", "count": confident,
-             "note": "Mean purity ≥ 0.80"},
-            {"stage": "Absent from all catalogs", "count": novel,
-             "note": "No equivalent motif in UCSC simpleRepeat or TRExplorer"},
-            {"stage": "In a disease gene", "count": novel_disease,
-             "note": "Novel and overlapping a known repeat-expansion gene"},
-        ],
+        "cohort_size": cohort_size,
+        "funnel": funnel,
         "by_class": rows(
             f"""SELECT motif_class,
                        count(*) AS n,
@@ -935,14 +1106,16 @@ def reload_registry() -> dict[str, Any]:
     """Re-read the manifests. Also the escape hatch for a file dropped into
     `data/` by hand, which used to mean restarting the backend."""
     registry.reload()
+    off = _off()
     return {
-        "available": [d.name for d in registry.available_datasets()],
+        "available": [d.name for d in registry.available_datasets(off)],
         "unavailable": [
             {"name": d.name, "error": d.error}
             for d in registry.datasets.values()
-            if not d.available
+            if not d.available and d.name not in off
         ],
-        "roles": {role: registry.table_for(role) for role in ("loci", "segments")},
+        "disabled": sorted(off),
+        "roles": {role: registry.table_for(role, off) for role in ROLES},
     }
 
 

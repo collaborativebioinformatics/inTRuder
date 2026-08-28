@@ -13,6 +13,7 @@ src/python/intruder/
 │   ├── trf/         call repeats inside SV insertions, then filter the calls
 │   ├── novelty/     is this repeat absent from the reference and the catalogues?
 │   ├── strchive/    is it a known disease locus?
+│   ├── compression/ how compressible is the insertion? a cheap repetitiveness proxy
 │   └── annotation/  genic / clinical context
 └── analysis/     post-hoc analysis of pipeline output — never a pipeline step
 ```
@@ -66,6 +67,10 @@ uv run novelty -i trf_output.tsv -o trf_novelty.tsv
 
 # filter novelty output by motif purity and repeat coverage, etc.
 uv run filter -i trf_novelty.tsv -o trf_novelty_filtered.tsv
+
+# annotate a VCF with per-ALT compressibility (SVCOMP) -- see
+# ../../docs/scripts/annotate_compression.md
+uv run compression -i multisample.vcf -o multisample_comp.vcf
 ```
 
 The command names above are unchanged by the move to `intruder/` — only the

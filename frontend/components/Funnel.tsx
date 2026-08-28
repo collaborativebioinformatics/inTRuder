@@ -16,11 +16,21 @@ import { useView } from "@/lib/viewStore";
  * categorical, so they must not read as different kinds of thing.
  */
 
+/**
+ * The filter each stage applies, in the order the backend emits them.
+ *
+ * Keyed by stage index, which only works because the backend builds the funnel
+ * in exactly this order — and it now builds a SHORTER one on a table with no
+ * gene annotation, stopping after "absent from all catalogs" rather than showing
+ * two stages of zeros. Indexing a shorter list is why `?? {}` is here: the last
+ * two entries are simply never reached on such a table.
+ */
 const STAGE_FILTERS: ViewFilters[] = [
   {},
   { min_motif_len: 2 },
   { min_motif_len: 2, min_purity: 0.8 },
   { min_motif_len: 2, min_purity: 0.8, novel_only: true },
+  { min_motif_len: 2, min_purity: 0.8, novel_only: true, genic_only: true },
   { min_motif_len: 2, min_purity: 0.8, novel_only: true, disease_gene_only: true },
 ];
 
