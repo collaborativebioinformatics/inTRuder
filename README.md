@@ -82,17 +82,29 @@ See [Methods outline](docs/Methods_overview.md) for the full write-up of each st
 ```
 novelTRs/
 ├── src/
-│   ├── python/        # core TR-detection + novelty annotation pipeline (uv-managed)
-│   └── R/              # R analysis code (renv-managed)
-├── notebooks/          # Jupyter and R Markdown / Quarto notebooks
-├── frontend/            # Next.js web interface (proof of concept)
-├── backend/              # FastAPI + LangGraph service backing the web interface
-├── docker/                # Container images for frontend/backend
-├── data/                   # Sample lists, SV output, catalogs (mostly gitignored)
+│   ├── python/intruder/     # the pipeline, as one installed package (uv-managed)
+│   │   ├── trcore/             # shared primitives — coords, motifs, downloads
+│   │   ├── pipeline/           # the steps: trf, novelty, strchive, annotation
+│   │   └── analysis/           # post-hoc analysis of pipeline output
+│   └── R/                   # R analysis code (renv-managed)
+├── scripts/                 # every shell script in the repo
+│   ├── dnanexus/               # rent a DNAnexus box, run something, terminate it
+│   └── merge-SV/               # Sniffles single- and multi-sample SV merging runs
+├── workflows/               # Nextflow entrypoint (main.nf, nextflow.config)
+├── pipelines/               # Nextflow subworkflows and their scripts
+├── notebooks/               # Jupyter and R Markdown / Quarto notebooks
+├── frontend/                # Next.js web interface (proof of concept)
+├── backend/                 # FastAPI + LangGraph service (its own uv project)
+├── docker/                  # Container images for frontend/backend
+├── data/                    # Sample lists, SV output, catalogs (mostly gitignored)
 ├── docs/                    # Data, tool and methods documentation
-├── tests/                    # Python tests
-└── justfile                   # task runner — `just` lists all recipes
+├── tests/python/            # Python tests, mirroring src/python/intruder/
+└── justfile                 # task runner — `just` lists all recipes
 ```
+
+Where code goes: Python in `src/python/intruder/`, R in `src/R/`, shell in
+`scripts/`, Nextflow in `workflows/` and `pipelines/`. Tests never sit beside the
+code they cover — they mirror it under `tests/`.
 
 ## Documentation
 
@@ -118,7 +130,7 @@ novelTRs/
 | Document | Contents |
 |---|---|
 | [Python source](src/python/README.md) | uv-managed environment, adding dependencies, running scripts, linting and tests |
-| [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
+| [Run programs on DNAnexus](docs/scripts/DNANexus.md) | `scripts/dnanexus/dx-*.sh`: start a machine, get a terminal or run one program on it, then stop the machine. Token setup, options, and instance types |
 | [R source](src/R/README.md) | renv-managed environment, `renv::restore()`, snapshotting new packages |
 | [Notebooks](notebooks/README.md) | Jupyter and R Markdown / Quarto notebooks for exploration and reporting |
 
