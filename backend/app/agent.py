@@ -16,7 +16,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
-from app import uploads
+from app import switches, uploads
 from app.config import settings
 from app.llm import build_chat_model
 from app.registry import registry
@@ -114,9 +114,15 @@ def build_agent():
 
 
 def _system_message() -> SystemMessage:
+    """The prompt for one turn, describing the data *this caller* can see.
+
+    Built per turn rather than once, because the schema block depends on which
+    datasets the person asking has switched off — see `app.switches`.
+    """
     return SystemMessage(
         content=SYSTEM_PROMPT.format(
-            schema=registry.schema_prompt(), uploads=_uploads_prompt()
+            schema=registry.schema_prompt(registry.switched_off(switches.current())),
+            uploads=_uploads_prompt(),
         )
     )
 
