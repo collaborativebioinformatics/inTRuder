@@ -170,6 +170,40 @@ could in principle produce this. The complete separation of the groups makes tha
 unlikely but does not exclude it; per-sample mosdepth output would settle it.
 
 
+### 6. The difference is concentrated in rare insertions, and is not a coverage artefact
+
+`results/figures/fig6_rarity_gradient.pdf`
+
+Restricting to progressively rarer insertions sharpens the ancestry difference
+rather than softening it:
+
+| Restricted to insertions carried by | AFR | AMR | EAS | EUR | SAS | AFR/EUR | Kruskal-Wallis p |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| all | 14,947 | 13,192 | 13,104 | 13,162 | 13,115 | 1.14x | 4.1e-08 |
+| under 50% of samples (<34) | 9,115 | 6,862 | 6,750 | 6,831 | 6,848 | 1.33x | 2.7e-08 |
+| at most 10% (<=7) | 4,178 | 2,236 | 1,991 | 1,900 | 2,182 | 2.20x | 5.4e-10 |
+| at most 5% (<=3) | 2,284 | 1,212 | 1,018 | 935 | 1,190 | 2.44x | 3.8e-10 |
+| **private to one genome** | **931** | 505 | 454 | 374 | 528 | **2.49x** | 4.7e-10 |
+
+African-ancestry genomes carry **2.5 times as many private insertions** as
+European-ancestry genomes. Common insertions dilute the signal because they are
+shared by everybody; the excess lives in rare variation, which is what reference
+bias combined with greater African genetic diversity predicts.
+
+**Sequencing depth does not explain it.** Using `DR + DV` from the genotype
+fields as a per-sample depth proxy:
+
+- depth versus insertion count is **negatively** correlated (Pearson r = -0.336,
+  p = 0.006), so deeper genomes yield slightly *fewer* calls, the opposite of a
+  naive detection-power confound;
+- AFR median depth is **35.7** against **37.2** for the other groups, so AFR
+  genomes are marginally *under*-covered;
+- regressing insertion count on depth and an AFR indicator leaves an AFR effect
+  of **+1,777 insertions (t = +29.7)** after adjustment.
+
+If anything the depth difference means the effect above is slightly understated.
+
+
 ## Limitations
 
 - **Results 1 to 4 use a subset.** 500 records from chr1 only, yielding 221 loci.
@@ -179,11 +213,10 @@ unlikely but does not exclude it; per-sample mosdepth output would settle it.
   `rep_start`, `rep_end` and `insertion_purity` are shifted. Carrier counts are
   taken from the VCF `SUPP_VEC` and are unaffected, which is why results 1 to 4
   stand. Insertion-purity values above are indicative only.
-- **Coverage and chemistry are uncontrolled.** Neither mosdepth output nor the
-  R9.4.1/R10.4.1 assignment is available in the repository, so per-genome counts
-  are not adjusted for sequencing depth. Across the 14 committed per-sample VCFs
-  total SV yield varies by only 1.9% (CV), which argues against a large depth
-  effect but is not a substitute for the measurement.
+- **Depth is now controlled; ONT chemistry is not.** Result 6 adjusts for
+  sequencing depth using `DR + DV` and finds the ancestry effect unchanged. The
+  R9.4.1/R10.4.1 chemistry assignment is still not available in the repository,
+  so a systematic chemistry difference by ancestry remains untested.
 - **Small groups.** 9 to 19 genomes per superpopulation. Result 2 is reported as
   null for this reason, and no p-values are attached to ancestry comparisons in
   the figures beyond the omnibus test.
