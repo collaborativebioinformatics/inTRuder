@@ -64,12 +64,16 @@ process ANNOTATE_COMPRESSIBILITY {
     path "*_comp.vcf"
 
     script:
-    // Calls the installed `compression` console script (declared in
-    // pyproject.toml, backed by intruder.pipeline.compression.annotate),
-    // the same way FIND_NOVEL calls `uv run novelty`. Nothing is read from
-    // the host source tree, so this works from whatever directory Nextflow
-    // stages the task in - the old relative "../src/python/..." path only
-    // ever resolved by accident.
+    // Calls the `compression` console script the same way FIND_NOVEL calls
+    // `uv run novelty`. The annotator itself came in with #81 and currently
+    // sits at src/python/intruder/compression/add_compression.py; a
+    // follow-up moves it to intruder/pipeline/compression/annotate.py and
+    // registers it in [project.scripts]. Targeting the console script rather
+    // than a file path means that move does not break this process.
+    //
+    // Nothing is read from the host source tree, so this resolves from
+    // whatever directory Nextflow stages the task in - the old relative
+    // "../src/python/..." path never could have.
     //
     // simpleName strips the directory and every extension, so
     // sample.merged.vcf -> sample_comp.vcf, matching the output glob below.
