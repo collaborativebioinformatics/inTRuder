@@ -46,7 +46,7 @@ The Anthropic path is the tuned one: adaptive thinking with a summarized display
 | `app/config.py` | Settings from environment + `.env` |
 | `app/llm.py` | Provider-pluggable chat model factory |
 | `app/registry.py` | Manifests → DuckDB tables; the guarded SQL path |
-| `app/tools.py` | The four agent tools |
+| `app/tools.py` | The five agent tools |
 | `app/agent.py` | LangGraph graph + the UI event stream |
 | `app/main.py` | FastAPI routes |
 | `scripts/make_demo_data.py` | Generates the synthetic demo dataset |
@@ -82,11 +82,14 @@ that silently matches everything reads as a result, which is worse than an error
 
 ## The agent
 
-A prebuilt LangGraph ReAct graph over four tools:
+A prebuilt LangGraph ReAct graph over five tools:
 
 - `list_datasets` — what data exists
 - `describe_dataset` — per-column docs from the manifest
 - `run_sql` — read-only DuckDB over the registered tables
+- `list_uploads` — the files someone has handed the interface, and whether each
+  one is queryable yet. A VCF is not a table until the pipeline has run on it,
+  and the tool says so rather than implying the data is available.
 - `set_view` — **moves the frontend**, which is what makes chat and the charts
   two views of one state rather than two panels. It also switches surface
   (`page="catalog" | "strchive"`), so a question about disease can land the user
