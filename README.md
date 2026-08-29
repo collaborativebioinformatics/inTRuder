@@ -49,7 +49,6 @@ See [Methods outline](docs/Methods_overview.md) for the full write-up of each st
 ## Table of Contents
 
 - [Overview](#overview)
-- [Important Links](#important-links-hackathon-purposes---to-delete-on-friday)
 - [Quickstart guide](#quickstart-guide)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
@@ -61,21 +60,7 @@ See [Methods outline](docs/Methods_overview.md) for the full write-up of each st
 - [Contributing](#contributing)
 - [Team](#team)
 
-## Important Links (Hackathon purposes - to delete on Friday!)
-
-- [Slack](https://baylorncbisvc-1jk9469.slack.com/archives/C0BRNLZDTL3) `#2026_group2_group10_tandem_repeats`
-- [Hackathon Schedule](https://docs.google.com/document/d/1XlZMGJdudr1C0jS9j1bWgZh4_OWm9lE0Qm8pbTQVRd8/edit?usp=sharing)
-- [Zoom](https://cuanschutz.zoom.us/j/94705840498)
-- [Team roles and subgroups](https://docs.google.com/document/d/17ginimXqbUi-xEAUXwJttZUjnYb8Fi3xF4hUsY9ry7k/edit?tab=t.0)
-- [Shared Google Drive Directory](https://drive.google.com/drive/folders/1jXJAgrP3To92SYn5w0bqxMdEu0wF66nd?usp=sharing)
-    - [Hackathon Paper Draft](https://docs.google.com/document/d/10qZ_TYCXGT-6oQeLkNYA6dTP95qblCw60p-mwLw-pfY/edit?usp=sharing)
-    - [Detailed project proposal, including background](https://docs.google.com/document/d/18JEbKyxauTkjYTZojyhRf58wiZ7YvwZixZ-JOBXl74c/edit?usp=sharing)
-  * **Final Files for Plotting**
-    * [HG002 Trio](https://drive.google.com/file/d/1ppH3vSswUobjRUMFrTC-4MPwbmW_63L5/view?usp=drive_link)
-    * [HPRC Samples](https://drive.google.com/file/d/10Byv-tfCglKLdArRO9sW8dqmd-rwrh0W/view?usp=drive_link)
-
 ## Quickstart guide
-
 
 ## Repository layout
 
@@ -138,7 +123,7 @@ code they cover — they mirror it under `tests/`.
 ## Web interface
 
 <p align="center">
-  <b>An interactive browser for the callset, with an agent that queries the same tables the charts read.</b>
+  <b>An interactive browser...</b>
 </p>
 
 <p align="center">
@@ -170,70 +155,29 @@ docker compose up --build      # same two ports
 
 ---
 
-### The funnel is the filter
-
-Every stage in the left rail is a click, not a caption. 17,270 merged insertion calls
-narrow to 17,226 non-homopolymer, to 3,467 with no equivalent motif in any catalog, to
-1,795 inside an annotated gene, to 412 inside a gene with an OMIM disease entry — and
-clicking any stage filters the list beside it. The motif-class chart below it does the
-same, so "which class carries the novelty" is one hover away.
-
-### One primitive, three zoom levels
-
-An inserted allele is drawn as a **strip of motif blocks**, not as bases. Base-level
-rendering fails on tandem repeats — a GCC and a CGG expansion are the same coloured mush —
-so the encoding moves up a level to where the information actually is.
-
-| Level | What it shows | Colour carries | Width scale |
-|---|---|---|---|
-| Catalog | Every locus, one strip each | Novel vs catalogued | sqrt-compressed per row |
-| Locus | One locus, every carrier | Motif identity | Shared linear |
-| Allele | One strip, hovered | Motif identity | Shared linear |
-
 ### Ask it in English
 
 <img src="docs/images/web/web-agent.jpg" alt="The assistant answering a question about novel VNTRs and setting the catalog filters to match" width="900">
 
-The assistant is not a sidebar bolted onto a dashboard — it is a second way to edit the
-same state. It writes SQL against the same DuckDB tables the charts read, shows you every
-query it ran under **Agent actions**, and calls `set_view` to move the screen: here it set
-the VNTR, novel-only and ≥10-carrier chips and re-sorted by carrier count, so the answer
-and the view agree. Type the same thing into the filter bar and you get the same result.
-
-### Drill into one locus
+### Inspect Loci
 
 <img src="docs/images/web/web-locus.jpg" alt="Locus detail for chr3:37,708,652 in ITGA9 — a novel locus carried by 61 of 67 samples, with neither catalog annotating a repeat there" width="900">
 
-Every candidate gets the whole argument for its verdict on one screen: what both catalogs
-say at that position, how far the observed motif is from the catalogued one, and where the
-insertion point falls in the gene. `chr3:37,708,652` sits in intron 18 of *ITGA9*, is
-carried by 61 of 67 samples — and neither UCSC simpleRepeat nor TRExplorer annotates any
-repeat within 10 bp of it.
-
 <img src="docs/images/web/web-alleles.jpg" alt="Allele-length histogram across 61 carriers, and the five distinct allele structures at the locus" width="900">
 
-Below that, the locus across the cohort: allele lengths from 1.2 kb to 4.4 kb, and the five
-distinct architectures those 85 alleles collapse into — same repeat blocks, same order,
-same copy number. Click a bar to isolate its carriers.
-
-### Compare against what is already known
+### Compare Against STRchive
 
 <img src="docs/images/web/web-disease-loci.jpg" alt="The STRchive disease-locus view — 82 curated loci, 11 whose pathogenic motif is not in hg38" width="900">
 
-The STRchive view is reference knowledge, not a result: the 82 curated repeat-expansion
-disease loci our candidates are compared against. Eleven of them have a pathogenic motif
-that does not exist in hg38 at all — a genotyper working from a reference-derived catalog
-has no locus to genotype. That is exactly the shape this pipeline detects.
-
-### Bring your own data
+### Use Your Data
 
 <img src="docs/images/web/web-datasets.jpg" alt="The datasets view — every table is a YAML manifest, with per-table switches" width="900">
 
 **Adding a dataset is one YAML file, no code changes.** Every table is a manifest
 describing a file on this machine, and the prose in it is what the assistant reads when
 deciding whether a table can answer a question. Switch a table off and it leaves the whole
-interface — no page draws it, and the assistant is not told it exists. Manifests point at
-paths on your own machine; nothing is uploaded.
+interface — no page draws it, and the assistant is not told it exists. You own your own data,
+and using a local LLM can keep everything on-device.
 
 ---
 
