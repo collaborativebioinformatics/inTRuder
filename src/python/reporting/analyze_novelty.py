@@ -6,10 +6,11 @@ Analyze hprc_multisample.trf.noveltyFiltered.tsv:
 See data_summary_notes.md for the data description and the plan this implements.
 Outputs PNG charts + a couple of summary TSVs into 2026/figures/.
 """
-import pandas as pd
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from pathlib import Path
+import pandas as pd
 
 HERE = Path(__file__).parent
 FIG_DIR = HERE / "figures"
@@ -345,10 +346,10 @@ def _plot_motif_length_linear_broken(data, out_name):
     # right are off globally); a mark at the top would float with no spine
     # to attach to.
     d = 0.5
-    kwargs = dict(
-        marker=[(-1, -d), (1, d)], markersize=10, linestyle="none",
-        color=BASELINE, mec=BASELINE, mew=1.3, clip_on=False,
-    )
+    kwargs = {
+        "marker": [(-1, -d), (1, d)], "markersize": 10, "linestyle": "none",
+        "color": BASELINE, "mec": BASELINE, "mew": 1.3, "clip_on": False,
+    }
     ax_tail.plot([1], [0], transform=ax_tail.transAxes, **kwargs)
     ax_tail_far.plot([0], [0], transform=ax_tail_far.transAxes, **kwargs)
 
@@ -498,7 +499,7 @@ def plot_overall_novelty_donut(df):
         colors = [NOVELTY_COLORS[c] for c in counts.index]
         wedges, _ = ax.pie(
             counts.values, colors=colors, startangle=90,
-            wedgeprops=dict(width=0.42, edgecolor=SURFACE, linewidth=2),
+            wedgeprops={"width": 0.42, "edgecolor": SURFACE, "linewidth": 2},
         )
         total = counts.sum()
         small_slices = []
@@ -696,14 +697,14 @@ def _plot_novel_locus_depth(df, scale, out_name):
 
     bp = axes[1].boxplot(
         depth, vert=True, widths=0.5, patch_artist=True,
-        boxprops=dict(facecolor=CAT["blue"], edgecolor=INK_PRIMARY),
-        medianprops=dict(color=INK_PRIMARY, linewidth=1.5),
-        whiskerprops=dict(color=INK_PRIMARY),
-        capprops=dict(color=INK_PRIMARY),
-        flierprops=dict(
-            marker="o", markerfacecolor=CAT["red"], markeredgecolor=CAT["red"],
-            markersize=5, alpha=0.5,
-        ),
+        boxprops={"facecolor": CAT["blue"], "edgecolor": INK_PRIMARY},
+        medianprops={"color": INK_PRIMARY, "linewidth": 1.5},
+        whiskerprops={"color": INK_PRIMARY},
+        capprops={"color": INK_PRIMARY},
+        flierprops={
+            "marker": "o", "markerfacecolor": CAT["red"], "markeredgecolor": CAT["red"],
+            "markersize": 5, "alpha": 0.5,
+        },
     )
     if scale == "log":
         axes[1].set_yscale("log")
@@ -772,17 +773,17 @@ def _plot_novel_locus_depth_outliers_broken(df, out_name, cutoff=400, far_start=
     ax_hist_far.tick_params(labelleft=False)
     _add_break_marks(ax_hist_main, ax_hist_far, "x")
 
-    boxprops = dict(
-        vert=True, widths=0.5, patch_artist=True,
-        boxprops=dict(facecolor=CAT["blue"], edgecolor=INK_PRIMARY),
-        medianprops=dict(color=INK_PRIMARY, linewidth=1.5),
-        whiskerprops=dict(color=INK_PRIMARY),
-        capprops=dict(color=INK_PRIMARY),
-        flierprops=dict(
-            marker="o", markerfacecolor=CAT["red"], markeredgecolor=CAT["red"],
-            markersize=5, alpha=0.5,
-        ),
-    )
+    boxprops = {
+        "vert": True, "widths": 0.5, "patch_artist": True,
+        "boxprops": {"facecolor": CAT["blue"], "edgecolor": INK_PRIMARY},
+        "medianprops": {"color": INK_PRIMARY, "linewidth": 1.5},
+        "whiskerprops": {"color": INK_PRIMARY},
+        "capprops": {"color": INK_PRIMARY},
+        "flierprops": {
+            "marker": "o", "markerfacecolor": CAT["red"], "markeredgecolor": CAT["red"],
+            "markersize": 5, "alpha": 0.5,
+        },
+    }
     n_outliers = None
     for ax in (ax_box_main, ax_box_far):
         bp = ax.boxplot(depth, **boxprops)
@@ -903,10 +904,10 @@ def _add_break_marks(ax_low, ax_high, orientation):
     re-enable it on both axes first, or the marks float with nothing to
     attach to."""
     d = 0.5
-    kwargs = dict(
-        marker=[(-1, -d), (1, d)], markersize=10, linestyle="none",
-        color=BASELINE, mec=BASELINE, mew=1.3, clip_on=False,
-    )
+    kwargs = {
+        "marker": [(-1, -d), (1, d)], "markersize": 10, "linestyle": "none",
+        "color": BASELINE, "mec": BASELINE, "mew": 1.3, "clip_on": False,
+    }
     if orientation == "x":
         ax_low.plot([1], [0], transform=ax_low.transAxes, **kwargs)
         ax_high.plot([0], [0], transform=ax_high.transAxes, **kwargs)
