@@ -143,25 +143,31 @@ def build_report(loci: pd.DataFrame, n_genomes: int, n_svid_loci: int,
     make_panel(counts, bin_labels, n_genomes, False, assets_dir / "loci_by_allele_count_linear.png")
 
     rel_assets = assets_dir.relative_to(report_path.parent)
-    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
     table_md = counts[["known", "novel_motif", "novel_locus"]].to_markdown()
 
     lines = [
         "# TR loci by novelty class and allele count",
         "",
-        f"*Generated {generated} by `src/python/reporting/novelty_frequency_report.py` "
-        f"from `{source.name}` ({n_genomes} HPRC genomes, {len(loci):,} true loci).*",
+        (
+            f"*Generated {generated} by `src/python/reporting/novelty_frequency_report.py` "
+            f"from `{source.name}` ({n_genomes} HPRC genomes, {len(loci):,} true loci).*"
+        ),
         "",
-        "Locus = `(chrom, position)`, not `SVID`: this merged VCF assigns SVID "
-        "per-sample-call, so the same locus can carry different SVIDs across "
-        f"carriers. Grouping by SVID inflates locus count ({n_svid_loci:,} vs "
-        f"{len(loci):,} true) and undercounts carrier frequency for ~17% of loci "
-        "-- every count below uses the corrected position-based definition. "
-        "Novelty class per locus is the majority verdict across its carriers "
-        "(97.2% already agree unanimously).",
+        (
+            "Locus = `(chrom, position)`, not `SVID`: this merged VCF assigns SVID "
+            "per-sample-call, so the same locus can carry different SVIDs across "
+            f"carriers. Grouping by SVID inflates locus count ({n_svid_loci:,} vs "
+            f"{len(loci):,} true) and undercounts carrier frequency for ~17% of loci "
+            "-- every count below uses the corrected position-based definition. "
+            "Novelty class per locus is the majority verdict across its carriers "
+            "(97.2% already agree unanimously)."
+        ),
         "",
-        "Carrier count is binned by doubling (1, 2, 3-4, ... 50-67) rather than "
-        "percentages, since 67 doesn't divide into round percentage cutoffs.",
+        (
+            "Carrier count is binned by doubling (1, 2, 3-4, ... 50-67) rather than "
+            "percentages, since 67 doesn't divide into round percentage cutoffs."
+        ),
         "",
         table_md,
         "",
@@ -169,12 +175,14 @@ def build_report(loci: pd.DataFrame, n_genomes: int, n_svid_loci: int,
         "",
         f"![Loci by class and allele count, linear scale]({rel_assets}/loci_by_allele_count_linear.png)",
         "",
-        "Both classes decline sharply from rare to common -- the standard "
-        "site-frequency-spectrum shape, not specific to novelty (`known` loci "
-        "decline the same way, see table). This is raw count, not rate: the "
-        "*share* of loci that are novel stays flat across bins (~20% "
-        "novel_motif, <1.2% novel_locus everywhere), matching the filtered "
-        "result in `feature/population-structure`'s methods doc.",
+        (
+            "Both classes decline sharply from rare to common -- the standard "
+            "site-frequency-spectrum shape, not specific to novelty (`known` loci "
+            "decline the same way, see table). This is raw count, not rate: the "
+            "*share* of loci that are novel stays flat across bins (~20% "
+            "novel_motif, <1.2% novel_locus everywhere), matching the filtered "
+            "result in `feature/population-structure`'s methods doc."
+        ),
         "",
     ]
     report_path.write_text("\n".join(lines))
