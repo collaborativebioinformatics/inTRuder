@@ -15,7 +15,7 @@
  * loaded — the first request of the session already carries the right switches.
  */
 
-const KEY = "noveltrs-dataset-switches";
+const KEY = "intruder-dataset-switches";
 
 /** name -> the position somebody put it in. Absent means "use the default". */
 export type Overrides = Record<string, boolean>;

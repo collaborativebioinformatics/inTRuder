@@ -215,7 +215,7 @@ Counts are over the records actually read; `scan.complete` says whether that was
 the file. `VCF_MAX_RECORDS` sets the bound, and a very wide file lowers it
 further and says so, rather than spending the budget on sample columns.
 
-Paths are confined to `NOVELTRS_VCF_ROOT` (the data directory by default),
+Paths are confined to `INTRUDER_VCF_ROOT` (the data directory by default),
 resolved through symlinks before the check — agent SQL gets no filesystem access
 at all, so the one tool that opens a file is the narrow checked path rather than
 the hole in that wall. A path that does not resolve comes back with the list of

@@ -1,7 +1,7 @@
 [project]
-name = "noveltrs-backend"
+name = "intruder-backend"
 version = "0.1.0"
-description = "FastAPI + LangGraph service backing the novelTRs web interface"
+description = "FastAPI + LangGraph service backing the inTRuder web interface"
 readme = "README.md"
 # Held at <3.13: sentence-transformers needs torch, and torch's last macOS
 # x86_64 wheels (2.2.2) are cp312-max, so an Intel Mac cannot run this on 3.13.

@@ -70,7 +70,7 @@ matching segments table leaves real rows drawn with the fixture barcodes, and
 the header badge says exactly that rather than calling the whole page
 synthetic.
 
-`path` may use `${NOVELTRS_DATA_DIR}`, which defaults to the repository's `data/`
+`path` may use `${INTRUDER_DATA_DIR}`, which defaults to the repository's `data/`
 directory and can be overridden in `backend/.env`.
 
 ## Switching a dataset off

@@ -1,7 +1,7 @@
 name: trio_loci
 title: GIAB trio candidate TR loci (HG002/03/04, screened)
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/trio/loci.parquet
+path: ${INTRUDER_DATA_DIR}/trio/loci.parquet
 format: parquet
 role: loci
 

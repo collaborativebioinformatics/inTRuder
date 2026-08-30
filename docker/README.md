@@ -55,9 +55,8 @@ docker pull ghcr.io/collaborativebioinformatics/intruder/frontend:latest
 docker pull ghcr.io/collaborativebioinformatics/intruder/pipeline:nextflow-pipeline
 ```
 
-The path carries the **project** name, not the repository name — the repo is
-still `novelTRs` and gets renamed on its own schedule, and a Docker reference
-cannot hold the capitals in inTRuder in any case.
+The path is the project name lowercased — a Docker reference cannot hold the
+capitals in inTRuder.
 
 **A new package starts private.** The first push of each image creates it
 under the organization's Packages, visible only to people with repository
@@ -76,7 +75,7 @@ docker {
 ## Your own data
 
 `./data` is bind-mounted at `/data`, and the backend is pointed at it with
-`NOVELTRS_DATA_DIR=/data` / `NOVELTRS_REGISTRY_DIR=/data/web`. The registry
+`INTRUDER_DATA_DIR=/data` / `INTRUDER_REGISTRY_DIR=/data/web`. The registry
 reads every `*.yaml` in `/data/web` and resolves each manifest's `path:`
 against `/data`, so the whole dataset registry is swappable without rebuilding.
 
@@ -85,7 +84,7 @@ against `/data`, so the whole dataset registry is swappable without rebuilding.
 `/data/web`, then reloads the registry in place. No restart, no rebuild.
 
 Nothing about that path is Docker-specific, which is the point: without a
-container `NOVELTRS_DATA_DIR` defaults to the repository's own `data/`, so
+container `INTRUDER_DATA_DIR` defaults to the repository's own `data/`, so
 `just dev` puts uploads in the same directory and the feature behaves
 identically. There is no code path that asks which mode it is running in.
 

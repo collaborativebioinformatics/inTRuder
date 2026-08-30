@@ -148,9 +148,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Named for the project, not the repository: the repo is still
-          # novelTRs and will be renamed separately, and a Docker reference
-          # rejects the capitals in inTRuder either way.
+          # Lowercased: a Docker reference rejects the capitals in inTRuder.
           owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           image="ghcr.io/${owner_lc}/${PROJECT}/${NAME}"
 

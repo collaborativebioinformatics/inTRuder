@@ -16,8 +16,8 @@
 # far side of that pipe, stdin is already the script.
 #
 #     BRANCH      branch to check out                          [main]
-#     REPO_URL    where to clone it from                        [novelTRs]
-#     REPO_DIR    where to put it                               [$HOME/novelTRs]
+#     REPO_URL    where to clone it from                        [inTRuder]
+#     REPO_DIR    where to put it                               [$HOME/inTRuder]
 #     SYNC_ARGS   extra flags for `uv sync`, e.g. "--group dx"  [none]
 #
 # Every one of them is validated below and echoed back before any work starts,
@@ -36,8 +36,8 @@ die() { echo "[$(date +%H:%M:%S)] FATAL: $*" >&2; exit 1; }
 # was lost on the way. Collapsing those two to the same default would hide the
 # one failure the checks below exist to catch.
 BRANCH="${BRANCH-main}"
-REPO_URL="${REPO_URL-https://github.com/collaborativebioinformatics/novelTRs.git}"
-REPO_DIR="${REPO_DIR-$HOME/novelTRs}"
+REPO_URL="${REPO_URL-https://github.com/collaborativebioinformatics/inTRuder.git}"
+REPO_DIR="${REPO_DIR-$HOME/inTRuder}"
 SYNC_ARGS="${SYNC_ARGS-}"
 
 # --- what did we actually receive? --------------------------------------

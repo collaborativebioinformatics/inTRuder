@@ -7,7 +7,7 @@
 #     scripts/dnanexus/dx-instance-cpu.sh -f /survivor/HPRC_SV.survivor.vcf
 #
 # The box is mem1_ssd1_v2_x4 (4 cores, ~8 GB) unless you pass -i or set
-# DX_INSTANCE. The repo is cloned to /home/dnanexus/novelTRs with its venv
+# DX_INSTANCE. The repo is cloned to /home/dnanexus/inTRuder with its venv
 # built; use .venv/bin/... there, never `uv run`.
 #
 # This one takes no command -- it is the interactive half of the pair. To run a

@@ -59,7 +59,7 @@ Rscript src/R/plotting/main.R
 ```
 
 The script defaults to `data/plots`. Point it elsewhere with an argument
-(`Rscript src/R/plotting/main.R /path/to/dir`) or the `NOVELTRS_PLOT_DATA` environment
+(`Rscript src/R/plotting/main.R /path/to/dir`) or the `INTRUDER_PLOT_DATA` environment
 variable.
 
 ## Where to get them without regenerating

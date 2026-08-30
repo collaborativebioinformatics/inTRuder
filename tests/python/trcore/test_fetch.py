@@ -49,12 +49,12 @@ def test_falls_back_to_the_user_cache_outside_a_checkout(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     monkeypatch.setattr(fetch, "__file__", str(tmp_path / "a/b/c/fetch.py"))
     assert cache_root("novelty") == tmp_path / "novelty"
-    assert cache_root("noveltrs") == tmp_path / "noveltrs"
+    assert cache_root("intruder") == tmp_path / "intruder"
 
 
 def test_two_steps_can_share_one_checkout_cache():
     """The root is shared; the subdirectory is the caller's to append."""
-    assert cache_root("novelty") == cache_root("noveltrs")
+    assert cache_root("novelty") == cache_root("intruder")
 
 
 # --------------------------------------------------------------------------- #
