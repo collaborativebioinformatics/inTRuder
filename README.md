@@ -97,33 +97,21 @@ pointing either at your own data, and every `just` recipe are covered in the
 ## Web Interface
 
 <p align="center">
-
   <b>See the tandem repeats no catalog knows about — then ask about them in plain English.</b>
-
   <br>
-
   <sub>Every candidate locus on one screen, filtered live, with an assistant reading the same information you are.</sub>
-
 </p>
 
 <p align="center">
-
   <img src="docs/images/web/web-catalog.jpg" alt="inTRuder catalog view: the discovery funnel on the left, candidate loci drawn as motif barcodes in the centre, the assistant on the right" width="900">
-
 </p>
 
 <p align="center">
-
   <img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16">
-
   <img src="https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind v4">
-
   <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
-
   <img src="https://img.shields.io/badge/LangGraph-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
-
   <img src="https://img.shields.io/badge/DuckDB-FFF000?logo=duckdb&logoColor=black" alt="DuckDB">
-
 </p>
 
 ---
