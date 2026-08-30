@@ -45,17 +45,21 @@ gh run watch $(gh run list --workflow=docker.yml -L1 --json databaseId -q '.[0].
 asking for one by name and not finding it fails the run.
 
 Each build is tagged with the sanitized ref name (`main`,
-`andrewscouten-docker`), `sha-<short>`, and — only when building `main` —
-`latest`:
+`andrewscouten-docker`), `sha-<short>`, `v<version>` (read from that image's
+own version file — `backend/pyproject.toml`, `frontend/package.json`, or
+`workflows/nextflow.config`'s `manifest.version`), and — only when building
+`main` — `latest`:
 
 ```bash
-docker pull ghcr.io/collaborativebioinformatics/intruder/backend:latest
-docker pull ghcr.io/collaborativebioinformatics/intruder/frontend:latest
-docker pull ghcr.io/collaborativebioinformatics/intruder/pipeline:latest
+docker pull ghcr.io/collaborativebioinformatics/intruder-backend:latest
+docker pull ghcr.io/collaborativebioinformatics/intruder-frontend:latest
+docker pull ghcr.io/collaborativebioinformatics/intruder-nextflow:v1.0.0
 ```
 
-The path is the project name lowercased — a Docker reference cannot hold the
-capitals in inTRuder.
+The name is lowercased because a Docker reference cannot hold the capitals in
+inTRuder. The pipeline image is published as `nextflow`, not `pipeline`: it's
+the container runtime a Nextflow pipeline drives, and that's what's worth
+naming it after.
 
 **A new package starts private.** The first push of each image creates it
 under the organization's Packages, visible only to people with repository
@@ -67,7 +71,7 @@ on someone else's machine needs:
 ```groovy
 docker {
     docker.enabled = true
-    process.container = 'ghcr.io/collaborativebioinformatics/intruder/pipeline:latest'
+    process.container = 'ghcr.io/collaborativebioinformatics/intruder-nextflow:latest'
 }
 ```
 

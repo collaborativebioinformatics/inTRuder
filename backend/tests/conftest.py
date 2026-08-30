@@ -36,8 +36,9 @@ _MANIFESTS = (
     "demo-segments.yaml",
     "strchive-loci.yaml",
     "strchive-calls.yaml",
+    "hpo-gene-phenotype.yaml",
 )
-_DATA_DIRS = ("demo", "strchive")
+_DATA_DIRS = ("demo", "strchive", "hpo")
 
 
 def _hermetic_registry() -> str:
