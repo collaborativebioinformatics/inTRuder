@@ -1,7 +1,7 @@
 name: hprc_calls
 title: HPRC carrier-alleles, screened against reference catalogs and gene-annotated
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/plots/parquet/05_hprc_multisample.parquet
+path: ${INTRUDER_DATA_DIR}/plots/parquet/05_hprc_multisample.parquet
 format: parquet
 
 description: >

@@ -19,7 +19,7 @@ description: >
   invisible to any genotyper working from a reference-derived catalog, which is
   precisely the blind spot this pipeline exists to cover. Seven of the eleven are
   the FAME family, where a pathogenic TTTCA is inserted into a reference TTTTA
-  array: an insertion carrying a novel motif, the exact shape novelTRs detects.
+  array: an insertion carrying a novel motif, the exact shape inTRuder detects.
   Fetched, checksummed and flattened by backend/scripts/fetch_strchive.py.
 
 columns:

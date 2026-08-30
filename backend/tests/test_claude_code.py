@@ -102,12 +102,12 @@ def test_the_session_ignores_the_machine_it_is_running_on(options):
     assert options.setting_sources == []
     assert options.strict_mcp_config is True
     assert options.system_prompt == "system prompt"
-    assert list(options.mcp_servers) == ["noveltrs"]
+    assert list(options.mcp_servers) == ["intruder"]
 
 
 def test_the_model_sees_the_same_tools_the_graph_gives_it(options):
     """Same names, same descriptions, same schemas — only the transport differs."""
-    served = options.mcp_servers["noveltrs"]["instance"]
+    served = options.mcp_servers["intruder"]["instance"]
     assert served is not None
     adapted = _as_mcp_tool(sdk, run_sql)
     assert adapted.name == run_sql.name

@@ -118,10 +118,10 @@ def plot_class_distribution(
         d = df.assign(**{plot_col: df[column].clip(upper=cap)})
 
     fig, ax = plt.subplots(figsize=(7.2, 3.6), constrained_layout=True)
-    hist_kwargs = dict(
-        data=d, x=plot_col, hue="novelty", hue_order=classes, palette=CLASS_COLOR,
-        stat="count", element="step", fill=True, alpha=0.4, multiple="layer", ax=ax,
-    )
+    hist_kwargs = {
+        "data": d, "x": plot_col, "hue": "novelty", "hue_order": classes, "palette": CLASS_COLOR,
+        "stat": "count", "element": "step", "fill": True, "alpha": 0.4, "multiple": "layer", "ax": ax,
+    }
     if discrete:
         hist_kwargs["discrete"] = True
     else:
@@ -190,7 +190,7 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
 
     summary = summary_table(df)
     rel_assets = assets_dir.relative_to(report_path.parent)
-    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     df_novel = df[df["novelty"].isin(NOVEL_CLASSES)]
     novel_ratio = (df["novelty"] == "novel_motif").sum() / max((df["novelty"] == "novel_locus").sum(), 1)
@@ -202,17 +202,21 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
     lines = [
         "# Population-level TR distributions by novelty class",
         "",
-        f"*Generated {generated} by `src/python/reporting/population_report.py` "
-        f"from `{input_path}` ({len(df):,} TRF calls across "
-        f"{df.groupby(['chrom', 'ins_coord']).ngroups:,} loci; locus = chrom+position, not SVID -- "
-        f"see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*",
+        (
+            f"*Generated {generated} by `src/python/reporting/population_report.py` "
+            f"from `{input_path}` ({len(df):,} TRF calls across "
+            f"{df.groupby(['chrom', 'ins_coord']).ngroups:,} loci; locus = chrom+position, not SVID -- "
+            f"see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*"
+        ),
         "",
-        "Colours follow the same fixed palette as "
-        "[`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): "
-        "one novelty class, one colour, everywhere. Distributions below the summary "
-        "chart are `novel_motif` vs `novel_locus` only (`known` excluded, not of "
-        f"interest here), shown as raw counts (not density) — the two classes differ "
-        f"by ~{novel_ratio:.0f}x in size, so absolute magnitude matters, not just shape.",
+        (
+            "Colours follow the same fixed palette as "
+            "[`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): "
+            "one novelty class, one colour, everywhere. Distributions below the summary "
+            "chart are `novel_motif` vs `novel_locus` only (`known` excluded, not of "
+            f"interest here), shown as raw counts (not density) — the two classes differ "
+            f"by ~{novel_ratio:.0f}x in size, so absolute magnitude matters, not just shape."
+        ),
         "",
         "## Summary",
         "",
@@ -222,42 +226,50 @@ def build_report(df: pd.DataFrame, input_path: Path, assets_dir: Path, report_pa
         "",
         "## Motif length",
         "",
-        f"Values at or above 30bp are pooled into the `30+` bucket and called out "
-        f"with an annotation ({motif_overflow_n:,} calls, {motif_overflow_pct:.1f}% of all "
-        f"calls, actual motif lengths run up to {int(df_novel['motif_length'].max()):,}bp) — the "
-        f"underlying summary table above is exact. An earlier version of this chart used a "
-        f"fixed axis range that cut the view off at 32bp without pooling the overflow, which "
-        f"silently dropped that many calls from the plot entirely.",
+        (
+            f"Values at or above 30bp are pooled into the `30+` bucket and called out "
+            f"with an annotation ({motif_overflow_n:,} calls, {motif_overflow_pct:.1f}% of all "
+            f"calls, actual motif lengths run up to {int(df_novel['motif_length'].max()):,}bp) — the "
+            f"underlying summary table above is exact. An earlier version of this chart used a "
+            f"fixed axis range that cut the view off at 32bp without pooling the overflow, which "
+            f"silently dropped that many calls from the plot entirely."
+        ),
         "",
         f"![Motif length by novelty class]({rel_assets}/motif_length.png)",
         "",
         "## Repeat tract length",
         "",
-        f"Values at or above 3000bp are pooled into the `3000+` bucket the same way "
-        f"({rep_overflow_n:,} calls, {rep_overflow_pct:.1f}% of all calls; actual repeat "
-        f"tract lengths run up to {int(df_novel['rep_length'].max()):,}bp).",
+        (
+            f"Values at or above 3000bp are pooled into the `3000+` bucket the same way "
+            f"({rep_overflow_n:,} calls, {rep_overflow_pct:.1f}% of all calls; actual repeat "
+            f"tract lengths run up to {int(df_novel['rep_length'].max()):,}bp)."
+        ),
         "",
         f"![Repeat tract length by novelty class]({rel_assets}/rep_length.png)",
         "",
         "## Purity",
         "",
-        "Median purity by class is in the summary table above. This matters for "
-        "interpreting the purity filter used downstream "
-        "(`src/python/filter/filter_ins_trf.py`, min purity 0.7): the shape of "
-        "each class's distribution near that threshold determines how much of "
-        "it survives filtering, not just the median.",
+        (
+            "Median purity by class is in the summary table above. This matters for "
+            "interpreting the purity filter used downstream "
+            "(`src/python/filter/filter_ins_trf.py`, min purity 0.7): the shape of "
+            "each class's distribution near that threshold determines how much of "
+            "it survives filtering, not just the median."
+        ),
         "",
         f"![Purity by novelty class]({rel_assets}/purity.png)",
         "",
         "## GC content",
         "",
-        "GC content is the fraction of G/C bases in the repeat motif itself "
-        "(`(motif.count('G') + motif.count('C')) / len(motif)`), bounded in "
-        "[0, 1] by definition — no capping needed. An earlier version of this "
-        "chart (`notebooks/pop_viz.ipynb`) computed "
-        "`motif.str.count('GC') * rep_units` — the literal substring count "
-        "scaled by copy number — which is unbounded and does not measure base "
-        "composition; that computation has been replaced here.",
+        (
+            "GC content is the fraction of G/C bases in the repeat motif itself "
+            "(`(motif.count('G') + motif.count('C')) / len(motif)`), bounded in "
+            "[0, 1] by definition — no capping needed. An earlier version of this "
+            "chart (`notebooks/pop_viz.ipynb`) computed "
+            "`motif.str.count('GC') * rep_units` — the literal substring count "
+            "scaled by copy number — which is unbounded and does not measure base "
+            "composition; that computation has been replaced here."
+        ),
         "",
         f"![GC content by novelty class]({rel_assets}/gc_content.png)",
         "",

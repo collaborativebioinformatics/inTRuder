@@ -115,11 +115,15 @@ a missing CLI says where to get it, and a signed-out CLI says to run `claude`.
 | `app/tools/view.py` | `set_view` — moves the frontend |
 | `app/tools/vcf.py` | `describe_vcf` — reads a file, not a table |
 | `app/tools/literature.py` | `search_literature` — reads Europe PMC, not us |
+| `app/tools/hpo.py` | `resolve_phenotype` — free text to validated HPO terms to genes |
 | `app/util/registry.py` | Manifests → DuckDB tables; the guarded SQL path |
 | `app/util/vcf/` | The VCF reader behind `describe_vcf` |
 | `app/util/europepmc.py` | Europe PMC client: the query ladder, scoring, rate limiting |
+| `app/util/hpo_pipeline.py` | The phenotype-to-genes pipeline behind `resolve_phenotype` |
 | `scripts/make_demo_data.py` | Generates the synthetic demo dataset |
 | `scripts/fetch_strchive.py` | Downloads + checksums the STRchive disease catalog |
+| `scripts/fetch_hpo.py` | Downloads + checksums the HPO gene-phenotype release |
+| `scripts/build_hpo_index.py` | One-time: builds the HPO term embedding index |
 
 Three packages, three jobs: `agent/` is how the model is driven, `tools/` is what
 it can do, `util/` is what those are built on. A contributor adding a capability
@@ -146,7 +150,8 @@ allowed for `-`. Both ends are inclusive, and a candidate is an insertion
 *point*, so overlapping the range means the insertion site falls inside it. A
 range that does not parse is a 400 rather than an empty list: an empty list would
 read as a finding. `gene_query` is the free-text counterpart of `gene`, matching
-any gene symbol containing the text.
+any gene symbol containing the text. `genes` is an exact, case-insensitive match
+against a specific list of symbols — the shape `resolve_phenotype` returns.
 
 `/api/loci` accepts filters that need columns only the screened callset supplies
 (`novelty`, `platform_agreement`, `min_insertion_purity`, `sample`,
@@ -172,6 +177,8 @@ A prebuilt LangGraph ReAct graph over seven tools:
   registry cannot answer: what is this VCF?
 - `search_literature` — **reads a third-party index rather than our own data**,
   and is the only source of citations.
+- `resolve_phenotype` — free-text clinical description in, a gene list out, via
+  HPO terms validated against the live ontology. See below.
 
 The count of *data* tools does not grow with the number of datasets. Contributors
 add a manifest; the agent surface is unchanged. See `data/web/README.md`.
@@ -208,7 +215,7 @@ Counts are over the records actually read; `scan.complete` says whether that was
 the file. `VCF_MAX_RECORDS` sets the bound, and a very wide file lowers it
 further and says so, rather than spending the budget on sample columns.
 
-Paths are confined to `NOVELTRS_VCF_ROOT` (the data directory by default),
+Paths are confined to `INTRUDER_VCF_ROOT` (the data directory by default),
 resolved through symlinks before the check — agent SQL gets no filesystem access
 at all, so the one tool that opens a file is the narrow checked path rather than
 the hole in that wall. A path that does not resolve comes back with the list of
@@ -301,6 +308,51 @@ to 3 attempts with `Retry-After` honoured and jittered exponential backoff
 otherwise, and a TTL cache keyed on the exact query so overlapping ladders share
 rungs. The one policy Europe PMC *does* state — no automated bulk downloading —
 is respected by never paginating: one page, capped at `LITERATURE_MAX_RESULTS`.
+
+### `resolve_phenotype`
+
+Free-text clinical language is not a controlled vocabulary, so it has to be
+mapped to real HPO terms before it can drive a gene lookup — and the central
+risk in that mapping is a hallucinated HPO id reaching the interface. Six
+steps, four of them behind this one tool:
+
+1. **Embed** the free text with `sentence-transformers` (`all-mpnet-base-v2`).
+2. **Nearest-neighbor search** against a precomputed index of every HPO term's
+   name and synonyms, embedded with the same model (`scripts/build_hpo_index.py`,
+   a one-time build, not part of the request path).
+3. **`resolve_hpo()`** — the one mandatory checkpoint. A pure existence check
+   against `PyHPO`'s live `Ontology`, nothing else: is this id real, and not
+   obsolete? A candidate that fails is dropped and never reaches steps 4-6 or
+   the UI, regardless of how it was proposed. Rejects for exactly two reasons:
+   the id does not exist, or it existed once and was retired/merged
+   (`Ontology` exposes `is_obsolete` / `replaced_by` for that second case).
+4. **Related terms** — the validated term's parents/children, read directly off
+   the `PyHPO` term object (already wired up when it loaded), shown as
+   informational context. Deliberately does **not** feed step 5: the gene query
+   stays traceable to what was actually validated, not silently widened.
+5. **Gene join** — validated term(s) only, against `hpo_gene_phenotype`
+   (`scripts/fetch_hpo.py`, the official HPO Consortium release).
+6. **`set_view(genes=[...])`** — the agent's own follow-up call, not part of
+   the tool.
+
+**The threshold is load-bearing, and it has a real gap, not a rule of thumb.**
+Five nonsense phrases best-matched the index at 0.194-0.486; five phrases with
+an obvious correct HPO concept matched at 0.709-0.754 (`all-mpnet-base-v2`,
+this index — reproduce with `tests/test_hpo_pipeline.py::test_threshold_calibration`).
+The gap does not overlap, so `DEFAULT_SIMILARITY_THRESHOLD = 0.6` in
+`app/util/hpo_pipeline.py` is placed in the middle of it.
+
+**What the threshold does not catch:** a confidently-scored match can still be
+the wrong concept. "curved spine" — the phenotype-to-loci spec's own worked
+example, expected to match Scoliosis — actually matches "Abnormally straight
+spine" top-1 with this model (score 0.726, comfortably above threshold), and
+Scoliosis does not appear even in the top 8 candidates. `resolve_hpo()`
+correctly does not reject it — it *is* a real, current term — but it is
+arguably the wrong one. This is inherent to a general-purpose text embedding
+on clinical phrasing, not a bug, and is the documented motivation for the
+spec's own suggested upgrade to a clinical embedding model (e.g. ClinicalBERT).
+The tool's docstring tells the agent to sanity-check a validated term's name
+against what the user actually described rather than trust the score alone.
 
 ### SQL sandbox
 

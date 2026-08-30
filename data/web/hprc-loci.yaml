@@ -1,7 +1,7 @@
 name: hprc_loci
 title: HPRC candidate TR loci (67 genomes, screened)
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/hprc/loci.parquet
+path: ${INTRUDER_DATA_DIR}/hprc/loci.parquet
 format: parquet
 role: loci
 

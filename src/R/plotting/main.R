@@ -9,12 +9,12 @@ library(dplyr)
 # repo root (which is also where renv activates):
 #
 #   Rscript src/R/plotting/main.R
-#   Rscript src/R/plotting/main.R /some/other/dir   # or set NOVELTRS_PLOT_DATA
+#   Rscript src/R/plotting/main.R /some/other/dir   # or set INTRUDER_PLOT_DATA
 args <- commandArgs(trailingOnly = TRUE)
 data_dir <- if (length(args) >= 1) {
   args[[1]]
 } else {
-  Sys.getenv("NOVELTRS_PLOT_DATA", unset = "data/plots")
+  Sys.getenv("INTRUDER_PLOT_DATA", unset = "data/plots")
 }
 
 if (!dir.exists(data_dir)) {

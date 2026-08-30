@@ -1,9 +1,11 @@
 [project]
-name = "noveltrs-backend"
+name = "intruder-backend"
 version = "1.0.0"
-description = "FastAPI + LangGraph service backing the novelTRs web interface"
+description = "FastAPI + LangGraph service backing the inTRuder web interface"
 readme = "README.md"
-requires-python = ">=3.11"
+# Held at <3.13: sentence-transformers needs torch, and torch's last macOS
+# x86_64 wheels (2.2.2) are cp312-max, so an Intel Mac cannot run this on 3.13.
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -15,6 +17,22 @@ dependencies = [
     "langchain-anthropic>=0.3",
     "python-dotenv>=1.0",
     "httpx>=0.28.1",
+    "pyhpo>=4.0.0",
+    # An Intel Mac is a dead end for the current stack: torch's last macOS
+    # x86_64 wheels are 2.2.2, sentence-transformers 6 requires transformers 5,
+    # and transformers 5 does not work against torch 2.2. So that one platform
+    # holds at the last combination that resolves; everywhere else takes current.
+    # `resolve_phenotype` only calls SentenceTransformer(...).encode(), which is
+    # unchanged across these versions.
+    "sentence-transformers>=6.0.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "sentence-transformers>=5.1,<6; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "transformers<5; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch<2.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # torch 2.2.2 is built against the NumPy 1.x C API; with NumPy 2 installed it
+    # loads but every tensor<->array conversion fails, which is exactly what
+    # embed_text does.
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "claude-agent-sdk>=0.2.148",
 ]
 
 [dependency-groups]

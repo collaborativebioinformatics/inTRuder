@@ -497,8 +497,8 @@ function Team() {
       <Section title="Where everything lives">
         <ul className="space-y-1.5 text-[13px] text-ink-secondary">
           <li>
-            <Tool href="https://github.com/collaborativebioinformatics/novelTRs">
-              github.com/collaborativebioinformatics/novelTRs
+            <Tool href="https://github.com/collaborativebioinformatics/inTRuder">
+              github.com/collaborativebioinformatics/inTRuder
             </Tool>{" "}
             — pipeline, docs and this interface.
           </li>

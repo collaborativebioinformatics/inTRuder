@@ -67,7 +67,7 @@ BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 #: Identifies us to EBI on a keyless service. The norm for their web services is
 #: a contact-able User-Agent; it is what lets them mail a maintainer instead of
 #: blocking an IP. Deliberately a repository URL and not anyone's address.
-USER_AGENT = "noveltrs/0.1 (+https://github.com/collaborativebioinformatics/novelTRs)"
+USER_AGENT = "intruder/0.1 (+https://github.com/collaborativebioinformatics/inTRuder)"
 
 #: The only field prefixes this module will emit. An unknown field returns zero
 #: hits rather than an error, so a typo would read as "no papers exist".

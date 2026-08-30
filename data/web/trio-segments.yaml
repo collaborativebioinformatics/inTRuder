@@ -1,7 +1,7 @@
 name: trio_segments
 title: GIAB trio per-allele repeat structure (HG002/03/04)
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/trio/segments.parquet
+path: ${INTRUDER_DATA_DIR}/trio/segments.parquet
 format: parquet
 role: segments
 

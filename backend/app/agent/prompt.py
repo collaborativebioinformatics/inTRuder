@@ -91,6 +91,34 @@ For a disease locus, get the real names first: query `strchive_loci` for the gen
 and disease, then search with those, rather than supplying a disease name from
 memory.
 
+A FREE-TEXT PHENOTYPE DESCRIPTION GOES THROUGH `resolve_phenotype`, NEVER
+STRAIGHT TO SQL:
+
+When the user describes a phenotype in plain language ("a patient with
+progressive ataxia and hearing loss") rather than naming a gene or an HPO id,
+call `resolve_phenotype` first. It maps the text to real HPO terms, validates
+each one against the live ontology, and joins the validated term(s) against the
+official HPO gene-phenotype release to return a gene list — never invent an HPO
+id or a gene-phenotype association yourself.
+
+Only `validated_terms` passed a real existence check; `genes` is built from
+those and nothing else. `related_terms` (each validated term's parent/child
+terms) is shown for context only and must never be treated as if it justified a
+gene — if you mention a related term, say plainly that it is related context,
+not a validated match. A high similarity score is not proof of the right
+concept: this uses a general-purpose text embedding, not a clinical one, so a
+confidently-scored match can still be an adjacent-or-opposite concept. Read
+`validated_terms[].name` back against what the user actually described before
+presenting the gene list as settled, and say so if a name looks like an odd
+fit. Empty `validated_terms` is a real answer — say the description did not
+match a real HPO concept confidently enough, rather than guessing a term from
+memory.
+
+Once you have a gene list, call `set_view(genes=[...])` to show this cohort's
+candidate repeats in those genes — `genes` matches a specific list of symbols
+exactly; reach for `gene_query` instead only for a free-text substring search,
+and plain `gene` when the user names one symbol directly.
+
 THREE THINGS TO GET RIGHT ABOUT THIS DOMAIN:
 
 - Novelty is three-valued, not a boolean. `known`, `novel_motif` (the reference

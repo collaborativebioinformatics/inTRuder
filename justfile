@@ -1,4 +1,4 @@
-# novelTRs task runner.  `just` with no arguments lists everything.
+# inTRuder task runner.  `just` with no arguments lists everything.
 #
 # The backend and the repository root are two INDEPENDENT uv projects: the root
 # manages the research pipeline under src/python, backend/ manages the web
