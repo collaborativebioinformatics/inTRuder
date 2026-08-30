@@ -43,10 +43,11 @@ tools, the SQL sandbox — are covered in [`backend/README.md`](../backend/READM
 ## 3. Run the pipeline
 
 The [Nextflow](https://www.nextflow.io/) entrypoint is `workflows/main.nf`, and its processes run
-inside the image built from this repository's `Dockerfile` — so build that once first:
+inside the image built from [`docker/pipeline.Dockerfile`](../docker/pipeline.Dockerfile) — so build
+that once first:
 
 ```bash
-docker build -t novel-tr-pipeline:latest .
+docker build -f docker/pipeline.Dockerfile -t novel-tr-pipeline:latest .
 nextflow run workflows/main.nf -profile docker
 ```
 

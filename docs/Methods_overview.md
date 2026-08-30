@@ -117,8 +117,8 @@ The workflow was implemented using **Nextflow DSL2** and executed in a **SLURM-m
 ## 5. Pipeline Orchestration
 
 A Nextflow pipeline (`workflows/main.nf`) wires stages 01–05 together. Its processes run in
-the image built from the repository's `Dockerfile`, so build that once (`docker build -t
-novel-tr-pipeline:latest .`) before running with `-profile docker`.
+the image built from `docker/pipeline.Dockerfile`, so build that once (`docker build -f
+docker/pipeline.Dockerfile -t novel-tr-pipeline:latest .`) before running with `-profile docker`.
 
 **Usage:**
 

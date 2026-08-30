@@ -35,7 +35,7 @@ process FIND_TRS {
 
     script:
     // Calls the copy of sv_trfcaller.py baked into the Docker image at
-    // build time (see Dockerfile's COPY instruction) - NOT the host
+    // build time (see docker/pipeline.Dockerfile's COPY instruction) - NOT the host
     // filesystem copy in src/python/. This only resolves correctly
     // when run with -profile docker.
     //

@@ -1,7 +1,8 @@
 # Docker (`docker/`)
 
-Container images for the two web services. The compose file that wires them
-together lives at the repository root.
+Container images for all three services: the two web services and the
+Nextflow/DNAnexus pipeline runtime. The compose file that wires the web
+services together lives at the repository root.
 
 ```bash
 docker compose up --build     # frontend on :3000, API on :8000
@@ -12,12 +13,10 @@ docker compose down
 |---|---|
 | `backend.Dockerfile` | FastAPI + LangGraph + DuckDB (`uv sync --frozen --no-dev`, runs as uid 10001) |
 | `frontend.Dockerfile` | Next.js production build served by `next start` (runs as `node`) |
+| `pipeline.Dockerfile` | Nextflow/DNAnexus pipeline runtime — see [`docs/GETTING_STARTED.md`](../docs/GETTING_STARTED.md) |
 
-Both build from the **repository root** as context, governed by the root
-`.dockerignore`. Nothing under `data/` is copied into either image.
-
-A third image — the Nextflow pipeline runtime — is a root `Dockerfile` on the
-`nextflow-pipeline` branch, not here. The build workflow knows about all three.
+All three build from the **repository root** as context, governed by the root
+`.dockerignore`. Nothing under `data/` is copied into any of them.
 
 ## Published images
 
@@ -29,7 +28,7 @@ build. Run it from the repository's **Actions → Docker → Run workflow**, or:
 
 ```bash
 gh workflow run docker.yml -f image=backend
-gh workflow run docker.yml -f image=pipeline -f ref=nextflow-pipeline
+gh workflow run docker.yml -f image=pipeline
 gh run watch $(gh run list --workflow=docker.yml -L1 --json databaseId -q '.[0].databaseId')
 ```
 
@@ -45,14 +44,14 @@ gh run watch $(gh run list --workflow=docker.yml -L1 --json databaseId -q '.[0].
 `image=all` skips any image whose Dockerfile is absent on the chosen ref;
 asking for one by name and not finding it fails the run.
 
-Each build is tagged with the sanitized ref name (`nextflow-pipeline`,
+Each build is tagged with the sanitized ref name (`main`,
 `andrewscouten-docker`), `sha-<short>`, and — only when building `main` —
 `latest`:
 
 ```bash
 docker pull ghcr.io/collaborativebioinformatics/intruder/backend:latest
 docker pull ghcr.io/collaborativebioinformatics/intruder/frontend:latest
-docker pull ghcr.io/collaborativebioinformatics/intruder/pipeline:nextflow-pipeline
+docker pull ghcr.io/collaborativebioinformatics/intruder/pipeline:latest
 ```
 
 The path is the project name lowercased — a Docker reference cannot hold the
