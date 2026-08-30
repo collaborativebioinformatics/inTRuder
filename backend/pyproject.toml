@@ -28,6 +28,14 @@ dependencies = [
     "sentence-transformers>=5.1,<6; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "transformers<5; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "torch<2.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # transformers 5 (pulled in by sentence-transformers 6 everywhere else) checks
+    # at import time that torch>=2.5 and disables itself otherwise. transformers
+    # doesn't declare that as an install-time dependency, so without an explicit
+    # floor here uv's universal resolver has no conflict to force a per-platform
+    # fork and collapses torch to the one shared version that satisfies every
+    # marker environment -- the darwin ceiling above, everywhere. This floor
+    # forces the fork so non-darwin actually gets "current".
+    "torch>=2.5; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     # torch 2.2.2 is built against the NumPy 1.x C API; with NumPy 2 installed it
     # loads but every tensor<->array conversion fails, which is exactly what
     # embed_text does.
