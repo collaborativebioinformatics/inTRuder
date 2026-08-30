@@ -3,12 +3,12 @@ import { TEAM, fullName, initials, type Member } from "@/lib/team";
 /**
  * Who made this, and what it is.
  *
- * A document rather than a workspace surface, so it borrows the presentation's
- * column width and gets the same full-width treatment in the shell — there is
- * no cohort to summarize beside it and nothing here for the assistant to query.
+ * A document rather than a workspace surface, so it gets the full-width
+ * treatment in the shell — there is no cohort to summarize beside it and
+ * nothing here for the assistant to query.
  *
  * The roster is imported already sorted (see lib/team). Nothing on this page
- * reorders it: one list, one order, both surfaces.
+ * reorders it.
  */
 
 /**

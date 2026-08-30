@@ -13,7 +13,6 @@ import { Funnel } from "@/components/Funnel";
 import { Inspector, type Selection } from "@/components/Inspector";
 import { LocusView } from "@/components/LocusView";
 import { PaneDivider } from "@/components/PaneDivider";
-import { PresentationView } from "@/components/PresentationView";
 import { StrchiveView } from "@/components/StrchiveView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UploadDialog } from "@/components/UploadDialog";
@@ -219,10 +218,6 @@ const TABS: Tab[] = [
   // Uploading is the verb, and it lives on the right as a control rather than
   // as a place you navigate to.
   { page: "datasets", href: "/datasets", label: "Datasets" },
-  // Last, and the odd one out: not a view of the data but the write-up of what
-  // the data showed. It sits in the same row because during a talk it is one of
-  // the places you switch to, and a link somewhere else is a link nobody finds.
-  { page: "presentation", href: "/presentation", label: "Hackathon Presentation" },
 ];
 
 /**
@@ -300,9 +295,9 @@ function WorkspaceInner() {
   const [registryVersion, setRegistryVersion] = useState(0);
 
   const page = filters.page ?? "catalog";
-  // The two document surfaces replace the three-column grid rather than sitting
-  // inside it, so the resizable frame is unmounted while either is open.
-  const isDocument = page === "presentation" || page === "about";
+  // The About page replaces the three-column grid rather than sitting inside
+  // it, so the resizable frame is unmounted while it is open.
+  const isDocument = page === "about";
 
   const openUpload = useCallback((file?: File) => {
     setDropped(file ?? null);
@@ -537,12 +532,12 @@ function WorkspaceInner() {
         </div>
       )}
 
-      {/* The presentation and the About page are documents, not workspace
-          surfaces: no cohort rail to orient them and nothing for the assistant to
-          query, so they get the whole width and one scroll of their own. */}
+      {/* The About page is a document, not a workspace surface: no cohort rail
+          to orient it and nothing for the assistant to query, so it gets the
+          whole width and one scroll of its own. */}
       {isDocument ? (
         <main className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-          {page === "about" ? <AboutView /> : <PresentationView />}
+          <AboutView />
         </main>
       ) : (
         <div
