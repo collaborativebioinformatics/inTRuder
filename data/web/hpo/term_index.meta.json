@@ -1,0 +1,6 @@
+{
+  "model": "all-mpnet-base-v2",
+  "n_terms": 19484,
+  "vector_dim": 768,
+  "built_at": "2026-08-28T17:57:59.563135+00:00"
+}

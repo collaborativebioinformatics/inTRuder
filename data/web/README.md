@@ -70,7 +70,7 @@ matching segments table leaves real rows drawn with the fixture barcodes, and
 the header badge says exactly that rather than calling the whole page
 synthetic.
 
-`path` may use `${NOVELTRS_DATA_DIR}`, which defaults to the repository's `data/`
+`path` may use `${INTRUDER_DATA_DIR}`, which defaults to the repository's `data/`
 directory and can be overridden in `backend/.env`.
 
 ## Switching a dataset off
@@ -142,11 +142,15 @@ just web-data       # the real hprc and trio tables (needs the data below)
 
 cd backend
 uv run python scripts/fetch_hpo.py         # the HPO gene-phenotype release
-uv run python scripts/build_hpo_index.py   # one-time: the HPO term embedding index
+uv run python scripts/build_hpo_index.py   # the HPO term embedding index
 ```
 
 The last two back `resolve_phenotype` (`app/tools/hpo.py`) — a free-text
-clinical description mapped to genes via validated HPO terms. See
+clinical description mapped to genes via validated HPO terms. Unlike everything
+else here, their output under `data/web/hpo/` **is committed** (62 MB), so a
+fresh clone can answer a phenotype question without first rebuilding the index;
+re-run the two scripts only when the HPO release or the embedding model
+changes. See
 `backend/README.md`'s `### resolve_phenotype` section for the pipeline and its
 threshold calibration.
 

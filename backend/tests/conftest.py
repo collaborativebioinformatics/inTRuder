@@ -42,7 +42,7 @@ _DATA_DIRS = ("demo", "strchive")
 
 def _hermetic_registry() -> str:
     """A registry directory holding only `_MANIFESTS`, as symlinks."""
-    staged = Path(tempfile.mkdtemp(prefix="noveltrs-test-registry-"))
+    staged = Path(tempfile.mkdtemp(prefix="intruder-test-registry-"))
     for name in _MANIFESTS:
         source = REGISTRY_DIR / name
         if source.exists():
@@ -57,5 +57,5 @@ def _hermetic_registry() -> str:
 # Set before anything imports `app.config`, which snapshots the environment into
 # a frozen `Settings` at import time. pytest loads conftest ahead of the test
 # modules that import the app, so this is the last moment it can be done.
-os.environ.setdefault("NOVELTRS_REGISTRY_DIR", _hermetic_registry())
-os.environ.setdefault("NOVELTRS_DATA_DIR", str(REPO_ROOT / "data"))
+os.environ.setdefault("INTRUDER_REGISTRY_DIR", _hermetic_registry())
+os.environ.setdefault("INTRUDER_DATA_DIR", str(REPO_ROOT / "data"))

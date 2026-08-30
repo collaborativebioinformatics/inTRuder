@@ -41,8 +41,8 @@ TIME="2h"
 # which is almost always what you meant, and preflight checks it is pushed.
 BRANCH="${BRANCH:-$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)}"
 [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || BRANCH=main
-REPO_URL="${REPO_URL:-https://github.com/collaborativebioinformatics/novelTRs.git}"
-REPO_DIR="${REPO_DIR:-/home/dnanexus/novelTRs}"
+REPO_URL="${REPO_URL:-https://github.com/collaborativebioinformatics/inTRuder.git}"
+REPO_DIR="${REPO_DIR:-/home/dnanexus/inTRuder}"
 # Extra flags for the worker's `uv sync`. The setup script has always taken
 # this; until now nothing passed it, so the documented knob did nothing on the
 # only path anyone uses.

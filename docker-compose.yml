@@ -1,4 +1,4 @@
-# novelTRs web interface: FastAPI backend + Next.js frontend.
+# inTRuder web interface: FastAPI backend + Next.js frontend.
 #
 #   docker compose up --build      # frontend on :3000, API on :8000
 #   docker compose down
@@ -9,7 +9,7 @@
 # Dockerfiles live in docker/. Your data stays on the host and is bind-mounted —
 # see the `volumes` block below and docker/README.md.
 
-name: noveltrs
+name: intruder
 
 services:
   backend:
@@ -22,7 +22,7 @@ services:
         # Docker Desktop virtualizes this and either value works.
         UID: ${UID:-10001}
         GID: ${GID:-10001}
-    image: noveltrs-backend:local
+    image: intruder-backend:local
     ports:
       # Loopback only. This API accepts file uploads and writes them into the
       # mount below, with no authentication in front of it; published on all
@@ -31,8 +31,8 @@ services:
     environment:
       # Forced, because a host path from backend/.env would be meaningless in
       # here. Everything the backend reads lives under the /data mount below.
-      - NOVELTRS_DATA_DIR=/data
-      - NOVELTRS_REGISTRY_DIR=/data/web
+      - INTRUDER_DATA_DIR=/data
+      - INTRUDER_REGISTRY_DIR=/data/web
       # Passed through only when set, so backend/.env stays authoritative and an
       # exported shell variable can still override it for one run.
       - LLM_PROVIDER
@@ -88,7 +88,7 @@ services:
         # BROWSER uses — not `backend:8000`, which only resolves inside this
         # network. Serving from another host means rebuilding the frontend.
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
-    image: noveltrs-frontend:local
+    image: intruder-frontend:local
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

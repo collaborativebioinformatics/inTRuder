@@ -27,7 +27,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 
 # Same environment variable main.R honours, so pointing the two at one
 # directory is a single export rather than two flags that can disagree.
-DEST="${NOVELTRS_PLOT_DATA:-${REPO}/data/plots}"
+DEST="${INTRUDER_PLOT_DATA:-${REPO}/data/plots}"
 
 # Folder: https://drive.google.com/drive/folders/1rJwDrMn_R8tMairIDpdd-mwgHmSVtf2B
 #
@@ -72,7 +72,7 @@ usage() {
 
 Options:
   --only PATTERN   fetch only files whose name contains PATTERN
-  --dest DIR       write somewhere other than data/plots (or $NOVELTRS_PLOT_DATA)
+  --dest DIR       write somewhere other than data/plots (or $INTRUDER_PLOT_DATA)
   --list           report what is present, missing or the wrong size; download nothing
   --force          re-download even files that are already the right size
   --no-web-link    skip linking 02_hprc into data/web/ for the web backend

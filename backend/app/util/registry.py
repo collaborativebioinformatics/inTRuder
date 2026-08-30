@@ -155,10 +155,10 @@ def _apply_defaults(datasets: dict[str, Dataset]) -> None:
 
 
 def _resolve_path(raw: str, registry_dir: Path) -> Path:
-    """Manifest paths may be absolute, ~-relative, ${NOVELTRS_DATA_DIR}-relative,
+    """Manifest paths may be absolute, ~-relative, ${INTRUDER_DATA_DIR}-relative,
     or relative to the manifest directory."""
     expanded = os.path.expandvars(raw).replace(
-        "${NOVELTRS_DATA_DIR}", str(settings.data_dir)
+        "${INTRUDER_DATA_DIR}", str(settings.data_dir)
     )
     path = Path(expanded).expanduser()
     if not path.is_absolute():

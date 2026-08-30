@@ -192,11 +192,9 @@ dmypy.json
 cython_debug/
 
 # PyCharm
-#   JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#   and can be added to the global gitignore or merged into this file.  For a more nuclear
-#   option (not recommended) you can uncomment the following to ignore the entire idea folder.
-# .idea/
+#   Per-developer editor state (inspection profiles, module files, VCS config) -
+#   nothing here is shared project config, so it does not belong in the repo.
+.idea/
 
 # Abstra
 #   Abstra is an AI-powered process automation framework.
@@ -298,11 +296,14 @@ data/dx/
 # pinned, checksummed download, so it is not.
 data/web/strchive/
 
-# HPO gene-phenotype release (fetch_hpo.py) and the term embedding index
-# (build_hpo_index.py, 59 MB) behind resolve_phenotype. Same reasoning as
-# data/web/strchive/ above - the manifest is committed, the pinned download and
-# the generated index are not.
-data/web/hpo/
+# data/web/hpo/ is deliberately NOT ignored, unlike data/web/strchive/ above.
+# The HPO gene-phenotype release (fetch_hpo.py) and the term embedding index
+# (build_hpo_index.py, 59 MB) are committed so a fresh clone can run
+# resolve_phenotype without first installing sentence-transformers and spending
+# minutes embedding 19,484 ontology terms - which is the one setup step a demo
+# machine cannot be walked through on the spot. Regenerate them with the two
+# scripts named in data/web/README.md when the HPO release or the embedding
+# model changes.
 
 # The real callsets and the loci/segments tables built from them - hprc (67
 # unrelated genomes) and trio (GIAB HG002/03/04). The manifests that describe

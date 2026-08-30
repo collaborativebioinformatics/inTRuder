@@ -14,7 +14,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("noveltrs-theme") as Theme | null;
+      const stored = localStorage.getItem("intruder-theme") as Theme | null;
       if (stored) setTheme(stored);
     } catch {
       // Private windows and blocked site data are fine — system default holds.
@@ -26,7 +26,7 @@ export function ThemeToggle() {
     if (theme === "system") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem("noveltrs-theme", theme);
+      localStorage.setItem("intruder-theme", theme);
     } catch {
       // Non-fatal.
     }

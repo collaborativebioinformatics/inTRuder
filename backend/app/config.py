@@ -33,18 +33,18 @@ def _env_list(name: str, default: list[str]) -> list[str]:
 
 @dataclass(frozen=True)
 class Settings:
-    # Where user data lives. Manifests may reference this as ${NOVELTRS_DATA_DIR}.
-    data_dir: Path = field(default_factory=lambda: _env_path("NOVELTRS_DATA_DIR", REPO_ROOT / "data"))
+    # Where user data lives. Manifests may reference this as ${INTRUDER_DATA_DIR}.
+    data_dir: Path = field(default_factory=lambda: _env_path("INTRUDER_DATA_DIR", REPO_ROOT / "data"))
     # Directory scanned for *.yaml dataset manifests.
     registry_dir: Path = field(
-        default_factory=lambda: _env_path("NOVELTRS_REGISTRY_DIR", REPO_ROOT / "data" / "web")
+        default_factory=lambda: _env_path("INTRUDER_REGISTRY_DIR", REPO_ROOT / "data" / "web")
     )
     # The only directory `describe_vcf` will open a file from. Agent SQL gets no
     # filesystem access at all, so the one tool that does read a file is confined
     # to this root rather than left to take any path the model writes.
     vcf_root: Path = field(
         default_factory=lambda: _env_path(
-            "NOVELTRS_VCF_ROOT", _env_path("NOVELTRS_DATA_DIR", REPO_ROOT / "data")
+            "INTRUDER_VCF_ROOT", _env_path("INTRUDER_DATA_DIR", REPO_ROOT / "data")
         )
     )
 

@@ -77,7 +77,7 @@ def default_cache() -> Path:
     Inside a checkout that is ``data/reference/strchive/``, beside the catalogues
     the novelty screen downloads; outside one it falls back to the user cache.
     """
-    return cache_root("noveltrs", env_var=CACHE_ENV) / "strchive"
+    return cache_root("intruder", env_var=CACHE_ENV) / "strchive"
 
 #: Reference builds, mapped onto the field suffix STRchive uses for each.
 BUILDS = {"hg38": "hg38", "hg19": "hg19", "t2t": "t2t", "chm13": "t2t"}
