@@ -15,6 +15,14 @@ dependencies = [
     "pandas>=3.0.5",
     "parasail>=1.3.4",
     "pysam>=0.23",
+    # `evo-embed --dry-run` is the documented laptop workflow -- build windows and
+    # check N filtering before queueing GPU time -- and it reads the reference
+    # through pyfaidx. Keeping pyfaidx in the `embed` extra made that advertised
+    # path fail on a default `uv sync`, and made pyfaidx churn in and out of the
+    # venv as commands alternated between naming the extra and not. It is
+    # pure-Python and installs everywhere, so it belongs here; `embed` exists to
+    # gate `evo2`, which genuinely cannot install on a laptop.
+    "pyfaidx>=0.8",
     "pytrf>=1.5.0",
     "tqdm>=4.70.0",
 ]
@@ -28,6 +36,62 @@ filter      = "intruder.pipeline.trf.filter_ins_trf:main"
 novelty     = "intruder.pipeline.novelty.cli:main"
 strchive    = "intruder.pipeline.strchive.__main__:main"
 compression = "intruder.pipeline.compression.annotate:main"
+# `uv run evo-embed ...` from anywhere in the repo -- extracts Evo 2 embeddings
+# for SV insertion loci. Lives in its own top-level `evo` package (see
+# [tool.uv.build-backend] below) rather than under `intruder`, since it ships
+# its own optional dependency groups (analysis/embed/notebook/torch backends).
+evo-embed = "evo.embeddings.cli:main"
+# The analysis half. Both need `--extra analysis`; they import sklearn/umap
+# lazily, so `--help` still works without it and says what is missing.
+analysis-reduce = "analysis.dim_reduc.cli:main"
+analysis-cluster = "analysis.clustering.cli:main"
+
+[project.optional-dependencies]
+# Analysis half of the Evo 2 work: reduction, clustering, outlier scoring, plots.
+# Pure CPU -- no torch, no GPU -- so it installs anywhere and is the half you
+# iterate on locally against vectors the cluster produced.
+analysis = [
+    # >=1.3 for sklearn.cluster.HDBSCAN, which is why `hdbscan` is not a
+    # separate dependency; >=1.7 to match what the lock already resolves.
+    "scikit-learn>=1.7",
+    "umap-learn>=0.5.9",
+    "matplotlib>=3.10",
+]
+
+# Extraction half -- the GPU-only piece. pyfaidx is NOT here: window building and
+# `--dry-run` are the laptop half and must work after a plain `uv sync`, so it is
+# a default dependency. Two things are deliberately absent:
+#   * `evo2` is capped below this project's default 3.13 by its own metadata, so
+#     the marker lets `--extra embed` still resolve on 3.13 (a no-op there) and
+#     pull evo2 only on a 3.12 cluster venv.
+#   * flash-attn is NOT listed, because putting it here would make the lock
+#     unresolvable everywhere else. It is nonetheless REQUIRED at runtime, not
+#     optional: vortex imports `flash_attn_2_cuda` at module import time, so
+#     `import evo2` raises without it. It installs AFTER `uv sync`, not before
+#     -- the wheel is specific to (python, torch, cuda, cxx11-abi), so torch has
+#     to exist first to pick it. Use a prebuilt wheel: DNAnexus GPU workers ship
+#     no nvcc, so the --no-build-isolation source build cannot run there at all.
+#     `scripts/setup-gpu-worker.sh` does the whole sequence.
+embed = [
+    "evo2>=0.2 ; python_version < '3.13'",
+]
+
+# Jupyter, for the notebooks under notebooks/. Kept out of the default sync so
+# `uv sync` stays light for people who never open one.
+notebook = [
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "nbformat>=5.10",
+    "nbclient>=0.10",
+]
+
+# Torch backends. Mutually exclusive -- see [tool.uv] conflicts. Evo 2 wants
+# torch 2.6.x/2.7.x on CUDA 12.1+; rocm is here for parity but evo2 itself is
+# CUDA-only, so `--extra rocm` gets you torch and nothing that runs Evo 2.
+cpu = ["torch>=2.6,<2.8"]
+cu126 = ["torch>=2.6,<2.8"]
+cu128 = ["torch>=2.6,<2.8"]
+rocm = ["torch>=2.6,<2.8", "pytorch-triton-rocm"]
 
 [dependency-groups]
 # Groups, not extras: nothing here is imported by a pipeline step, so none of it
@@ -59,22 +123,83 @@ dx = [
     "dxpy>=0.412.0",
 ]
 
+[tool.uv]
+# umap-learn pulls numba, which pins llvmlite tightly. llvmlite stopped shipping
+# Intel-macOS wheels at 0.46, so on that platform uv falls back to building it
+# from source and needs a full LLVM toolchain. Capping it there keeps `--extra
+# analysis` a wheel-only install; every other platform is unaffected.
+# Both ends are needed: capping llvmlite alone lets uv walk numba backwards past
+# the Python versions it supports rather than settle on a 3.13-capable pair.
+# 0.61-0.62 are the numba releases that both support 3.13 and ship this wheel.
+constraint-dependencies = [
+    "llvmlite<0.46 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numba>=0.61 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
+# Only one torch backend may be resolved at a time; uv would otherwise try to
+# satisfy all four indexes at once.
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu126" },
+        { extra = "cu128" },
+        { extra = "rocm" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cu126" },
+    { index = "pytorch-cu128", extra = "cu128" },
+    { index = "pytorch-rocm", extra = "rocm" },
+]
+pytorch-triton-rocm = [
+    { index = "pytorch-rocm", extra = "rocm" },
+]
+
+# `explicit = true` keeps these indexes from being consulted for anything that
+# does not name them above, so the rest of the tree still resolves from PyPI.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+
 [build-system]
 requires = ["uv_build>=0.9,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# One installed package, `intruder`, holding every module in the project:
+# Three installed packages. `intruder` holds every pipeline module:
 #   intruder.trcore     shared primitives
 #   intruder.pipeline   the pipeline steps
 #   intruder.analysis   post-hoc analysis of their output
 # It replaces the five bare top-level packages that were installed before
 # (trcore, novelty, strchive, svpytrf, filter).
-# It is installed editable, so edits take effect without re-syncing. A single
-# owned top-level name is deliberate -- `pipeline` or `analysis` on their own
-# would collide with real packages in site-packages.
+# `evo` and `analysis` are separate top-level packages for the Evo 2 embedding
+# work -- extraction and the reduce/cluster analysis half, respectively. Both
+# ship their own optional dependency groups (analysis/embed/notebook/torch
+# backends, see [project.optional-dependencies]) that don't belong on the
+# pipeline's default install, so they are kept out of `intruder` rather than
+# nested under it.
+# All three are installed editable, so edits take effect without re-syncing.
 module-root = "src/python"
-module-name = "intruder"
+module-name = ["intruder", "evo", "analysis"]
 
 [tool.ruff]
 line-length = 100

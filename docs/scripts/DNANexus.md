@@ -176,7 +176,82 @@ All paths are relative to the project. The same commands work on a machine.
 | `scripts/dnanexus/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
 | `scripts/dnanexus/dx-wrapper.sh` | Shared code of the four commands. |
 
-Three further options of `scripts/dnanexus/dx-instance.sh`:
+| `scripts/dx-env.sh` | Reads `.env`, authenticates the dx toolkit, and selects the project. |
+| `scripts/dx-instance.sh` | The script the four commands call. Accepts their options and more. |
+| `scripts/dx-shard-gpu.sh` | Runs one program across several GPU machines at once, each on a slice of the input, and stops all of them. |
+| `scripts/dx-worker-run.sh` | Runs on the machine. Detaches the program from the ssh session, uploads results as they appear, and stops the machine when it ends. |
+| `scripts/dx-worker-setup.sh` | Runs on the machine. Installs uv, clones the branch, and builds the environment. |
+| `scripts/dx-worker-setup-evo2.sh` | The `--setup` script for Evo 2 runs. The generic one cannot install evo2 or flash-attn. |
+| `scripts/dx-wrapper.sh` | Shared code of the four commands. |
+
+### Several machines at once
+
+`scripts/dx-shard-gpu.sh` runs `dx-batch-gpu.sh` once per shard, giving each an
+`--offset`/`--limit` slice of the input and its own output directory and log:
+
+```bash
+scripts/dx-shard-gpu.sh --shards 4 --calls 6127 --time 6h \
+    --setup scripts/dx-worker-setup-evo2.sh -- <program>
+```
+
+It exists for the shutdown, not the arithmetic. A machine is stopped by an EXIT
+trap in `dx-instance.sh`, but bash defers a trap until the running foreground
+command returns — and that command is a `dx ssh` that will not return for hours,
+so a Ctrl-C aimed at a hand-backgrounded job is queued behind the very run it
+was meant to stop. This script launches each shard in its own **process group**
+and signals the whole group, which makes that command return so the trap can
+run; it then harvests the job ids from the shard logs and stops any survivor.
+
+`--shell`, `--keep` and `--interactive` are refused, and `--time` must cover the
+**largest** shard, not the average.
+
+### Why the program is detached from the connection
+
+By default each shard runs through `scripts/dx-worker-run.sh` on the machine
+rather than directly. That exists because of a measured failure on 2026-08-27:
+a four-shard run billed **12.3 GPU-hours and produced nothing**. Throughput was
+fine — 6.3–8.1 s/window, as profiled. What happened is that all four programs
+died **within ten seconds of each other**, 44 minutes into 73 minutes of work.
+One dropped connection on the laptop, four dead runs.
+
+Three faults, each independently sufficient to lose the run, and each now closed:
+
+| Fault | Fix |
+|---|---|
+| The program ran in the foreground of `dx ssh`, so a closing session sent it SIGHUP | started under `setsid nohup` with stdin from `/dev/null` — it has no terminal to lose |
+| Results were uploaded only after the program returned, so an interruption at 99% lost everything | each file is uploaded to the project as it is written, and on failure too |
+| A finished or dead program did not stop its machine — it idled at `CPU: 1%` for two hours | the program terminates its own job as its last act, on success and on error alike |
+
+The launcher still mirrors the log, so an attached terminal sees progress as
+before — but that half is now expendable. If the connection drops, collect with
+`uv run dx download -r <destination>`. `--no-detach` restores the old behaviour.
+
+### Push notifications
+
+Both scripts post to [ntfy.sh](https://ntfy.sh) on the topic
+**`inTRuder-tandem-repeats`**. Subscribe in the ntfy app or at
+<https://ntfy.sh/inTRuder-tandem-repeats>.
+
+The one that matters is sent **from the worker**, not from your laptop, so the
+outcome reaches you even if the machine that launched the run is asleep or
+offline — the exact case that left the 2026-08-27 failure invisible for two
+hours. It carries the job id, the exit status and how many `.npz` were uploaded,
+and is sent just before the box terminates itself.
+
+| Flag | | Default |
+|---|---|---|
+| `--ntfy-topic TOPIC` | topic to post to | `inTRuder-tandem-repeats` |
+| `--no-notify` | post nothing | off |
+
+`NTFY_TOPIC` and `NTFY_URL` override the defaults from the environment. Every
+call has a 10 s timeout and swallows its errors: ntfy being down must never turn
+a good run into a failed one.
+
+A shard that raises also **stops the queue**: the remaining shards are not
+launched, because a systematic fault would otherwise cost one GPU box each to
+rediscover.
+
+Three further options of `scripts/dx-instance.sh`:
 
 ```bash
 scripts/dnanexus/dx-instance.sh -t 2h --shell -- pytest -q
