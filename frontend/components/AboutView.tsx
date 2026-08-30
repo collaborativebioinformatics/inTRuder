@@ -147,12 +147,12 @@ export function AboutView() {
           The pipeline, the documentation and this interface all live in one
           repository:{" "}
           <a
-            href="https://github.com/collaborativebioinformatics/novelTRs"
+            href="https://github.com/collaborativebioinformatics/inTRuder"
             target="_blank"
             rel="noreferrer"
             className="underline decoration-dotted underline-offset-2 hover:text-ink"
           >
-            github.com/collaborativebioinformatics/novelTRs
+            github.com/collaborativebioinformatics/inTRuder
           </a>
           .
         </p>

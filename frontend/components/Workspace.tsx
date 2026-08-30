@@ -107,7 +107,7 @@ const MAIN_MIN = 400;
 const SEAMS = 2;
 /** Tailwind's `lg`, below which the columns stack and the widths do not apply. */
 const LG = 1024;
-const WIDTHS_KEY = "noveltrs-pane-widths";
+const WIDTHS_KEY = "intruder-pane-widths";
 
 interface PaneWidths {
   rail: number;

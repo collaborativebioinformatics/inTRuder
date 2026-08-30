@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# novelTRs frontend — Next.js + Tailwind + assistant-ui, served by `next start`.
+# inTRuder frontend — Next.js + Tailwind + assistant-ui, served by `next start`.
 #
 #   docker compose up frontend                                   # from the repo root
-#   docker build -f docker/frontend.Dockerfile -t noveltrs-frontend .
+#   docker build -f docker/frontend.Dockerfile -t intruder-frontend .
 #
 # The build context is the REPOSITORY ROOT, not frontend/ — see .dockerignore.
 

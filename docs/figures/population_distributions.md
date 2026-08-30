@@ -1,6 +1,6 @@
 # Population-level TR distributions by novelty class
 
-*Generated 2026-08-28 18:03 UTC by `src/python/reporting/population_report.py` from `/Users/liedeweivandevondel/Documents/Work/Experiments_Miami/BCM_hackathon/05_hprc_multisample.tsv` (162,441 TRF calls across 17,270 loci; locus = chrom+position, not SVID -- see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*
+*Generated 2026-08-28 18:03 UTC by `src/python/reporting/population_report.py` from `05_hprc_multisample.tsv` (162,441 TRF calls across 17,270 loci; locus = chrom+position, not SVID -- see [novelty_by_allele_count.md](novelty_by_allele_count.md)).*
 
 Colours follow the same fixed palette as [`notebooks/novel_tr_results.ipynb`](../../notebooks/novel_tr_results.ipynb): one novelty class, one colour, everywhere. Distributions below the summary chart are `novel_motif` vs `novel_locus` only (`known` excluded, not of interest here), shown as raw counts (not density) — the two classes differ by ~24x in size, so absolute magnitude matters, not just shape.
 

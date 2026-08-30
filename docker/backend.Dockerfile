@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# novelTRs backend — FastAPI + LangGraph + DuckDB.
+# inTRuder backend — FastAPI + LangGraph + DuckDB.
 #
 #   docker compose up backend                                  # from the repo root
-#   docker build -f docker/backend.Dockerfile -t noveltrs-backend .
+#   docker build -f docker/backend.Dockerfile -t intruder-backend .
 #
 # The build context is the REPOSITORY ROOT, not backend/, so that one
 # .dockerignore governs both images. Nothing under data/ is copied in: the
@@ -50,28 +50,28 @@ FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:${PATH}" \
-    NOVELTRS_DATA_DIR=/data \
-    NOVELTRS_REGISTRY_DIR=/data/web
+    INTRUDER_DATA_DIR=/data \
+    INTRUDER_REGISTRY_DIR=/data/web
 
 # Unprivileged: agent-authored SQL runs in this process. The DuckDB connection
 # is already read-only with external access disabled (app/registry.py), and a
 # non-root user is the second layer of that.
 ARG UID
 ARG GID
-RUN groupadd --gid ${GID} noveltrs 2>/dev/null || true \
- && useradd --create-home --uid ${UID} --gid ${GID} noveltrs
+RUN groupadd --gid ${GID} intruder 2>/dev/null || true \
+ && useradd --create-home --uid ${UID} --gid ${GID} intruder
 
 WORKDIR /app
 
-COPY --from=builder --chown=noveltrs:noveltrs /app/.venv ./.venv
-COPY --chown=noveltrs:noveltrs backend/app ./app
-COPY --chown=noveltrs:noveltrs backend/scripts ./scripts
+COPY --from=builder --chown=intruder:intruder /app/.venv ./.venv
+COPY --chown=intruder:intruder backend/app ./app
+COPY --chown=intruder:intruder backend/scripts ./scripts
 
 # The registry materializes every dataset into a DuckDB file under .cache at
 # startup, so this has to be writable by the unprivileged user.
-RUN install -d -o noveltrs -g noveltrs /app/.cache /data /data/uploads
+RUN install -d -o intruder -g intruder /app/.cache /data /data/uploads
 
-USER noveltrs
+USER intruder
 EXPOSE 8000
 
 # /api/health reports which datasets loaded and whether a model credential is

@@ -62,10 +62,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Turn the single `image` choice into a build matrix. Each entry carries its
-  # own Dockerfile path because the three images do not share a layout: the two
-  # web images live under docker/, the pipeline one is a root Dockerfile on the
-  # nextflow-pipeline branch.
+  # Turn the single `image` choice into a build matrix. All three Dockerfiles
+  # live under docker/, all built with the repository root as context.
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -79,7 +77,7 @@ jobs:
           all='[
             {"name": "backend",  "dockerfile": "docker/backend.Dockerfile",  "description": "inTRuder web API - FastAPI + LangGraph + DuckDB"},
             {"name": "frontend", "dockerfile": "docker/frontend.Dockerfile", "description": "inTRuder web interface - Next.js"},
-            {"name": "pipeline", "dockerfile": "Dockerfile",                 "description": "inTRuder Nextflow pipeline runtime"}
+            {"name": "pipeline", "dockerfile": "docker/pipeline.Dockerfile", "description": "inTRuder Nextflow pipeline runtime"}
           ]'
           if [ "$IMAGE" = all ]; then
             matrix=$(jq -c . <<<"$all")
@@ -107,7 +105,7 @@ jobs:
         with:
           # Empty means the ref this run was dispatched against. Naming one
           # explicitly is how you build a branch whose own copy of this
-          # workflow does not exist yet — `ref: nextflow-pipeline`.
+          # workflow does not exist yet.
           ref: ${{ inputs.ref }}
 
       # `all` is a convenience, so an image the checked-out ref simply does not
@@ -148,9 +146,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Named for the project, not the repository: the repo is still
-          # novelTRs and will be renamed separately, and a Docker reference
-          # rejects the capitals in inTRuder either way.
+          # Lowercased: a Docker reference rejects the capitals in inTRuder.
           owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           image="ghcr.io/${owner_lc}/${PROJECT}/${NAME}"
 
