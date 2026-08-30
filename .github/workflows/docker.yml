@@ -8,11 +8,12 @@
 #   gh workflow run docker.yml -f image=pipeline -f ref=nextflow-pipeline
 #
 # The images land under the project name, lowercased — a Docker reference
-# cannot carry the capitals in inTRuder:
+# cannot carry the capitals in inTRuder. The pipeline image is published as
+# "nextflow" (it's the runtime a Nextflow pipeline drives), not "pipeline":
 #
-#   ghcr.io/collaborativebioinformatics/intruder/backend
-#   ghcr.io/collaborativebioinformatics/intruder/frontend
-#   ghcr.io/collaborativebioinformatics/intruder/pipeline
+#   ghcr.io/collaborativebioinformatics/intruder-backend
+#   ghcr.io/collaborativebioinformatics/intruder-frontend
+#   ghcr.io/collaborativebioinformatics/intruder-nextflow
 #
 # See docker/README.md for pulling them and for the one-time step that makes a
 # package public.
@@ -77,9 +78,9 @@ jobs:
         run: |
           set -euo pipefail
           all='[
-            {"name": "backend",  "dockerfile": "docker/backend.Dockerfile",  "description": "inTRuder web API - FastAPI + LangGraph + DuckDB"},
-            {"name": "frontend", "dockerfile": "docker/frontend.Dockerfile", "description": "inTRuder web interface - Next.js"},
-            {"name": "pipeline", "dockerfile": "Dockerfile",                 "description": "inTRuder Nextflow pipeline runtime"}
+            {"name": "backend",  "dockerfile": "docker/backend.Dockerfile",  "image_name": "backend",  "description": "inTRuder web API - FastAPI + LangGraph + DuckDB"},
+            {"name": "frontend", "dockerfile": "docker/frontend.Dockerfile", "image_name": "frontend", "description": "inTRuder web interface - Next.js"},
+            {"name": "pipeline", "dockerfile": "Dockerfile",                 "image_name": "nextflow", "description": "inTRuder Nextflow pipeline runtime"}
           ]'
           if [ "$IMAGE" = all ]; then
             matrix=$(jq -c . <<<"$all")
@@ -139,6 +140,7 @@ jobs:
         if: steps.check.outputs.found == 'true'
         env:
           NAME: ${{ matrix.image.name }}
+          IMAGE_NAME: ${{ matrix.image.image_name }}
           PROJECT: intruder
           REF_INPUT: ${{ inputs.ref }}
           FALLBACK_REF: ${{ github.ref_name }}
@@ -148,11 +150,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Named for the project, not the repository: the repo is still
-          # novelTRs and will be renamed separately, and a Docker reference
-          # rejects the capitals in inTRuder either way.
+          # Flat, hyphenated per GHCR convention (ghcr.io/OWNER/NAME), rather
+          # than nesting under a project subpath. Named for the project, not
+          # the repository: the repo is still novelTRs and will be renamed
+          # separately, and a Docker reference rejects the capitals in
+          # inTRuder either way.
           owner_lc=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          image="ghcr.io/${owner_lc}/${PROJECT}/${NAME}"
+          image="ghcr.io/${owner_lc}/${PROJECT}-${IMAGE_NAME}"
 
           ref_name="${REF_INPUT:-$FALLBACK_REF}"
           sha=$(git rev-parse HEAD)
@@ -162,8 +166,18 @@ jobs:
           # andrewscouten/docker have to be flattened.
           sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-128; }
 
+          # Each image's own version file is the source of truth, checked out
+          # at the same ref these tags describe — not a value someone has to
+          # remember to pass in separately.
+          case "$NAME" in
+            backend)  version=$(grep -m1 '^version' backend/pyproject.toml | sed -E "s/version = \"(.*)\"/\1/") ;;
+            frontend) version=$(jq -r '.version' frontend/package.json) ;;
+            pipeline) version=$(grep -m1 "^ *version *=" workflows/nextflow.config | sed -E "s/.*'(.*)'.*/\1/") ;;
+          esac
+
           tags="${image}:$(sanitize "$ref_name")"
           tags="${tags},${image}:sha-${sha:0:7}"
+          tags="${tags},${image}:v${version}"
           # `latest` only ever tracks the default branch.
           if [ "$ref_name" = "$DEFAULT_BRANCH" ]; then
             tags="${tags},${image}:latest"
@@ -171,6 +185,9 @@ jobs:
           if [ -n "$EXTRA_TAG" ]; then
             tags="${tags},${image}:$(sanitize "$EXTRA_TAG")"
           fi
+          # A ref named e.g. "v0.1.0" would otherwise duplicate the version
+          # tag; buildx rejects duplicate tags in one build.
+          tags=$(tr ',' '\n' <<<"$tags" | awk '!seen[$0]++' | paste -sd, -)
 
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
 
@@ -181,8 +198,8 @@ jobs:
             echo "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
             echo "org.opencontainers.image.revision=${sha}"
             echo "org.opencontainers.image.created=${created}"
-            echo "org.opencontainers.image.version=$(sanitize "$ref_name")"
-            echo "org.opencontainers.image.title=${PROJECT}-${NAME}"
+            echo "org.opencontainers.image.version=${version}"
+            echo "org.opencontainers.image.title=${PROJECT}-${IMAGE_NAME}"
             echo "org.opencontainers.image.description=${DESCRIPTION}"
             echo "org.opencontainers.image.licenses=MIT"
             echo "EOF"

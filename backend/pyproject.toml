@@ -1,6 +1,6 @@
 [project]
 name = "noveltrs-backend"
-version = "0.1.0"
+version = "1.0.0"
 description = "FastAPI + LangGraph service backing the novelTRs web interface"
 readme = "README.md"
 requires-python = ">=3.11"
