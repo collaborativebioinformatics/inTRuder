@@ -35,21 +35,21 @@
 
 ## What is inTRuder?
 
-Tandem repeat (TR) genotypers rely on a catalog of known loci and motifs, built by annotating
-repeats in the reference genome. Any TR that's individual- or population-specific is invisible to
-that catalog from the start. inTRuder looks for two kinds of novelty a reference-based genotyper
+Tandem repeat (TR) genotypers typically rely on a catalog of known loci and motifs, built by annotating
+repeats in the reference genome. Any TR that is individual- or population-specific is invisible to
+that catalog. inTRuder looks for two kinds of novelty a reference-based genotyper
 can't see:
 
-- **Novel locus** — present in an individual, absent from the reference genome entirely.
+- **Novel locus** — the locus is present in an individual, but absent from the reference genome entirely.
 - **Novel motif** — the locus exists in the reference, but the individual carries a different
   repeat motif there.
 
-Finding these normally means assembling the whole genome just to surface non-reference sequence.
-inTRuder takes a cheaper route: long-read structural variant (SV) callers already detect
-insertions as a standard part of most long-read workflows, and an expanded TR is, by construction,
-a repetitive subset of those insertions. Scanning the inserted sequence — instead of assembling
-the whole genome — is enough to surface candidate TR expansions, including ones no existing
-catalog knows about.
+Finding these normally means assembling the whole genome to identify the non-reference sequences.
+inTRuder takes a short-cut: long-read structural variant (SV) callers already detect insertions
+as a standard part of most long-read workflows, and an expanded TR is, by construction, a
+repetitive subset of those insertions. Scanning the inserted sequence — instead of assembling
+the whole genome — is enough to find most candidate TR expansions, including ones no existing catalog
+knows about.
 
 **Why inTRuder:**
 
@@ -61,7 +61,7 @@ catalog knows about.
   assistant that answers questions by querying the same tables you see.
 - **Your data stays yours** — the web interface can run entirely on a local model (the Claude Code
   CLI, Ollama); nothing leaves the machine.
-- **Clinical context built in** — candidates are compared against STRchive's curated disease-locus
+- **Clinical context built in** — candidates are compared against [STRchive](https://strchive.org/)'s curated disease-locus
   catalog and annotated with AnnotSV.
 
 This repository holds the pipeline (Nextflow plus standalone Python CLIs), the web interface, and
@@ -222,11 +222,9 @@ Sriram Sudarsanam, Andrew Scouten, Jordi Valls, Ammara Saleem, Elbay Aliyev, Gar
 
 ## AI Disclosure
 
-Artificial intelligence tools, including large language models such as Claude Code, were used
-during the development of this project to support writing, clarify technical concepts, and
-assist in generating code and tests. These tools served as an aid for idea refinement, debugging,
-and improving the readability of explanations and documentation. All AI-generated text and code
-were thoroughly reviewed, verified for correctness, and understood in full — each change went
-through a pull request reviewed by a member of the team above — before being incorporated into
-this work. The responsibility for all final decisions, interpretations, and implementations
-remains solely with the contributors.
+Artificial intelligence (AI) tools, including large language models such as Claude Code, were part of how we built this
+project. They helped with writing, explaining technical concepts, generating code and tests,
+refining ideas, debugging, and making the documentation easier to read. Every piece of
+AI-generated text or code was reviewed, checked for correctness, and understood before use, and
+each change went through a pull request reviewed by one of the team members above. Final
+decisions, interpretations, and implementation are the contributors' responsibility.
