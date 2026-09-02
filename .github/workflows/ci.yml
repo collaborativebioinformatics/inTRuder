@@ -1,5 +1,9 @@
 # Lint and test on every push and pull request.
 #
+# Each job only runs when its own paths changed (see the `changes` job, which
+# uses dorny/paths-filter). A skipped job still reports as a passing check, so
+# this is safe to use as a required status check.
+#
 # Deliberately cheap: `uv sync` with no extra groups, so this installs the
 # runtime set plus dev tooling and nothing else. The heavy groups (`analysis`,
 # `dx`) are not exercised here -- if a job ever needs them, add a separate one
@@ -21,8 +25,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      backend: ${{ steps.filter.outputs.backend }}
+      shell: ${{ steps.filter.outputs.shell }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'src/python/**'
+              - 'tests/python/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+            shell:
+              - 'scripts/**/*.sh'
+              - '.github/workflows/ci.yml'
+
   python:
     name: Python (lint + tests)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +79,8 @@ jobs:
 
   backend:
     name: Backend (lint + tests)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,6 +106,8 @@ jobs:
 
   shell:
     name: Shell scripts
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

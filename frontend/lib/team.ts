@@ -102,7 +102,16 @@ const ROSTER: Member[] = [
     bio: "Gary Arner is an undergraduate student at Metropolitan State University of Denver where he is pursuing a Bachelor of Science in Data Science and Machine Learning with minors in math and computer science. He rotated in the Dashnow lab Nov 2025 - Jan 2026 as part of the PATH-GREU program then joined the lab for a one-year research project May 2026.",
   },
   { given: "Gavin", family: "Monahan" },
-  { given: "Anukrati", family: "Sharma" },
+  {
+    given: "Anukrati",
+    family: "Sharma",
+    image: "/team/sharma.jpg",
+    bio: "Anukrati Sharma is a computational biologist. She is a graduate student at CSIR-CCMB. She is fascinated by the complexity of the human genome and uses sequencing data and bioinformatics pipelines to better understand it. Her research focuses on decoding tandem repeat regions of the genome and exploring population-scale genomic variation to uncover their biological significance and associations with disease. When she's not writing code or analyzing data, she enjoys learning Kuchipudi, traveling to new places, and can never say no to a beach getaway.",
+    links: [
+      { label: "LinkedIn", href: "https://www.linkedin.com/in/anukrati-sharma-37885b208/" },
+      { label: "Email", href: "mailto:anukratisharma1998@gmail.com" },
+    ],
+  },
   {
     given: "Liedewei",
     family: "Van de Vondel",
@@ -119,11 +128,12 @@ const ROSTER: Member[] = [
   {
     given: "Chantera",
     family: "Lazard",
-    bio: "Chantera Lazard worked on the assistant's LangGraph agent and the tools it calls, among them phenotype resolution: free text in, validated HPO terms and the genes behind them out. She also built the Nextflow pipeline that runs inTRuder end to end — the fan-out/fan-in workflow from repeat finding through novelty screening to validation, the container image its steps run in, and the DNAnexus applet build — and documented the UCSC hg38 Simple Repeats track the novelty screen is measured against.",
+    image: "/team/lazard.jpg",
+    bio: "Chantera Lazard is a bioinformatician and independent researcher focused on the intersection of cancer genomics, variant discovery, and knowledge representation. Her work explores how computational methods, from variant interpretation pipelines to knowledge graph and federated learning approaches, can accelerate discovery in cancer and disease research, with particular attention to translating multi-omics and clinical data into actionable insight for drug repurposing and disease mechanism research. She is drawn to problems at the boundary of clinical practice and computation, bridging genomic data with real-world therapeutic and diagnostic applications.",
     links: [
       { label: "LinkedIn", href: "https://www.linkedin.com/in/chantera-lazard/" },
       { label: "GitHub", href: "https://github.com/tera90223" },
-      { label: "Email", href: "mailto:lazard.c@northeastern.com" },
+      { label: "Email", href: "mailto:lazard.c@northeastern.edu" },
     ],
   },
   { given: "Taimoor", family: "Khan" },

@@ -223,6 +223,25 @@ def test_gene_query_searches_symbols_while_gene_still_matches_one(client):
     assert client.get("/api/loci", params={"gene_query": "%"}).json()["total"] == 0
 
 
+def test_genes_matches_a_specific_list_exactly(client):
+    """`genes` is for a gene list already in hand (e.g. from a phenotype lookup)
+    - an exact match against each symbol, not a substring, and case-insensitive
+    like `gene_query`. Passing "atxn" (a substring of four real symbols, not a
+    symbol itself) must match nothing, unlike `gene_query`."""
+    listed = client.get(
+        "/api/loci", params={"limit": 500, "genes": ["ATXN1", "ATXN2"]}
+    ).json()
+    assert listed["ignored_filters"] == []
+    assert {locus["gene"] for locus in listed["loci"]} == {"ATXN1", "ATXN2"}
+
+    lower = client.get(
+        "/api/loci", params={"limit": 500, "genes": ["atxn1", "atxn2"]}
+    ).json()
+    assert lower["total"] == listed["total"]
+
+    assert client.get("/api/loci", params={"genes": ["atxn"]}).json()["total"] == 0
+
+
 def test_every_returned_locus_has_a_strip(client):
     body = client.get(
         "/api/loci", params={"limit": 50, "include_strips": True}

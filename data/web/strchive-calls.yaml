@@ -1,7 +1,7 @@
 name: strchive_calls
 title: Candidate repeats screened against catalogs and STRchive
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/sv_output/survivor_multi_sample_vcf/first_500_INS.strchive.tsv
+path: ${INTRUDER_DATA_DIR}/sv_output/survivor_multi_sample_vcf/first_500_INS.strchive.tsv
 format: tsv
 
 description: >

@@ -1,7 +1,7 @@
 name: hprc_segments
 title: HPRC per-allele repeat structure (67 genomes)
 synthetic: false
-path: ${NOVELTRS_DATA_DIR}/hprc/segments.parquet
+path: ${INTRUDER_DATA_DIR}/hprc/segments.parquet
 format: parquet
 role: segments
 

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # The MCP server the tools are served from. Claude Code namespaces MCP tools as
 # `mcp__<server>__<tool>`; the prefix is stripped again on the way out so the
 # frontend sees `run_sql`, the same name the LangGraph path emits.
-MCP_SERVER = "noveltrs"
+MCP_SERVER = "intruder"
 TOOL_PREFIX = f"mcp__{MCP_SERVER}__"
 
 # Where the SDK looks for the CLI when it is not on PATH, mirrored so that

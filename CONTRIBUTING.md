@@ -9,8 +9,8 @@ contributing changes via a pull request (PR).
    with write access):
 
    ```bash
-   git clone https://github.com/collaborativebioinformatics/novelTRs.git
-   cd novelTRs
+   git clone https://github.com/collaborativebioinformatics/inTRuder.git
+   cd inTRuder
    ```
 
 2. **Create a branch** off `main` with a short, descriptive name:
@@ -59,7 +59,7 @@ contributing changes via a pull request (PR).
 
 ## Reporting issues
 
-Found a bug or have an idea? [Open an issue](https://github.com/collaborativebioinformatics/novelTRs/issues/new/choose)
+Found a bug or have an idea? [Open an issue](https://github.com/collaborativebioinformatics/inTRuder/issues/new/choose)
 using one of the provided templates.
 
 Good luck, have fun, and learn lots!

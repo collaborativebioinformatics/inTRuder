@@ -93,6 +93,14 @@ def set_view(
         "than naming a gene ('anything in the SYNE family'); prefer the exact "
         "`gene` when you know the symbol.",
     ] = None,
+    genes: Annotated[
+        list[str] | None,
+        "Restrict to loci whose gene is exactly one of these symbols "
+        "(case-insensitive), e.g. the gene list a phenotype-to-loci lookup "
+        "returned. Use this rather than `gene_query` when you have a specific "
+        "set of gene symbols to match, not a search substring — `gene_query` "
+        "does a single 'contains' match and cannot express a list.",
+    ] = None,
     sample: Annotated[str | None, "Restrict to one sample, e.g. 'HG00290'."] = None,
     strchive_status: Annotated[
         Literal[
@@ -163,6 +171,7 @@ def set_view(
             "gene_region": gene_region,
             "gene": gene,
             "gene_query": gene_query,
+            "genes": genes,
             "sample": sample,
             "strchive_status": strchive_status,
             "strchive_novel_only": strchive_novel_only,

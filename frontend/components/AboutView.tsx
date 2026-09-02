@@ -3,12 +3,12 @@ import { TEAM, fullName, initials, type Member } from "@/lib/team";
 /**
  * Who made this, and what it is.
  *
- * A document rather than a workspace surface, so it borrows the presentation's
- * column width and gets the same full-width treatment in the shell — there is
- * no cohort to summarize beside it and nothing here for the assistant to query.
+ * A document rather than a workspace surface, so it gets the full-width
+ * treatment in the shell — there is no cohort to summarize beside it and
+ * nothing here for the assistant to query.
  *
  * The roster is imported already sorted (see lib/team). Nothing on this page
- * reorders it: one list, one order, both surfaces.
+ * reorders it.
  */
 
 /**
@@ -147,12 +147,12 @@ export function AboutView() {
           The pipeline, the documentation and this interface all live in one
           repository:{" "}
           <a
-            href="https://github.com/collaborativebioinformatics/novelTRs"
+            href="https://github.com/collaborativebioinformatics/inTRuder"
             target="_blank"
             rel="noreferrer"
             className="underline decoration-dotted underline-offset-2 hover:text-ink"
           >
-            github.com/collaborativebioinformatics/novelTRs
+            github.com/collaborativebioinformatics/inTRuder
           </a>
           .
         </p>

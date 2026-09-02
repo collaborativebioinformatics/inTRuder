@@ -494,12 +494,8 @@ export interface Dataset {
 
 /* -------------------------------------------------------------------------- */
 
-/**
- * Which surface the workspace is showing. The agent can move this too — except
- * to `presentation`, which is a document rather than a view of the data and so
- * is not one of the pages `set_view` offers.
- */
-export type PageName = "catalog" | "strchive" | "datasets" | "presentation" | "about";
+/** Which surface the workspace is showing. */
+export type PageName = "catalog" | "strchive" | "datasets" | "about";
 
 /**
  * How the catalog list is ordered. Ordering is not filtering — it changes which
@@ -610,6 +606,9 @@ export interface ViewFilters {
   /** Free-text gene search: a case-insensitive substring of the gene symbol.
    *  The exact `gene` is what the agent reaches for when it knows the symbol. */
   gene_query?: string | null;
+  /** Exact match against a specific list of gene symbols, e.g. from a
+   *  phenotype-to-loci lookup. Additive to `gene`/`gene_query`, not a replacement. */
+  genes?: string[] | null;
   sample?: string | null;
   strchive_status?: StrchiveStatus | null;
   /** Restrict the STRchive catalog to loci whose pathogenic motif is not in hg38. */

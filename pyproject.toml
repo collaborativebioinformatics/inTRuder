@@ -1,6 +1,6 @@
 [project]
 name = "intruder"
-version = "0.1.0"
+version = "1.0.0"
 description = "Identifying novel human tandem-repeat loci absent from the reference genome"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -1,0 +1,11 @@
+novelty_source	population	n_samples	known_n_loci	novel_locus_n_loci	novel_motif_n_loci	unscreened_n_loci
+ucsc_novelty	AFR	20	7099	689	5480	0
+ucsc_novelty	AMR	12	4771	446	3649	0
+ucsc_novelty	EAS	14	4614	448	3473	0
+ucsc_novelty	EUR	9	3876	390	3042	0
+ucsc_novelty	SAS	12	4513	441	3540	0
+trexplorer_novelty	AFR	20	10045	162	3045	0
+trexplorer_novelty	AMR	12	6697	104	2060	0
+trexplorer_novelty	EAS	14	6512	103	1920	0
+trexplorer_novelty	EUR	9	5536	90	1673	0
+trexplorer_novelty	SAS	12	6406	111	1958	0
