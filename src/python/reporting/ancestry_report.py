@@ -125,8 +125,10 @@ def plot_swarm(df: pd.DataFrame, column: str, ylabel: str, title: str, subtitle:
     for i, s in enumerate(order):
         m = means[s]
         ax.plot([i - 0.22, i + 0.22], [m, m], color=INK, lw=2, zorder=5)
-        ax.text(i, m + yspan * 0.035, f"{m:,.0f}", ha="center", va="bottom", fontsize=9.5, color=INK,
-                bbox=dict(facecolor=SURFACE, edgecolor="none", pad=1.2, alpha=0.85), zorder=6)
+        ax.text(
+            i, m + yspan * 0.035, f"{m:,.0f}", ha="center", va="bottom", fontsize=9.5, color=INK,
+            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.2, "alpha": 0.85}, zorder=6,
+        )
 
     n_per_group = df.groupby("superpop").size()
     ax.set_xticks(range(len(order)), [f"{s}\nn={n_per_group[s]}" for s in order])
@@ -172,18 +174,22 @@ def build_report(df: pd.DataFrame, assets_dir: Path, report_path: Path,
             summary[c] = summary[c].round(0).astype(int)
 
     rel_assets = assets_dir.relative_to(report_path.parent)
-    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     lines = [
         "# Insertions carried per genome, by ancestry (QC)",
         "",
-        f"*Generated {generated} by `src/python/reporting/ancestry_report.py` from "
-        f"`{raw_vcf.name}` and `{multisample_tsv.name}` ({len(df)} HPRC genomes).*",
+        (
+            f"*Generated {generated} by `src/python/reporting/ancestry_report.py` from "
+            f"`{raw_vcf.name}` and `{multisample_tsv.name}` ({len(df)} HPRC genomes).*"
+        ),
         "",
-        "Descriptive QC only, no significance testing. Both plots share the same "
-        "superpopulation order, axis style, and colour so they can be compared "
-        "directly -- what changes between them is entirely due to the TR "
-        "pipeline (`sv_trfcaller` + `novelty`), not a different cohort or axis.",
+        (
+            "Descriptive QC only, no significance testing. Both plots share the same "
+            "superpopulation order, axis style, and colour so they can be compared "
+            "directly -- what changes between them is entirely due to the TR "
+            "pipeline (`sv_trfcaller` + `novelty`), not a different cohort or axis."
+        ),
         "",
         "## Summary",
         "",
@@ -191,34 +197,40 @@ def build_report(df: pd.DataFrame, assets_dir: Path, report_path: Path,
         "",
         "## Before the pipeline: raw insertion calls",
         "",
-        "The full merged callset (`SVTYPE=INS`, non-reference genotype), independent "
-        "of whether an insertion contains a tandem repeat.",
+        (
+            "The full merged callset (`SVTYPE=INS`, non-reference genotype), independent "
+            "of whether an insertion contains a tandem repeat."
+        ),
         "",
         f"![Raw insertions per genome by superpopulation]({rel_assets}/insertions_raw.png)",
         "",
         "## After the pipeline: TR-spanning insertion calls",
         "",
-        "Same 67 genomes, counted from this repo's own output "
-        "(`sv_trfcaller` + `novelty annotate`). Counted as distinct "
-        "`(sample, SVID)` pairs rather than raw rows, since `sv_trfcaller.py` "
-        "currently double-emits every repeat call for homozygous-alt genotypes "
-        "(see `issue_duplicate_rows.md`) -- counting raw rows would overstate "
-        "per-sample totals by ~36%.",
+        (
+            "Same 67 genomes, counted from this repo's own output "
+            "(`sv_trfcaller` + `novelty annotate`). Counted as distinct "
+            "`(sample, SVID)` pairs rather than raw rows, since `sv_trfcaller.py` "
+            "currently double-emits every repeat call for homozygous-alt genotypes "
+            "(see `issue_duplicate_rows.md`) -- counting raw rows would overstate "
+            "per-sample totals by ~36%."
+        ),
         "",
         f"![TR-spanning insertions per genome by superpopulation]({rel_assets}/insertions_tr.png)",
         "",
         "## What changes between the two",
         "",
-        "Before the pipeline, AFR genomes clearly carry the most non-reference "
-        "insertions of any group -- a well-known effect of calling structural "
-        "variants against a reference genome that under-represents African "
-        "genetic diversity. After restricting to TR-spanning insertions, that "
-        "ordering changes (AMR leads on this smaller, noisier subset) and the "
-        "gap narrows substantially. Whether that shift reflects something real "
-        "about which insertions are TR-containing, or is just sampling noise on "
-        "a ~15x smaller subset, isn't something this QC pass can answer -- it "
-        "only establishes that the two views disagree and both denominators "
-        "are needed to see it.",
+        (
+            "Before the pipeline, AFR genomes clearly carry the most non-reference "
+            "insertions of any group -- a well-known effect of calling structural "
+            "variants against a reference genome that under-represents African "
+            "genetic diversity. After restricting to TR-spanning insertions, that "
+            "ordering changes (AMR leads on this smaller, noisier subset) and the "
+            "gap narrows substantially. Whether that shift reflects something real "
+            "about which insertions are TR-containing, or is just sampling noise on "
+            "a ~15x smaller subset, isn't something this QC pass can answer -- it "
+            "only establishes that the two views disagree and both denominators "
+            "are needed to see it."
+        ),
         "",
     ]
     report_path.write_text("\n".join(lines))
