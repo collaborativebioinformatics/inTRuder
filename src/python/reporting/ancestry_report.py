@@ -125,8 +125,10 @@ def plot_swarm(df: pd.DataFrame, column: str, ylabel: str, title: str, subtitle:
     for i, s in enumerate(order):
         m = means[s]
         ax.plot([i - 0.22, i + 0.22], [m, m], color=INK, lw=2, zorder=5)
-        ax.text(i, m + yspan * 0.035, f"{m:,.0f}", ha="center", va="bottom", fontsize=9.5, color=INK,
-                bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.2, "alpha": 0.85}, zorder=6)
+        ax.text(
+            i, m + yspan * 0.035, f"{m:,.0f}", ha="center", va="bottom", fontsize=9.5, color=INK,
+            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.2, "alpha": 0.85}, zorder=6,
+        )
 
     n_per_group = df.groupby("superpop").size()
     ax.set_xticks(range(len(order)), [f"{s}\nn={n_per_group[s]}" for s in order])

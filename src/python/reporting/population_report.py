@@ -120,7 +120,8 @@ def plot_class_distribution(
     fig, ax = plt.subplots(figsize=(7.2, 3.6), constrained_layout=True)
     hist_kwargs = {
         "data": d, "x": plot_col, "hue": "novelty", "hue_order": classes, "palette": CLASS_COLOR,
-        "stat": "count", "element": "step", "fill": True, "alpha": 0.4, "multiple": "layer", "ax": ax,
+        "stat": "count", "element": "step", "fill": True, "alpha": 0.4, "multiple": "layer",
+        "ax": ax,
     }
     if discrete:
         hist_kwargs["discrete"] = True

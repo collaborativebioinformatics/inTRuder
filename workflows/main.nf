@@ -27,6 +27,7 @@ params.input_vcf   = null
 params.run_novelty  = false
 params.run_annotation =  false
 params.run_validation = false
+params.run_compressibility = false
 
 // TODO: set the actual path to your TR catalogue BED file (needed by
 // stage 04 - Validation)
@@ -61,6 +62,43 @@ process FIND_TRS {
     //   python sv_trfcaller.py <input.vcf> <output.tsv>
     """
     python3 /opt/scripts/sv_trfcaller.py -i ${vcf_file} -o trf_output.tsv
+    """
+}
+
+// ---------------------------------------------------------------------
+// 01.1 - Add alt allele sequence compressibility score (optional)
+// ---------------------------------------------------------------------
+process ANNOTATE_COMPRESSIBILITY {
+
+    // publishDir copies this process's output to a results folder,
+    // so it's not just buried in Nextflow's internal work/ directory
+    // TODO: change to output in corresponding parent directory
+    publishDir "results/011_annotate_compressibility", mode: "copy"
+
+    input:
+    path vcf_file
+
+    output:
+    path "*_comp.vcf"
+
+    script:
+    // Calls the `compression` console script the same way FIND_NOVEL calls
+    // `uv run novelty`. The annotator itself came in with #81 and currently
+    // sits at src/python/intruder/compression/add_compression.py; a
+    // follow-up moves it to intruder/pipeline/compression/annotate.py and
+    // registers it in [project.scripts]. Targeting the console script rather
+    // than a file path means that move does not break this process.
+    //
+    // Nothing is read from the host source tree, so this resolves from
+    // whatever directory Nextflow stages the task in - the old relative
+    // "../src/python/..." path never could have.
+    //
+    // simpleName strips the directory and every extension, so
+    // sample.merged.vcf -> sample_comp.vcf, matching the output glob below.
+    // Bash-style ${var%.vcf} does NOT work here: Nextflow interpolates
+    // ${...} as Groovy before the shell ever sees it.
+    """
+    uv run compression -i ${vcf_file} -o ${vcf_file.simpleName}_comp.vcf
     """
 }
 
@@ -268,6 +306,15 @@ workflow {
         vcf_ch = Channel.fromPath(params.default_vcf_path)
     }
 
+    // --- Optional compressibility annotation ---
+    if (params.run_compressibility) {
+        ANNOTATE_COMPRESSIBILITY(vcf_ch)
+        vcf_ch = ANNOTATE_COMPRESSIBILITY.out
+    }
+    else {
+        vcf_ch = vcf_ch
+    }
+    
     // --- Baseline: find TRs in the insertions (always runs)---
     FIND_TRS(vcf_ch)
 
