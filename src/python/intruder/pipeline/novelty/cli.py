@@ -551,7 +551,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
     point = to_internal(args.pos, args.coord_base)
 
     equivalence = _equivalence(args)
-    canonical = canonical_motif(args.motif, equivalence)
+    canonical   = canonical_motif(args.motif, equivalence)
     print(f"{args.chrom}:{args.pos} ({args.coord_base}-based)  "
           f"motif={args.motif.strip().upper()}  canonical={canonical}")
     print(f"  same repeat if it differs by: {equivalence.describe()}")
@@ -755,7 +755,7 @@ def _add_table_args(parser: argparse.ArgumentParser) -> None:
     """Options describing the sv_trfcaller.py table, shared by annotate and sweep."""
     parser.add_argument("input", help="TSV from sv_trfcaller.py")
     parser.add_argument("--chrom-col", default="chrom")
-    parser.add_argument("--pos-col", default="ins_coord",
+    parser.add_argument("--pos-col", default="pos",
                         help="reference coordinate of the insertion "
                              "(default: %(default)s)")
     parser.add_argument("--motif-col", default="motif")
@@ -765,10 +765,10 @@ def _add_table_args(parser: argparse.ArgumentParser) -> None:
                         action="store_false",
                         help="skip the per-insertion purity columns")
     parser.add_argument("--insertion-key", metavar="COLS",
-                        default=["chrom", "ins_coord", "SVID", "sample"],
+                        default=["chrom", "pos", "SVID", "sample_info"],
                         type=lambda v: [c.strip() for c in v.split(",") if c.strip()],
                         help="comma-separated columns identifying one insertion "
-                             "(default: chrom,ins_coord,SVID,sample)")
+                             "(default: chrom,pos,SVID,sample_info)")
     parser.add_argument("--rep-start-col", default="rep_start")
     parser.add_argument("--rep-end-col", default="rep_end")
     parser.add_argument("--insert-size-col", default="insert_size")
